@@ -1,4 +1,4 @@
-# LIALO — Fujara Studios
+# LIALO — Fujira Studios
 
 **Historical Prší Roguelike & Deckbuilder by Fujara Studios** (Godot Engine 4.7+, GL Compatibility).
 
