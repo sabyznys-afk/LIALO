@@ -39,7 +39,7 @@ All played cards in **LIALO** — across **Single-Player (Player & AI Rival/Boss
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/Arnyt0/LIALO.git
+git clone https://github.com/sabyznys-afk/LIALO.git
 cd LIALO
 ```
 
@@ -84,7 +84,7 @@ cd LIALO
 ### Klonovanie, spustenie a export
 1. Naklonujte repozitár:
    ```bash
-   git clone https://github.com/Arnyt0/LIALO.git
+   git clone https://github.com/sabyznys-afk/LIALO.git
    cd LIALO
    ```
 2. **Spustenie hry:** Spustite `Spusti_Hru.bat` (prípadne upravte cestu k `Godot.exe` v `.bat` súbore, ak máte Godot inde než v `C:\Users\arnos\Godot\Godot.exe`).

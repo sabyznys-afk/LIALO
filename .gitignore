@@ -1,10 +1,9 @@
 # Godot 4+ specific ignores
 .godot/
 
-# Exported builds & large review packs (keep repo clean under GitHub limits)
+# Exported builds (too large for GitHub's 100 MB limit)
 build/
 *.zip
-*.pdf
 
 # Temporary asset backups & Python cache
 tools/__pycache__/
