@@ -148,6 +148,7 @@ func add_test_bot() -> void:
 		return
 	var archs := Config.DECK_ARCHETYPES
 	var chosen_arch: Dictionary = archs[lobby_seats.size() % archs.size()]
+	var chosen_char: Dictionary = Config.CHARACTERS[lobby_seats.size() % Config.CHARACTERS.size()]
 	var bot_names := ["Baron Černý", "Sestra Mlh", "Šašek Jáchym", "Rytíř Křiván"]
 	var bname := "%s [BOT]" % bot_names[(_bot_seq - 1) % bot_names.size()]
 	_bot_seq += 1
@@ -158,6 +159,7 @@ func add_test_bot() -> void:
 		"is_bot": true,
 		"ready": true,
 		"deck_cfg": {
+			"character_id": str(chosen_char["id"]),
 			"archetype_id": str(chosen_arch["id"]),
 			"extra_aces": int(chosen_arch["extra_aces"]),
 		},

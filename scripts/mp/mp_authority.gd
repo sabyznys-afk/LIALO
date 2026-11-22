@@ -57,12 +57,16 @@ func setup_match(lobby_seats: Array, settings: Dictionary) -> void:
 		raw_deck.shuffle()
 
 		var item_list: Array = arch.get("items", ["MYS_RUNE_WHETSTONE", "MYS_IRON_GAUNTLET"]).duplicate()
+		var char_id := str(dcfg.get("character_id", ""))
+		if char_id == "":
+			char_id = str(Config.get_character_for_archetype(str(arch.get("id", "GUILLOTINE_ACES"))).get("id", "CHAR_GUILLOTINE"))
 		var seat := {
 			"seat_idx": i,
 			"peer_id": int(ls.get("peer_id", 0)),
 			"name": str(ls.get("name", "Player %d" % (i + 1))),
 			"is_bot": bool(ls.get("is_bot", false)),
 			"deck_cfg": dcfg,
+			"character_id": char_id,
 			"archetype_name": str(arch.get("name", "Custom")),
 			"sword_skin": str(arch.get("sword_skin", "SWORD_RUNE")),
 			"color": arch.get("col", Color(0.85, 0.72, 0.36)),
@@ -214,9 +218,9 @@ func handle_play_cards(peer_id: int, seat_idx_hint: int, card_indices: Array, ta
 		op_mult *= 1.85
 	var base_dmg := maxi(10, int(round(float(raw_pts) * 0.42 * op_mult)))
 
-	# Emit hand-drawn card slam + sword score anim event!
-	var has_sword := (knight_cnt > 0 or king_cnt > 0 or ace_cnt >= 2)
-	var is_knight_vfx := (knight_cnt > 0 or ace_cnt >= 3)
+	# Emit hand-drawn card slam + King-style 2D sword score anim event for all played cards!
+	var has_sword := true
+	var is_knight_vfx := (knight_cnt > 0)
 	broadcast_vfx_event.emit({
 		"type": "CARD_PLAY",
 		"from_seat": turn_seat,
@@ -923,6 +927,7 @@ func _build_public_seats() -> Array:
 			"name": str(s["name"]),
 			"is_bot": bool(s["is_bot"]),
 			"archetype_name": str(s["archetype_name"]),
+			"character_id": str(s.get("character_id", "CHAR_GUILLOTINE")),
 			"sword_skin": str(s["sword_skin"]),
 			"color": s["color"],
 			"hp": int(s["hp"]),

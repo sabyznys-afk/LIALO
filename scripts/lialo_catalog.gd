@@ -2,15 +2,19 @@ extends RefCounted
 class_name LialoCatalog
 ## LIALO Master Roguelite Deckbuilder Registry & Progression Save Engine
 ## Obsahuje:
-## - 16 originálnych Špeciálnych Power Kariet (automaticky načítava `res://assets/cards/SPEC_<ID>.png`, ak existuje)
+## - 15 originálnych Špeciálnych Power Kariet (automaticky načítava `res://assets/cards/SPEC_<ID>.png`, ak existuje)
 ## - 5 Edícií kariet (Standard, Foil +50 Chips, Holographic +10 Mult, Polychrome ×1.5 X-Mult, Storm Charged)
-## - 24 zberateľských Relikvií (14 pôvodných + 10 nových Scaling/X-Mult/Prší Relikvií)
+## - 23 zberateľských Relikvií (13 pôvodných + 10 nových Scaling/X-Mult/Prší Relikvií)
 ## - 6 Alchymistických Elixírov na Deck Sculpting (Remove, Duplicate, Suit Transmute, Foil/Holo/Poly Infusion)
 ## - 5 historických ér × 3 eskalované štádiá (Ascension 1–10 + Endless Mode Epoch 6+)
 
 const PROFILE_PATH := "user://lialo_profile.cfg"
 const OPTIONS_PATH := "user://lialo_options.cfg"
 const MAX_ASCENSION := 10
+
+const ARCHIVED_CARD_IDS: Array[String] = ["SPEC_PRISM"]
+const ARCHIVED_RELIC_IDS: Array[String] = ["REL_PRISM_ORB"]
+const TEMPORARILY_HIDDEN_RELICS: Array[String] = ["REL_CHAMOIS", "REL_STORMCAP"]
 
 const DEFAULT_UNLOCKED_CARDS := [
 	"CERVEN_7", "CERVEN_8", "CERVEN_9", "CERVEN_10", "CERVEN_D", "CERVEN_E",
@@ -21,19 +25,19 @@ const DEFAULT_UNLOCKED_CARDS := [
 ]
 
 const ERA_BASE_TARGETS := {
-	"antika": 520,
-	"rim": 920,
-	"stredovek": 1500,
-	"objavy": 2400,
-	"prohibicia": 3800,
+	"antika": 60,
+	"rim": 75,
+	"stredovek": 90,
+	"objavy": 110,
+	"prohibicia": 130,
 }
 
 const CLASSIC_BASE_TARGETS := {
-	"antika": 900,
-	"rim": 1800,
-	"stredovek": 3400,
-	"objavy": 6500,
-	"prohibicia": 12000,
+	"antika": 80,
+	"rim": 100,
+	"stredovek": 120,
+	"objavy": 145,
+	"prohibicia": 175,
 }
 
 const CLASSIC_STAGE_MULTS := {
@@ -84,7 +88,7 @@ const CARD_CLASSES := {
 
 const EDITIONS := CARD_CLASSES
 
-## 16 ORIGINÁLNYCH POWER KARIET
+## 15 ORIGINÁLNYCH POWER KARIET
 ## Poznámka pre výtvarníka (vlastné assety): stačí uložiť PNG do `res://assets/cards/` s presným názvom
 ## v poli `art_file` (napr. `SPEC_VAMPIRE.png`, `SPEC_STORM.png`, ...). Hra ho automaticky načíta!
 const POWER_CARDS := [
@@ -208,14 +212,6 @@ const POWER_CARDS := [
 		"desc": "Adds +20 pts for every Court Card (D/H/K/E) in your hand!",
 		"desc_cs": "Přidá +20 bodů za každého Spodka, Svrška, Krále či Eso v ruce!"
 	},
-	{
-		"id": "SPEC_PRISM", "name": "Prismatic Core", "name_cs": "Prizmatické jádro", "short": "PRISM", "short_cs": "PRISMA", "suit": "CERVEN",
-		"pts": 22, "cost": 25, "rarity": "Mythic", "rarity_cs": "Mýtická", "wild": true,
-		"accent": Color(0.94, 0.56, 1.0), "art_file": "SPEC_PRISM.png",
-		"power_line": "+0.6× per Card Played", "power_line_cs": "+0.6× za každou kartu",
-		"desc": "WILD: Gains +0.6× Mult per card played & permanently gets +4 pts!",
-		"desc_cs": "DIVOKÁ: Přidá +0.6× za každou zahranou kartu a trvale posílí o +4 b.!"
-	},
 ]
 
 const RELICS := [
@@ -278,12 +274,6 @@ const RELICS := [
 		"category": "Utility", "category_cs": "Výhoda", "col": Color(0.56, 0.86, 0.96),
 		"desc": "+2 extra Redraws at the start of every match.",
 		"desc_cs": "+2 výměny karet navíc na začátku každého zápasu."
-	},
-	{
-		"id": "REL_PRISM_ORB", "name": "Guild Astral Seal", "name_cs": "Cechovní krystal", "icon": "Prism", "cost": 30,
-		"category": "X-Mult", "category_cs": "×Násobič", "col": Color(0.95, 0.52, 0.94),
-		"desc": "Each Class card (Mage/Knight/Merchant/Thief) adds ×1.25!",
-		"desc_cs": "Každá speciální třída (Mág, Rytíř, Kupec, Zloděj) přidá ×1.25!"
 	},
 	{
 		"id": "REL_HEX_DOLL", "name": "Voodoo Effigy", "name_cs": "Prokletá panenka", "icon": "Hex", "cost": 18,
@@ -482,6 +472,168 @@ const SWORD_SKINS := [
 ]
 
 # ============================================================================
+# 10 BUYABLE & ACQUIRABLE 3D ACTIVE TABLETOP RELICS (Usable on Table in Duel!)
+# ============================================================================
+const TABLE_RELICS := [
+	{
+		"id": "TRELIC_SOUL_BELL",
+		"name": "Soul-Severing Bell",
+		"name_cs": "Zvon rozetnutí duše",
+		"short": "SHATTER SHIELDS",
+		"short_cs": "ROZBIJE ŠTÍTY",
+		"cost": 22,
+		"charges": 1,
+		"col": Color(0.24, 0.90, 1.0),
+		"glb": "res://assets/models/relics/TRELIC_SOUL_BELL.glb",
+		"desc": "TABLE RELIC (1×/duel): Rings a Reiatsu shockwave that shatters all Rival Shields & drains -18 Rival pts.",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Rozezní rázovou vlnu — zničí všechny soupeřovy štíty a sebere mu -18 bodů."
+	},
+	{
+		"id": "TRELIC_BLOOD_SEAL",
+		"name": "Blood-Ink Seal",
+		"name_cs": "Krvavá pečeť",
+		"short": "NEXT PLAY ×2",
+		"short_cs": "PŘÍŠTÍ TAH ×2",
+		"cost": 26,
+		"charges": 1,
+		"col": Color(0.96, 0.14, 0.24),
+		"glb": "res://assets/models/relics/TRELIC_BLOOD_SEAL.glb",
+		"desc": "TABLE RELIC (1×/duel): Stamps your next play with Crimson Resonance (×2.0 Score) & drains -10 Rival pts!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Tvůj příští tah má ×2.0 body a vysaje -10 bodů ze soupeře!"
+	},
+	{
+		"id": "TRELIC_STAR_BOW",
+		"name": "Quincy Astrolabe",
+		"name_cs": "Hvězdný astroláb",
+		"short": "REVEAL & PIERCE",
+		"short_cs": "ODHALENÍ + SALVA",
+		"cost": 24,
+		"charges": 1,
+		"col": Color(0.22, 0.88, 1.0),
+		"glb": "res://assets/models/relics/TRELIC_STAR_BOW.glb",
+		"desc": "TABLE RELIC (1×/duel): Fires a cyan star volley — reveals Rival's hand for 2 turns & deals 1 ♥ HP damage!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Vypálí salvu hvězdných šípů — odhalí soupeřovy karty na 2 tahy a ubere 1 ♥ HP!"
+	},
+	{
+		"id": "TRELIC_ASH_GLASS",
+		"name": "Ashen Hourglass",
+		"name_cs": "Popelavé přesýpací hodiny",
+		"short": "RECHARGE +2 REDRAW",
+		"short_cs": "NABITÍ +2 VÝMĚNY",
+		"cost": 24,
+		"charges": 1,
+		"col": Color(0.74, 0.44, 1.0),
+		"glb": "res://assets/models/relics/TRELIC_ASH_GLASS.glb",
+		"desc": "TABLE RELIC (1×/duel): Rewinds fate — +2 free Redraws & instantly charges all Mage cards in hand to 2/2!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Vrátí čas — +2 výměny zdarma a okamžitě nabije všechny Mágy v ruce na 2/2!"
+	},
+	{
+		"id": "TRELIC_WAR_HORN",
+		"name": "Templar War-Horn",
+		"name_cs": "Templářský válečný roh",
+		"short": "FORGE KNIGHT +2🛡",
+		"short_cs": "UKOVE RYTÍŘE +2🛡",
+		"cost": 22,
+		"charges": 1,
+		"col": Color(0.68, 0.86, 1.0),
+		"glb": "res://assets/models/relics/TRELIC_WAR_HORN.glb",
+		"desc": "TABLE RELIC (1×/duel): Forges your strongest card into a heavy metallic Knight & grants +2 Iron Shields!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Ukove tvou nejsilnější kartu na těžkého kovového Rytíře a přidá +2 Štíty!"
+	},
+	{
+		"id": "TRELIC_HOLLOW_MASK",
+		"name": "Hollow Mask Fragment",
+		"name_cs": "Střep prázdné masky",
+		"short": "-1♥ → WILD ×2",
+		"short_cs": "-1♥ → DIVOKÁ ×2",
+		"cost": 30,
+		"charges": 1,
+		"col": Color(1.0, 0.22, 0.30),
+		"glb": "res://assets/models/relics/TRELIC_HOLLOW_MASK.glb",
+		"desc": "TABLE RELIC (1×/duel): Pay 1 ♥ HP to unleash Hollow Reiatsu — your next card plays WILD on any suit at ×2.0 Score!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Obětuj 1 ♥ HP — tvoje příští karta je DIVOKÁ na jakoukoli barvu s ×2.0 body!"
+	},
+	{
+		"id": "TRELIC_CENSER",
+		"name": "Alchemist's Censer",
+		"name_cs": "Alchymistická kadidelnice",
+		"short": "MAGE 2/2 + PHIAL",
+		"short_cs": "MÁG 2/2 + BAŇKA",
+		"cost": 25,
+		"charges": 1,
+		"col": Color(0.28, 0.96, 0.68),
+		"glb": "res://assets/models/relics/TRELIC_CENSER.glb",
+		"desc": "TABLE RELIC (1×/duel): Imbues a card in hand into a full-charge Mage (2/2) & refills +1 Hellfire Phial!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Promění kartu v ruce v plně nabitého Mága (2/2) a doplní +1 Ohnivou baňku!"
+	},
+	{
+		"id": "TRELIC_GOLD_SCALES",
+		"name": "Gilded Merchant Scales",
+		"name_cs": "Zlaté kupecké váhy",
+		"short": "+22g & +1 CARD",
+		"short_cs": "+22g & +1 KARTA",
+		"cost": 20,
+		"charges": 1,
+		"col": Color(1.0, 0.84, 0.22),
+		"glb": "res://assets/models/relics/TRELIC_GOLD_SCALES.glb",
+		"desc": "TABLE RELIC (1×/duel): Mints +22 Florins immediately and draws +1 card directly into your hand!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Ihned vyrazí +22 Zlatých a lízne +1 kartu rovnou do ruky!"
+	},
+	{
+		"id": "TRELIC_IRON_CHAIN",
+		"name": "Executioner's Chain",
+		"name_cs": "Katovský řetěz",
+		"short": "STUN RIVAL +14",
+		"short_cs": "ZASTAVÍ SOUPEŘE",
+		"cost": 28,
+		"charges": 1,
+		"col": Color(0.46, 0.84, 1.0),
+		"glb": "res://assets/models/relics/TRELIC_IRON_CHAIN.glb",
+		"desc": "TABLE RELIC (1×/duel): Binds the Rival in iron chains — forces Rival +2 Draw & adds +14 pts immediately!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Spoutá soupeře řetězy — donutí ho líznout +2 karty a ihned přidá +14 bodů!"
+	},
+	{
+		"id": "TRELIC_PHOENIX_BOX",
+		"name": "Phoenix Reliquary",
+		"name_cs": "Relikviář Fénixe",
+		"short": "+2♥ HEAL & PURGE",
+		"short_cs": "+2♥ LÉČENÍ + ČISTKA",
+		"cost": 28,
+		"charges": 1,
+		"col": Color(1.0, 0.52, 0.16),
+		"glb": "res://assets/models/relics/TRELIC_PHOENIX_BOX.glb",
+		"desc": "TABLE RELIC (1×/duel): Opens blazing wings — restores +2 ♥ HP, clears pending Draw/Ace curses & adds +16 pts!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Otevře ohnivý relikviář — vyléčí +2 ♥ HP, zruší kletby a přidá +16 bodů!"
+	},
+]
+
+static func get_table_relic(tid: String) -> Dictionary:
+	for tr in TABLE_RELICS:
+		if str(tr.get("id", "")) == tid:
+			return tr
+	return {}
+
+static func get_table_relic_loc(tid: String, lang: String = "en") -> Dictionary:
+	var tr: Dictionary = get_table_relic(tid).duplicate(true)
+	if tr.is_empty():
+		return tr
+	if lang == "cs":
+		tr["name"] = str(tr.get("name_cs", tr.get("name", "")))
+		tr["short"] = str(tr.get("short_cs", tr.get("short", "")))
+		tr["desc"] = str(tr.get("desc_cs", tr.get("desc", "")))
+	return tr
+
+static func grant_table_relic(prof: Dictionary, tid: String) -> bool:
+	if get_table_relic(tid).is_empty():
+		return false
+	var owned: Array = prof.get("table_relics", [])
+	if not (tid in owned):
+		owned.append(tid)
+		prof["table_relics"] = owned
+		return true
+	return false
+
+# ============================================================================
 # 10 MYSTERIOUS MEDIEVAL FANTASY CROSSROADS UPGRADES & ITEMS (Every 3 Rounds)
 # ============================================================================
 const MEDIEVAL_MYSTIC_ITEMS := [
@@ -559,7 +711,7 @@ const MEDIEVAL_MYSTIC_ITEMS := [
 		"emblem": "mirror",
 		"cost": 15,
 		"col": Color(0.64, 0.44, 1.0),
-		"desc": "Rests on the table (click it anytime!): Multiplies your next play by ×1.5 X-Mult and conjures a Wild Prismatic Card.",
+		"desc": "Rests on the table (click it anytime!): Multiplies your next play by ×1.5 X-Mult and conjures a Wild Mirror Card.",
 		"desc_cs": "Leží na stole (můžeš na něj kliknout!): Vynásobí tvůj příští tah ×1.5 a vyčaruje divokou kartu!"
 	},
 	{
@@ -610,11 +762,35 @@ static func get_shop_item_art(emblem: String) -> String:
 	var p := "res://assets/shop/%s.png" % emblem
 	return p if ResourceLoader.exists(p) else ""
 
-static func roll_medieval_peddler_offers(count: int = 3) -> Array[Dictionary]:
+static func roll_medieval_peddler_offers(count: int = 3, owned_table_relics: Array = []) -> Array[Dictionary]:
 	var pool := MEDIEVAL_MYSTIC_ITEMS.duplicate()
 	pool.shuffle()
 	var res: Array[Dictionary] = []
 	for i in range(mini(count, pool.size())):
+		# Slot 1: offer an unowned 3D Active Tabletop Relic from the 10 TABLE_RELICS so players can buy & place them mid-duel!
+		if i == 1 and count >= 3:
+			var tr_pool: Array[Dictionary] = []
+			for tr_raw in TABLE_RELICS:
+				if not (str(tr_raw["id"]) in owned_table_relics):
+					tr_pool.append(tr_raw)
+			if not tr_pool.is_empty():
+				tr_pool.shuffle()
+				var tr_pick: Dictionary = (tr_pool[0] as Dictionary).duplicate()
+				res.append({
+					"id": str(tr_pick["id"]),
+					"name": str(tr_pick["name"]),
+					"name_cs": str(tr_pick.get("name_cs", tr_pick["name"])),
+					"category": "3D TABLE RELIC",
+					"category_cs": "3D RELIKVIE NA STŮL",
+					"emblem": str(tr_pick["id"]),
+					"cost": int(tr_pick.get("cost", 24)),
+					"col": tr_pick.get("col", Color(0.96, 0.24, 0.34)),
+					"desc": str(tr_pick.get("desc", "")),
+					"desc_cs": str(tr_pick.get("desc_cs", tr_pick.get("desc", ""))),
+					"bought": false,
+					"is_table_relic": true,
+				})
+				continue
 		var entry: Dictionary = (pool[i] as Dictionary).duplicate()
 		entry["bought"] = false
 		entry["shop_art"] = get_shop_item_art(str(entry.get("emblem", "urn")))
@@ -693,11 +869,24 @@ static func get_power_card(card_id: String) -> Dictionary:
 			return pc
 	return {}
 
+static func get_relic_art_path(rel_id: String) -> String:
+	return "res://assets/relics/%s.png" % rel_id
+
 static func get_relic(rel_id: String) -> Dictionary:
 	for r in RELICS:
 		if r["id"] == rel_id:
 			return r
 	return {}
+
+static func is_relic_hidden(rel_id: String) -> bool:
+	return rel_id in TEMPORARILY_HIDDEN_RELICS
+
+static func get_visible_relics() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for r in RELICS:
+		if not is_relic_hidden(str(r.get("id", ""))):
+			out.append(r)
+	return out
 
 static func normalize_card_class(cls_id: String) -> String:
 	match cls_id:
@@ -741,7 +930,7 @@ static func compute_target_score(era_id: String, stage_idx: int, ascension: int,
 	var asc_mult := get_ascension_mult(ascension)
 	if endless_ante >= 1 or era_id == "endless":
 		var ante := maxi(1, endless_ante)
-		return int(round(14000.0 * pow(2.15, float(ante - 1)) * asc_mult))
+		return int(round(145.0 * pow(1.42, float(ante - 1)) * asc_mult))
 	if difficulty == "classic":
 		var c_base := float(CLASSIC_BASE_TARGETS.get(era_id, 300))
 		var c_mults: Array = CLASSIC_STAGE_MULTS.get(era_id, [])
@@ -791,7 +980,8 @@ static func get_default_profile() -> Dictionary:
 		"era_stage": {"antika": 0, "rim": 0, "stredovek": 0, "objavy": 0, "prohibicia": 0},
 		"era_cleared": {"antika": false, "rim": false, "stredovek": false, "objavy": false, "prohibicia": false},
 		"custom_cards": ["SPEC_VAMPIRE", "SPEC_STORM", "SPEC_PHOENIX", "SPEC_MIDAS"],
-		"active_relics": ["REL_CHAMOIS", "REL_GREED"],
+		"active_relics": ["REL_GREED", "REL_FANG"],
+		"table_relics": ["TRELIC_BLOOD_SEAL", "TRELIC_STAR_BOW"],
 		"card_editions": {
 			"CERVEN_E": "MAGE",
 			"ZELEN_7": "MAGE",
@@ -803,7 +993,6 @@ static func get_default_profile() -> Dictionary:
 		"added_cards": [],
 		"suit_overrides": {},
 		"relic_scales": {"REL_SEVEN_GRIMOIRE": 0.0, "REL_MERCHANT_LEDGER": 0},
-		"prism_pts_bonus": 0,
 		"unlocked_swords": ["SWORD_IRON"],
 		"equipped_sword": "SWORD_IRON",
 		"unlocked_cards": DEFAULT_UNLOCKED_CARDS.duplicate(),
@@ -825,6 +1014,7 @@ static func get_default_options() -> Dictionary:
 		"visual_mode": 3, # 3=Liar's Bar Cinematic PBR, 0=Woodcut, 1=Sepia, 2=Clean
 		"high_fx": true,
 		"cam_sensitivity": 1.0,
+		"game_pace": "relaxed", # "relaxed" (default), "normal", "fast"
 		"fullscreen": true,
 		"tutorial_done": false,
 	}
@@ -841,6 +1031,8 @@ static func load_options() -> Dictionary:
 	opts["visual_mode"] = clampi(int(cfg.get_value("video", "visual_mode", 3)), 0, 3)
 	opts["high_fx"] = bool(cfg.get_value("video", "high_fx", true))
 	opts["cam_sensitivity"] = clampf(float(cfg.get_value("controls", "cam_sensitivity", 1.0)), 0.4, 2.2)
+	var gp := str(cfg.get_value("general", "game_pace", "relaxed"))
+	opts["game_pace"] = gp if (gp in ["relaxed", "normal", "fast"]) else "relaxed"
 	opts["fullscreen"] = bool(cfg.get_value("video", "fullscreen", true))
 	opts["tutorial_done"] = bool(cfg.get_value("general", "tutorial_done", false))
 	return opts
@@ -848,6 +1040,7 @@ static func load_options() -> Dictionary:
 static func save_options(opts: Dictionary) -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("general", "language", str(opts.get("language", "en")))
+	cfg.set_value("general", "game_pace", str(opts.get("game_pace", "relaxed")))
 	cfg.set_value("general", "tutorial_done", bool(opts.get("tutorial_done", false)))
 	cfg.set_value("audio", "sfx_volume", clampi(int(opts.get("sfx_volume", 85)), 0, 100))
 	cfg.set_value("audio", "muted", bool(opts.get("muted", false)))
@@ -857,11 +1050,72 @@ static func save_options(opts: Dictionary) -> void:
 	cfg.set_value("controls", "cam_sensitivity", clampf(float(opts.get("cam_sensitivity", 1.0)), 0.4, 2.2))
 	cfg.save(OPTIONS_PATH)
 
+static func sanitize_profile(prof: Dictionary) -> Dictionary:
+	# Strip archived Power Cards (e.g. SPEC_PRISM) and unknown power card IDs from custom_cards & unlocked_cards
+	var raw_cc = prof.get("custom_cards", [])
+	var clean_cc: Array = []
+	if raw_cc is Array:
+		for cid_v in raw_cc:
+			var cid := str(cid_v)
+			if not (cid in ARCHIVED_CARD_IDS) and not get_power_card(cid).is_empty():
+				clean_cc.append(cid)
+	prof["custom_cards"] = clean_cc
+
+	var raw_uc = prof.get("unlocked_cards", DEFAULT_UNLOCKED_CARDS.duplicate())
+	var clean_uc: Array = []
+	if raw_uc is Array:
+		for ucid_v in raw_uc:
+			var ucid := str(ucid_v)
+			if ucid in ARCHIVED_CARD_IDS:
+				continue
+			if ucid.begins_with("SPEC_") and get_power_card(ucid).is_empty():
+				continue
+			clean_uc.append(ucid)
+	if clean_uc.is_empty():
+		clean_uc = DEFAULT_UNLOCKED_CARDS.duplicate()
+	prof["unlocked_cards"] = clean_uc
+
+	# Strip archived or temporarily hidden Relics (REL_PRISM_ORB, REL_CHAMOIS, REL_STORMCAP) from active_relics
+	var raw_ar = prof.get("active_relics", [])
+	var clean_ar: Array = []
+	if raw_ar is Array:
+		for rid_v in raw_ar:
+			var rid := str(rid_v)
+			if (rid in ARCHIVED_RELIC_IDS) or is_relic_hidden(rid) or get_relic(rid).is_empty():
+				continue
+			if not (rid in clean_ar):
+				clean_ar.append(rid)
+	prof["active_relics"] = clean_ar
+
+	# Sanitize owned active Tabletop Relics (TRELIC_*)
+	var raw_tr = prof.get("table_relics", ["TRELIC_BLOOD_SEAL", "TRELIC_STAR_BOW"])
+	var clean_tr: Array = []
+	if raw_tr is Array:
+		for tid_v in raw_tr:
+			var tid := str(tid_v)
+			if not get_table_relic(tid).is_empty() and not (tid in clean_tr):
+				clean_tr.append(tid)
+	prof["table_relics"] = clean_tr
+
+	# Strip archived card keys from card_editions
+	var raw_ce = prof.get("card_editions", {})
+	if raw_ce is Dictionary:
+		var clean_ce: Dictionary = {}
+		for ck_v in raw_ce.keys():
+			var ck := str(ck_v)
+			if ck in ARCHIVED_CARD_IDS:
+				continue
+			clean_ce[ck] = normalize_card_class(str(raw_ce[ck_v]))
+		prof["card_editions"] = clean_ce
+
+	prof.erase("prism_pts_bonus")
+	return prof
+
 static func load_profile() -> Dictionary:
 	var prof := get_default_profile()
 	var cfg := ConfigFile.new()
 	if cfg.load(PROFILE_PATH) != OK:
-		return prof
+		return sanitize_profile(prof)
 	prof["gold"] = int(cfg.get_value("run", "gold", prof["gold"]))
 	var diff_v := str(cfg.get_value("run", "campaign_difficulty", prof["campaign_difficulty"]))
 	prof["campaign_difficulty"] = diff_v if (diff_v == "traveler" or diff_v == "classic") else "traveler"
@@ -871,7 +1125,6 @@ static func load_profile() -> Dictionary:
 	prof["total_wins"] = int(cfg.get_value("run", "total_wins", 0))
 	prof["best_slam"] = int(cfg.get_value("run", "best_slam", 0))
 	prof["shop_rerolls"] = int(cfg.get_value("run", "shop_rerolls", 0))
-	prof["prism_pts_bonus"] = maxi(0, int(cfg.get_value("run", "prism_pts_bonus", 0)))
 	prof["endless_unlocked"] = bool(cfg.get_value("run", "endless_unlocked", false))
 	prof["endless_ante"] = maxi(0, int(cfg.get_value("run", "endless_ante", 0)))
 	var es = cfg.get_value("run", "era_stage", prof["era_stage"])
@@ -886,6 +1139,9 @@ static func load_profile() -> Dictionary:
 	var ar = cfg.get_value("deck", "active_relics", prof["active_relics"])
 	if ar is Array:
 		prof["active_relics"] = ar
+	var tr_saved = cfg.get_value("deck", "table_relics", prof["table_relics"])
+	if tr_saved is Array:
+		prof["table_relics"] = tr_saved
 	var ce = cfg.get_value("deck", "card_editions", prof["card_editions"])
 	if ce is Dictionary:
 		var norm_ce: Dictionary = {}
@@ -916,9 +1172,10 @@ static func load_profile() -> Dictionary:
 	var uc = cfg.get_value("collection", "unlocked_cards", prof["unlocked_cards"])
 	if uc is Array and not uc.is_empty():
 		prof["unlocked_cards"] = uc
-	return prof
+	return sanitize_profile(prof)
 
 static func save_profile(prof: Dictionary) -> void:
+	sanitize_profile(prof)
 	var cfg := ConfigFile.new()
 	cfg.set_value("run", "gold", int(prof.get("gold", 200)))
 	cfg.set_value("run", "campaign_difficulty", str(prof.get("campaign_difficulty", "traveler")))
@@ -928,13 +1185,13 @@ static func save_profile(prof: Dictionary) -> void:
 	cfg.set_value("run", "total_wins", int(prof.get("total_wins", 0)))
 	cfg.set_value("run", "best_slam", int(prof.get("best_slam", 0)))
 	cfg.set_value("run", "shop_rerolls", int(prof.get("shop_rerolls", 0)))
-	cfg.set_value("run", "prism_pts_bonus", maxi(0, int(prof.get("prism_pts_bonus", 0))))
 	cfg.set_value("run", "endless_unlocked", bool(prof.get("endless_unlocked", false)))
 	cfg.set_value("run", "endless_ante", maxi(0, int(prof.get("endless_ante", 0))))
 	cfg.set_value("run", "era_stage", prof.get("era_stage", {}))
 	cfg.set_value("run", "era_cleared", prof.get("era_cleared", {}))
 	cfg.set_value("deck", "custom_cards", prof.get("custom_cards", []))
 	cfg.set_value("deck", "active_relics", prof.get("active_relics", []))
+	cfg.set_value("deck", "table_relics", prof.get("table_relics", []))
 	cfg.set_value("deck", "card_editions", prof.get("card_editions", {}))
 	cfg.set_value("sculpt", "removed_cards", prof.get("removed_cards", []))
 	cfg.set_value("sculpt", "added_cards", prof.get("added_cards", []))
@@ -948,7 +1205,11 @@ static func save_profile(prof: Dictionary) -> void:
 static func generate_shop_offers(_prof: Dictionary, lang: String = "en") -> Array[Dictionary]:
 	var offers: Array[Dictionary] = []
 	# Focused 3-Card Campaign Upgrade Selection (1 Power Card + 2 Card Class/Deck Upgrades)
-	var pool_pc := POWER_CARDS.duplicate()
+	var pool_pc: Array[Dictionary] = []
+	for pc_raw in POWER_CARDS:
+		var pid := str(pc_raw.get("id", ""))
+		if not (pid in ARCHIVED_CARD_IDS):
+			pool_pc.append(pc_raw)
 	pool_pc.shuffle()
 	var pc0 := get_power_card_loc(str(pool_pc[0]["id"]), lang)
 	offers.append({
@@ -959,6 +1220,28 @@ static func generate_shop_offers(_prof: Dictionary, lang: String = "en") -> Arra
 		"desc": pc0["desc"],
 		"cost": int(pc0["cost"]),
 		"col": pc0["accent"],
+		"bought": false,
+	})
+
+	# 1 Buyable Active Tabletop Relic (prioritize unowned relics from the 10 TABLE_RELICS!)
+	var owned_tr: Array = _prof.get("table_relics", [])
+	var pool_tr: Array[Dictionary] = []
+	for tr_raw in TABLE_RELICS:
+		if not (str(tr_raw["id"]) in owned_tr):
+			pool_tr.append(tr_raw)
+	if pool_tr.is_empty():
+		for tr_raw in TABLE_RELICS:
+			pool_tr.append(tr_raw)
+	pool_tr.shuffle()
+	var tr0 := get_table_relic_loc(str(pool_tr[0]["id"]), lang)
+	offers.append({
+		"kind": "table_relic",
+		"id": tr0["id"],
+		"title": ("Relikvie na stůl: " if lang == "cs" else "Tabletop Relic: ") + str(tr0["name"]),
+		"sub": tr0["short"],
+		"desc": tr0["desc"],
+		"cost": int(tr0["cost"]),
+		"col": tr0["col"],
 		"bought": false,
 	})
 
@@ -985,4 +1268,10 @@ static func generate_shop_offers(_prof: Dictionary, lang: String = "en") -> Arra
 			"col": alc["col"],
 			"bought": false,
 		})
-	return offers
+	var visible_offers: Array[Dictionary] = []
+	for off in offers:
+		var oid := str(off.get("id", ""))
+		if (oid in ARCHIVED_CARD_IDS) or (oid in ARCHIVED_RELIC_IDS) or is_relic_hidden(oid):
+			continue
+		visible_offers.append(off)
+	return visible_offers

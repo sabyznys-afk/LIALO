@@ -1,7 +1,7 @@
 extends RefCounted
 class_name ScoringEngine
-## Three-Tier Exponential Scoring Engine for LIALO (Balatro-inspired Prší deckbuilder)
-## Formula: Final Score = round(Total Chips × Flat Mult × Π X-Mults)
+## Simplified Multiplier Scoring Engine for LIALO
+## Formula: Total points = Card value × Number of cards played
 
 const Catalog = preload("res://scripts/lialo_catalog.gd")
 
@@ -20,86 +20,87 @@ const COURT_RANKS := ["D", "H", "K", "E"]
 const RED_SUITS := ["CERVEN", "GULA"]
 const BLACK_GREEN_SUITS := ["ZELEN", "ZALUD"]
 
-const SLAM_BASE_CHIPS := {1: 12, 2: 36, 3: 80, 4: 150}
-const SLAM_BASE_MULT := {1: 1.0, 2: 1.8, 3: 2.8, 4: 4.5}
+# Compatibility constants (simplified multiplier tracks Card Count: 1×, 2×, 3×, 4×)
+const SLAM_BASE_CHIPS := {1: 0, 2: 0, 3: 0, 4: 0}
+const SLAM_BASE_MULT := {1: 1.0, 2: 2.0, 3: 3.0, 4: 4.0}
 
-const PRSI_7_CHIPS := 7
-const PRSI_7_MULT := 0.4
-const PRSI_7_COUNTER_CHIPS := 21
-const PRSI_7_COUNTER_XMULT := 1.35
-const PRSI_7_VOLLEY_MULT := 0.8
+const PRSI_7_CHIPS := 0
+const PRSI_7_MULT := 0.0
+const PRSI_7_COUNTER_CHIPS := 0
+const PRSI_7_COUNTER_XMULT := 1.0
+const PRSI_7_VOLLEY_MULT := 0.0
 
-const PRSI_ACE_CHIPS := 15
-const PRSI_ACE_MULT := 0.4
-const PRSI_ACE_COUNTER_XMULT := 1.30
+const PRSI_ACE_CHIPS := 0
+const PRSI_ACE_MULT := 0.0
+const PRSI_ACE_COUNTER_XMULT := 1.0
 
-const PRSI_HORNIK_SHIFT_CHIPS := 12
-const PRSI_HORNIK_SHIFT_MULT := 0.25
+const PRSI_HORNIK_SHIFT_CHIPS := 0
+const PRSI_HORNIK_SHIFT_MULT := 0.0
 
 const SHED_PAR_TURNS := 12
-const SHED_BASE_CHIPS := 120
-const SHED_BASE_XMULT := 2.00
-const SHED_EXP_PER_TURN := 1.22
+const SHED_BASE_CHIPS := 0
+const SHED_BASE_XMULT := 1.0
+const SHED_EXP_PER_TURN := 1.0
 
-const SEVEN_GRIMOIRE_STEP := 0.15
-const MERCHANT_LEDGER_CHIP_STEP := 18
+const SEVEN_GRIMOIRE_STEP := 0.0
+const MERCHANT_LEDGER_CHIP_STEP := 0
 
 const RANK_ABILITY_INFO := {
 	"7": {
 		"title": "Seven Barrage", "title_cs": "Sedmový útok",
-		"badge": "⚡ +2 DRAW (3×)", "badge_cs": "⚡ +2 LÍZÁNÍ (3×)",
+		"badge": "⚡ +2 DRAW", "badge_cs": "⚡ +2 LÍZÁNÍ",
 		"col": Color(0.95, 0.34, 0.34),
-		"desc": "Rival draws +2 unless blocked by 7! Scores 3× (21 pts) if they draw!",
-		"desc_cs": "Soupeř líže +2, pokud nedá další 7! Když líže, získáš 3× (21 b.)!"
+		"desc": "Rival draws +2 unless blocked by another 7! Worth 7 × count pts.",
+		"desc_cs": "Soupeř líže +2, pokud nedá další 7! Dává 7 × počet b."
 	},
 	"8": {
 		"title": "Eight Infinity", "title_cs": "Nekonečná Osma",
-		"badge": "∞ STACK 8s", "badge_cs": "∞ VÍCE KARET",
+		"badge": "∞ 8 × COUNT", "badge_cs": "∞ 8 × POČET",
 		"col": Color(0.32, 0.88, 1.0),
-		"desc": "ONLY card you can stack multiple copies of at once!",
-		"desc_cs": "JEDINÁ karta, které můžeš vyložit více kusů najednou!"
+		"desc": "Stack multiple 8s at once! 1→8, 2→16, 3→24, 4→32 pts.",
+		"desc_cs": "Vykládej více Osmiček najednou! 1→8, 2→16, 3→24, 4→32 b."
 	},
 	"9": {
 		"title": "Nine Conduit", "title_cs": "Vysátí Devítky",
-		"badge": "✨ +1 CHARGE", "badge_cs": "✨ +1 NABITÍ",
+		"badge": "✨ +1 REDRAW", "badge_cs": "✨ +1 VÝMĚNA",
 		"col": Color(0.92, 0.38, 0.68),
-		"desc": "Drains -9 pts, charges Mage cards (+1) & grants +1 Redraw.",
-		"desc_cs": "Sebere -9 b. soupeři, nabije Mágy (+1) a přidá +1 výměnu."
+		"desc": "Charges Mage cards (+1) & grants +1 Redraw. Worth 9 × count pts.",
+		"desc_cs": "Nabije Mágy (+1) a přidá +1 výměnu. Dává 9 × počet b."
 	},
 	"10": {
 		"title": "Ten Bullion", "title_cs": "Zlatá Desítka",
 		"badge": "🪙 +10 GOLD", "badge_cs": "🪙 +10 ZLATO",
 		"col": Color(1.0, 0.82, 0.24),
-		"desc": "Mints +10 Florins & adds +0.5× Mult.",
-		"desc_cs": "Vyrazí +10 Zlatých a přidá +0.5× násobitel."
+		"desc": "Mints +10 Florins on play! Worth 10 × count pts.",
+		"desc_cs": "Vyrazí +10 Zlatých při zahrání! Dává 10 × počet b."
 	},
 	"D": {
 		"title": "Jack Guard", "title_cs": "Obrana Spodka",
 		"badge": "🛡 +1 SHIELD", "badge_cs": "🛡 +1 ŠTÍT",
 		"col": Color(0.46, 0.94, 0.56),
-		"desc": "+1 Guard Shield (blocks curses/HP) & +12 bonus pts.",
-		"desc_cs": "+1 Štít proti kletbám a poškození + 12 bodů."
+		"desc": "Grants +1 Guard Shield against curses & damage! Worth 12 × count pts.",
+		"desc_cs": "Přidá +1 Štít proti kletbám a útokům! Dává 12 × počet b."
 	},
 	"H": {
 		"title": "Queen Wild", "title_cs": "Změna barvy (Svršek)",
 		"badge": "🌈 WILD SUIT", "badge_cs": "🌈 ZMĚNA BARVY",
 		"col": Color(0.74, 0.52, 1.0),
-		"desc": "Play on any suit and pick the next table suit!",
-		"desc_cs": "Lze dát na cokoli a zvolit novou barvu na stole!"
+		"desc": "Play on any suit and choose the next suit! Worth 16 × count pts.",
+		"desc_cs": "Lze zahrát na cokoli a zvolit novou barvu! Dává 16 × počet b."
 	},
 	"K": {
 		"title": "King Challenge", "title_cs": "Královský útok",
 		"badge": "👑 1-3 HP DMG", "badge_cs": "👑 1–3 HP ÚTOK",
 		"col": Color(1.0, 0.72, 0.28),
-		"desc": "1–3 ♥ HP Damage & Curse unless Rival blocks with a King!",
-		"desc_cs": "Ubírá 1–3 ♥ HP a kletbu, pokud soupeř nemá Krále!"
+		"desc": "Deals 1–3 ♥ HP & Curse unless Rival blocks with a King! Worth 18 × count pts.",
+		"desc_cs": "Ubírá 1–3 ♥ HP a kletbu, pokud soupeř nedá Krále! Dává 18 × počet b."
 	},
 	"E": {
 		"title": "Ace Strike", "title_cs": "Stopka Esa",
 		"badge": "⚡ 1/4/6 HP DMG", "badge_cs": "⚡ 1/4/6 HP ÚTOK",
 		"col": Color(0.96, 0.86, 0.32),
-		"desc": "Stack max 3 Aces: deals 1 / 4 / 6 ♥ HP DMG + Stun!",
-		"desc_cs": "Max 3 Esa najednou: bere 1 / 4 / 6 ♥ HP a zastaví soupeře!"
+		"desc": "Deals 1 / 4 / 6 ♥ HP DMG + Stun! Worth 20 × count pts.",
+		"desc_cs": "Bere 1 / 4 / 6 ♥ HP a zastaví soupeře! Dává 20 × počet b."
 	},
 }
 
@@ -123,25 +124,25 @@ static func get_slam_name(cnt: int, played_cards: Array, lang: String = "en") ->
 		if cnt <= 1:
 			if played_cards.size() == 1 and str(played_cards[0].get("power_id", "")) != "":
 				return "Mocná karta"
-			return "Tah kartou"
+			return "Tah kartou (×1)"
 		if cnt == 2:
-			return "Dvojkombo"
+			return "Dvojkombo (×2)"
 		if cnt == 3:
-			return "Trojkombo"
+			return "Trojkombo (×3)"
 		if cnt == 4:
-			return "Čtyřkombo"
-		return "%d× Mega kombo" % cnt
+			return "Čtyřkombo (×4)"
+		return "%d× Kombo" % cnt
 	if cnt <= 1:
 		if played_cards.size() == 1 and str(played_cards[0].get("power_id", "")) != "":
-			return "Arcane Play"
-		return "Single Strike"
+			return "Arcane Play (×1)"
+		return "Single Play (×1)"
 	if cnt == 2:
-		return "Pair Slam"
+		return "Double Combo (×2)"
 	if cnt == 3:
-		return "Triple Slam"
+		return "Triple Combo (×3)"
 	if cnt == 4:
-		return "Quad Slam"
-	return "%d-Card Over-Slam" % cnt
+		return "Quad Combo (×4)"
+	return "%d-Card Combo (×%d)" % [cnt, cnt]
 
 
 static func _make_step(
@@ -184,6 +185,8 @@ static func calculate_hand_score(
 	var cnt := played_cards.size()
 	if cnt == 0:
 		return {
+			"card_value": 0,
+			"card_count": 0,
 			"base_chips": 0,
 			"card_chips": 0,
 			"total_chips": 0,
@@ -216,7 +219,7 @@ static func calculate_hand_score(
 			"knight_mist_triggered": false,
 			"thief_heist_triggered": false,
 			"king_curse_suit": "",
-			"formula_summary": "0 Chips × 1.0 Mult = 0",
+			"formula_summary": "0 × 0 = 0",
 			"steps": steps,
 		}
 
@@ -226,70 +229,11 @@ static func calculate_hand_score(
 	var cs := (lang == "cs")
 	var is_preview := bool(context.get("is_preview", false))
 	var chosen_suit := str(context.get("chosen_suit", played_cards[cnt - 1].get("suit", "CERVEN")))
-	var prev_suit := str(context.get("prev_suit", chosen_suit))
-	var pending_draw_before := int(context.get("pending_draw_before", 0))
-	var pending_skip_before := bool(context.get("pending_skip_before", false))
-	var storm_surge := float(context.get("storm_surge_mult", 0.0))
-	var relic_scales: Dictionary = context.get("relic_scales", {})
-	var shop_rerolls := int(context.get("shop_rerolls", 0))
-	var match_turn_count := maxi(1, int(context.get("match_turn_count", 1)))
-	var boss_mod := str(context.get("boss_mod", ""))
-
 	var slam_name := get_slam_name(cnt, played_cards, lang)
-	var base_chips := int(SLAM_BASE_CHIPS.get(cnt, 180 + maxi(0, cnt - 4) * 55))
-	var flat_mult := float(SLAM_BASE_MULT.get(cnt, 5.0 + float(maxi(0, cnt - 4)) * 1.5))
-	var x_mult_product := 1.0
 
-	var chips := base_chips
-	var card_chips_sum := 0
-	var rival_drain := 0
-	var rival_bonus := 0
-	var bonus_gold := 0
-	var extra_draw := 0
-	var extra_skip := false
-	var lightning := (cnt >= 2)
-	var surge_kept := false
-	var new_surge_mult := 0.0
-
-	steps.append(_make_step(
-		"slam",
-		"%s (%d+%.1f×)" % [slam_name, base_chips, flat_mult],
-		"%d card(s)" % cnt,
-		base_chips, flat_mult, 1.0,
-		chips, flat_mult, x_mult_product,
-		Color(0.95, 0.80, 0.36), "", lightning
-	))
-
-	if not tutorial_mode and bool(context.get("flow_chain", false)):
-		chips += 10
-		flat_mult += 0.5
-		steps.append(_make_step(
-			"prsi",
-			"+10 / +0.5× Vzestupný tok!" if cs else "+10 / +0.5× Tavern Flow!",
-			"Řetězení barvy či hodnoty" if cs else "Suit or Rank chain rhythm",
-			10, 0.5, 1.0,
-			chips, flat_mult, x_mult_product,
-			Color(0.45, 0.96, 0.72)
-		))
-
-	if not tutorial_mode and storm_surge > 0.0:
-		flat_mult += storm_surge
-		steps.append(_make_step(
-			"prsi",
-			("+%.1f× Bouřná vlna" if cs else "+%.1f× Storm Surge") % storm_surge,
-			"Přenesený náboj bouře" if cs else "Carried thundercharge",
-			0, storm_surge, 1.0,
-			chips, flat_mult, x_mult_product,
-			Color(0.38, 0.90, 1.0), "", true
-		))
-
-	# 1. Base Card Chips
-	var midas_played := false
-	for card in played_cards:
-		if str(card.get("power_id", "")) == "SPEC_MIDAS":
-			midas_played = true
-			break
-
+	# Core Simplified Rule: Total points = Card value × Number of cards played
+	var card_vals: Array[int] = []
+	var sum_val := 0
 	var sevens_played := 0
 	var eights_played := 0
 	var nines_played := 0
@@ -300,10 +244,21 @@ static func calculate_hand_score(
 	var aces_played := 0
 	var horniks_played := 0
 	var all_red := true
+	var bonus_gold := 0
+	var extra_draw := 0
+	var extra_skip := false
+	var rival_drain := 0
+	var rival_bonus := 0
+	var lightning := (cnt >= 2)
+	var surge_kept := false
+	var new_surge_mult := 0.0
 	var jester_triggers := 1
 	var knight_mist_triggered := false
 	var thief_heist_triggered := false
+	var mage_charge_boost := 0
 	var mage_draws := 0
+	var shields_gained := 0
+	var redraws_gained := 0
 
 	for card in played_cards:
 		var r_id := str(card.get("rank", ""))
@@ -311,12 +266,15 @@ static func calculate_hand_score(
 		var p_id := str(card.get("power_id", ""))
 		var cls_id := Catalog.normalize_card_class(str(card.get("edition", card.get("card_class", "NORMAL"))))
 		var is_merchant_nolock := (cls_id == "MERCHANT" and p_id == "")
-		var base_pts := int(card.get("pts", get_base_card_chips(r_id))) if p_id != "" else (get_base_card_chips(r_id, int(card.get("pts", 10))) + int(card.get("bonus_chips", 0)))
-		if midas_played and p_id == "" and (s_id == "GULA" or r_id in COURT_RANKS):
-			base_pts *= 2
-		chips += base_pts
-		card_chips_sum += base_pts
-		# Merchant Guildsman cards forfeit rank combat abilities in exchange for massive Gold payout!
+		var c_val := int(card.get("pts", get_base_card_chips(r_id, 18))) if p_id != "" else get_base_card_chips(r_id, int(card.get("pts", 8)))
+		card_vals.append(c_val)
+		sum_val += c_val
+		if p_id != "":
+			lightning = true
+
+		if not (s_id in RED_SUITS):
+			all_red = false
+
 		if not is_merchant_nolock:
 			if r_id == "7":
 				sevens_played += 1
@@ -337,267 +295,119 @@ static func calculate_hand_score(
 				extra_skip = true
 			elif r_id == "H":
 				horniks_played += 1
-		if not (s_id in RED_SUITS):
-			all_red = false
 
+	var lead_val: int = card_vals[0]
+	var same_value := true
+	for cv in card_vals:
+		if cv != lead_val:
+			same_value = false
+			break
+
+	var base_subtotal := (lead_val * cnt) if same_value else sum_val
+	var bonus_pts := 0
+	var x_mult_product := 1.0
+	var display_card_val := lead_val if same_value else int(round(float(sum_val) / float(cnt)))
+	var mult_val := float(cnt)
+	var breakdown_chips: Array[Dictionary] = []
+
+	var running_pts := 0
+	for ci in range(cnt):
+		var c_d: Dictionary = played_cards[ci]
+		var cv_i: int = card_vals[ci]
+		running_pts += cv_i
 		steps.append(_make_step(
 			"card",
-			("+%d b." if cs else "+%d Chips") % base_pts,
-			("%s [%s]" % [str(card.get("rname", r_id)), ("Kupec" if cs else "Merchant")]) if is_merchant_nolock else ("%s" % str(card.get("rname", r_id))),
-			base_pts, 0.0, 1.0,
-			chips, flat_mult, x_mult_product,
-			Color(1.0, 0.84, 0.30) if is_merchant_nolock else Color(0.62, 0.90, 1.0)
+			("%d × %d" % [lead_val, ci + 1]) if same_value else ("+%d" % cv_i),
+			"%s (%d pts)" % [str(c_d.get("rname", c_d.get("rank", "Card"))), cv_i],
+			cv_i, 0.0, 1.0,
+			running_pts, float(ci + 1), 1.0,
+			Color(0.62, 0.90, 1.0)
 		))
+	breakdown_chips.append({
+		"tag": ("%d×%d" % [display_card_val, cnt]) if same_value else ("SUM %d" % base_subtotal),
+		"val": "+%d" % base_subtotal,
+		"col": Color(0.68, 0.92, 1.0),
+	})
 
-	# 2. Prší Special Play Bonuses (Seven Draw Stacks, Ace Skips, Upper Suit Shifts)
-	if sevens_played > 0:
-		var c_add := PRSI_7_CHIPS * sevens_played
-		var m_add := PRSI_7_MULT * float(sevens_played)
-		chips += c_add
-		flat_mult += m_add
-		steps.append(_make_step(
-			"prsi",
-			("+%d / +%.1f× Útok Sedmou" if cs else "+%d / +%.1f× Seven Attack") % [c_add, m_add],
-			("Lízání +%d" if cs else "Seven Draw +%d") % (sevens_played * 2),
-			c_add, m_add, 1.0,
-			chips, flat_mult, x_mult_product,
-			Color(1.0, 0.56, 0.30), "", sevens_played >= 2
-		))
-		if sevens_played >= 2:
-			flat_mult += PRSI_7_VOLLEY_MULT
-			lightning = true
-			steps.append(_make_step(
-				"prsi",
-				("+%.1f× Salva Sedmiček!" if cs else "+%.1f× Seven Volley!") % PRSI_7_VOLLEY_MULT,
-				("%d× Sedmy" if cs else "%d× Sevens Stacked") % sevens_played,
-				0, PRSI_7_VOLLEY_MULT, 1.0,
-				chips, flat_mult, x_mult_product,
-				Color(1.0, 0.42, 0.24), "", true
-			))
-		if pending_draw_before > 0:
-			chips += PRSI_7_COUNTER_CHIPS
-			x_mult_product *= PRSI_7_COUNTER_XMULT
-			lightning = true
-			steps.append(_make_step(
-				"prsi",
-				("×%.2f Přebití Sedmy! (+%d)" if cs else "×%.2f Draw Rebound! (+%d)") % [PRSI_7_COUNTER_XMULT, PRSI_7_COUNTER_CHIPS],
-				("Odraženo +%d" if cs else "Reflected +%d Seven curse") % pending_draw_before,
-				PRSI_7_COUNTER_CHIPS, 0.0, PRSI_7_COUNTER_XMULT,
-				chips, flat_mult, x_mult_product,
-				Color(1.0, 0.72, 0.28), "", true
-			))
+	var final_score := base_subtotal
 
 	var ace_hp_damage := 0
 	if aces_played > 0:
 		ace_hp_damage = 1 if aces_played == 1 else (4 if aces_played == 2 else 6)
-		var ac_add := PRSI_ACE_CHIPS * aces_played
-		var am_add := PRSI_ACE_MULT * float(aces_played)
-		chips += ac_add
-		flat_mult += am_add
 		steps.append(_make_step(
 			"prsi",
-			("+%d / +%.1f× Úder Esa (-%d ♥ HP!)" if cs else "+%d / +%.1f× Ace Strike (-%d ♥ HP!)") % [ac_add, am_add, ace_hp_damage],
-			("Stopka & -%d HP" if cs else "Turn Lock & -%d Rival HP") % ace_hp_damage,
-			ac_add, am_add, 1.0,
-			chips, flat_mult, x_mult_product,
+			("⚡ Úder Esa (-%d ♥ HP)" if cs else "⚡ Ace Strike (-%d ♥ HP)") % ace_hp_damage,
+			"Stopka" if cs else "Turn Lock",
+			0, 0.0, 1.0, final_score, mult_val, 1.0,
 			Color(1.0, 0.86, 0.36), "", aces_played >= 2
 		))
-		if pending_skip_before:
-			x_mult_product *= PRSI_ACE_COUNTER_XMULT
-			lightning = true
-			steps.append(_make_step(
-				"prsi",
-				("×%.2f Proti-Eso!" if cs else "×%.2f Skip Breaker!") % PRSI_ACE_COUNTER_XMULT,
-				"Přebití soupeřova Esa" if cs else "Countered Rival Ace Lock",
-				0, 0.0, PRSI_ACE_COUNTER_XMULT,
-				chips, flat_mult, x_mult_product,
-				Color(1.0, 0.92, 0.44), "", true
-			))
 
-	if horniks_played > 0 and chosen_suit != prev_suit:
-		chips += PRSI_HORNIK_SHIFT_CHIPS
-		flat_mult += PRSI_HORNIK_SHIFT_MULT
+	if sevens_played > 0:
 		steps.append(_make_step(
 			"prsi",
-			("+%d / +%.2f× Změna barvy" if cs else "+%d / +%.2f× Suit Decree") % [PRSI_HORNIK_SHIFT_CHIPS, PRSI_HORNIK_SHIFT_MULT],
-			("Svršek změnil na %s" if cs else "Upper shifted suit to %s") % chosen_suit,
-			PRSI_HORNIK_SHIFT_CHIPS, PRSI_HORNIK_SHIFT_MULT, 1.0,
-			chips, flat_mult, x_mult_product,
-			Color(0.76, 0.88, 1.0)
+			("⚡ Sedma: Soupeř +%d" if cs else "⚡ Seven: Rival +%d Draw") % (sevens_played * 2),
+			"Trestné lízání" if cs else "Draw Barrage",
+			0, 0.0, 1.0, final_score, mult_val, 1.0,
+			Color(1.0, 0.56, 0.30), "", sevens_played >= 2
 		))
 
-	var mage_charge_boost := 0
-	var shields_gained := 0
-	var redraws_gained := 0
-
-	# 2B. Evolved Rank Abilities (Active in Act II Tutorial step >= 3 and all normal matches)
 	var rank_abilities_active := (not tutorial_mode) or (tutorial_step >= 3)
 	if rank_abilities_active:
-		if eights_played > 0:
-			var e_chips := 16 * eights_played
-			var e_x := 1.25 if eights_played >= 2 else 1.0
-			chips += e_chips
-			x_mult_product *= e_x
-			if eights_played >= 2:
-				lightning = true
-			steps.append(_make_step(
-				"prsi",
-				(("+%d & ×1.25 ∞ Řetěz Osmiček!" if cs else "+%d & ×1.25 ∞ Eight Chain!") % e_chips) if eights_played >= 2 else (("+" + str(e_chips) + (" ∞ Osma" if cs else " ∞ Eight Link"))),
-				("%d× Osma" if cs else "%d× Stackable Eight(s)") % eights_played,
-				e_chips, 0.0, e_x,
-				chips, flat_mult, x_mult_product,
-				Color(0.35, 0.90, 1.0), "", eights_played >= 2
-			))
 		if nines_played > 0:
-			var n_chips := 9 * nines_played
-			var n_drain := 9 * nines_played
-			chips += n_chips
-			rival_drain += n_drain
 			mage_charge_boost += nines_played
 			redraws_gained += nines_played
-			steps.append(_make_step(
-				"prsi",
-				("+%d b. / -%d Soupeř & +1 Mág" if cs else "+%d Chips / -%d Rival & +1 Mage Charge") % [n_chips, n_drain],
-				"Vysátí Devítkou" if cs else "Nine Soul Conduit",
-				n_chips, 0.0, 1.0,
-				chips, flat_mult, x_mult_product,
-				Color(0.95, 0.42, 0.72)
-			))
 		if tens_played > 0:
-			var t_chips := 10 * tens_played
-			var t_mult := 0.5 * float(tens_played)
-			var t_gold := 10 * tens_played
-			chips += t_chips
-			flat_mult += t_mult
-			bonus_gold += t_gold
-			steps.append(_make_step(
-				"prsi",
-				("+%d / +%.1f× & +%dg (Desítka)" if cs else "+%d / +%.1f× & +%dg (Ten Bullion)") % [t_chips, t_mult, t_gold],
-				"Cechovní zlato" if cs else "Royal Guild Bullion",
-				t_chips, t_mult, 1.0,
-				chips, flat_mult, x_mult_product,
-				Color(1.0, 0.84, 0.26)
-			))
+			bonus_gold += 10 * tens_played
 		if lowers_played > 0:
-			var d_chips := 12 * lowers_played
-			var rival_low_hand := int(context.get("rival_hand_size", 5)) <= 4
-			var d_mult := 1.0 * float(lowers_played) if rival_low_hand else 0.4 * float(lowers_played)
 			shields_gained += lowers_played
-			chips += d_chips
-			flat_mult += d_mult
-			steps.append(_make_step(
-				"prsi",
-				("+1 Štít / +%d & +%.1f× (Spodek)" if cs else "+1 Shield / +%d & +%.1f× (Jack)") % [d_chips, d_mult],
-				"Strážce (Spodek)" if cs else "Vanguard Guard & Flank",
-				d_chips, d_mult, 1.0,
-				chips, flat_mult, x_mult_product,
-				Color(0.46, 0.94, 0.56)
-			))
-		if kings_played > 0:
-			var suit_names := ({"CERVEN": "♥ Srdcový Král", "GULA": "● Kulový Král", "ZELEN": "♠ Listový Král", "ZALUD": "♣ Žaludový Král"} if cs else {"CERVEN": "♥ Hearts Drain", "GULA": "♦ Bells Tax", "ZELEN": "♠ Leaves Venom", "ZALUD": "♣ Acorns Shatter"})
-			var k_chips := 18 * kings_played
-			chips += k_chips
-			lightning = true
-			steps.append(_make_step(
-				"prsi",
-				"👑 %s (+%d)" % [str(suit_names.get(king_curse_suit, "Kletba Krále" if cs else "Royal Curse")), k_chips],
-				"Kletba udeří, pokud soupeř nemá Krále!" if cs else "Curse hits unless Rival plays a King!",
-				k_chips, 0.0, 1.0,
-				chips, flat_mult, x_mult_product,
-				Color(1.0, 0.76, 0.28), "", true
-			))
 
-	# 3. Five Fantasy Card Classes (Normal / Mage / Knight / Merchant / Thief) & Power Cards
-	var ed_card_count := 0
 	if not tutorial_mode:
 		for card in played_cards:
-			var p_id_chk := str(card.get("power_id", ""))
 			var cls_id := Catalog.normalize_card_class(str(card.get("edition", card.get("card_class", "NORMAL"))))
 			var cls_info := Catalog.get_card_class(cls_id)
-			var g_add := int(cls_info.get("gold_bonus", 2))
-			bonus_gold += g_add
-			if cls_id != "NORMAL":
-				ed_card_count += 1
+			bonus_gold += int(cls_info.get("gold_bonus", 2))
 			match cls_id:
-				"NORMAL":
-					if p_id_chk == "" and g_add > 0:
-						steps.append(_make_step(
-							"edition",
-							("+%dg Krčmová" if cs else "+%dg Ironborne") % g_add,
-							str(card.get("rname", "")),
-							0, 0.0, 1.0,
-							chips, flat_mult, x_mult_product,
-							cls_info.get("col", Color(0.76, 0.72, 0.64))
-						))
 				"MAGE":
 					var m_chg := int(card.get("mage_charge", 0))
 					var max_c := int(cls_info.get("max_charge", 2))
 					if m_chg >= max_c:
-						chips += 65
-						x_mult_product *= 2.0
-						rival_drain += 15
 						mage_draws += 1
+						bonus_pts += 24
+						x_mult_product *= 1.5
+						rival_drain += 12
 						lightning = true
-						steps.append(_make_step(
-							"edition",
-							("🔮 MÁG NABITÝ (%d/%d): +65 & ×2.0!" if cs else "🔮 MAGE OVERLOAD (%d/%d): +65 & ×2.0!") % [m_chg, max_c],
-							("%s (-15 Soupeř, +1 Karta)" if cs else "%s (-15 Zap, +1 Draw)") % str(card.get("rname", "")),
-							65, 0.0, 2.0,
-							chips, flat_mult, x_mult_product,
-							cls_info.get("col", Color(0.64, 0.44, 1.0)), "", true
-						))
+						breakdown_chips.append({"tag": "🔮 MAGE 2/2" if not cs else "🔮 MÁG 2/2", "val": "+24 ×1.5", "col": Color(0.54, 0.72, 1.0)})
+						steps.append(_make_step("edition", "🔮 MAGE BURST (+24 & ×1.5)", str(card.get("rname", "")), 24, 0.0, 1.5, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.64, 0.44, 1.0), "", true))
 					else:
-						chips += 6
-						steps.append(_make_step(
-							"edition",
-							("🔮 Mág (%d/%d): +6 b." if cs else "🔮 Mage Spark (%d/%d): +6 Chips") % [m_chg, max_c],
-							("Drž v ruce ještě %d kolo" if cs else "Hold in hand %d more turn(s)") % maxi(1, max_c - m_chg),
-							6, 0.0, 1.0,
-							chips, flat_mult, x_mult_product,
-							Color(0.54, 0.44, 0.78)
-						))
+						bonus_pts += 8
+						breakdown_chips.append({"tag": "🔮 MAGE" if not cs else "🔮 MÁG", "val": "+8", "col": Color(0.68, 0.52, 1.0)})
+						steps.append(_make_step("edition", "🔮 ARCANE AURA (+8)", str(card.get("rname", "")), 8, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.64, 0.44, 1.0)))
 				"KNIGHT":
 					knight_mist_triggered = true
-					chips += 18
-					flat_mult += 0.8
+					bonus_pts += 12
+					x_mult_product *= 1.25
 					lightning = true
-					steps.append(_make_step(
-						"edition",
-						"⚔ RYTÍŘ V MLZE: +18 & +0.8×" if cs else "⚔ KNIGHT MISTBLADE: +18 & +0.8×",
-						"Zmizí v mlze (+1 karta soupeři při chybě!)" if cs else "Vanishes in Battle Fog (+1 Rival Draw if wrong guess!)",
-						18, 0.8, 1.0,
-						chips, flat_mult, x_mult_product,
-						cls_info.get("col", Color(0.60, 0.88, 0.98)), "", true
-					))
+					breakdown_chips.append({"tag": "⚔ KNIGHT" if not cs else "⚔ RYTÍŘ", "val": "+12 ×1.25", "col": Color(0.66, 0.88, 1.0)})
+					steps.append(_make_step("edition", "⚔ STEEL IMPACT (+12 & ×1.25)", str(card.get("rname", "")), 12, 0.0, 1.25, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.60, 0.88, 0.98), "", true))
 				"MERCHANT":
-					steps.append(_make_step(
-						"edition",
-						("🪙 KUPEC: +%dg Zlatých!" if cs else "🪙 GUILDSMAN: +%dg Florins!") % g_add,
-						("%s (Zlato bez schopnosti)" if cs else "%s (Pure Gold, No Ability)") % str(card.get("rname", "")),
-						0, 0.0, 1.0,
-						chips, flat_mult, x_mult_product,
-						cls_info.get("col", Color(1.0, 0.82, 0.24))
-					))
+					bonus_pts += 6
+					breakdown_chips.append({"tag": "🪙 GUILD" if not cs else "🪙 KUPEC", "val": "+6 & +16g", "col": Color(1.0, 0.84, 0.28)})
+					steps.append(_make_step("edition", "🪙 BULLION (+6 & +16g)", str(card.get("rname", "")), 6, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.82, 0.24)))
 				"THIEF":
 					thief_heist_triggered = true
-					chips += 10
-					steps.append(_make_step(
-						"edition",
-						("🗡 ZLODĚJ (+%dg)" if cs else "🗡 CUTPURSE HEIST (+%dg)") % g_add,
-						"Tipni 2+ karty soupeře: ukradneš kartu +2 lízání!" if cs else "Guess Rival pairs (2+): Steal 1 Card & Rival +2 Draw!",
-						10, 0.0, 1.0,
-						chips, flat_mult, x_mult_product,
-						cls_info.get("col", Color(0.28, 0.90, 0.56))
-					))
+					bonus_pts += 10
+					breakdown_chips.append({"tag": "🗡 THIEF" if not cs else "🗡 ZLODĚJ", "val": "+10", "col": Color(0.28, 0.92, 0.56)})
+					steps.append(_make_step("edition", "🗡 SHUNPO CUT (+10)", str(card.get("rname", "")), 10, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.28, 0.90, 0.56)))
 
 		for card in played_cards:
 			var p_id := str(card.get("power_id", ""))
-			if p_id == "":
+			if p_id == "" or p_id == "SPEC_PRISM":
 				continue
 			var p_res := _apply_power_scoring(card, true, cnt, chosen_suit, current_hand, context, is_preview)
-			chips += int(p_res["chips"])
-			flat_mult += float(p_res["flat_mult"])
-			x_mult_product *= float(p_res["x_mult"])
+			var p_chips := int(p_res["chips"])
+			var p_xm := float(p_res["x_mult"])
+			bonus_pts += p_chips
+			x_mult_product *= p_xm
 			rival_drain += int(p_res["rival_drain"])
 			bonus_gold += int(p_res["bonus_gold"])
 			extra_draw += int(p_res["extra_draw"])
@@ -611,252 +421,101 @@ static func calculate_hand_score(
 			if bool(p_res["jester_double"]):
 				jester_triggers = 2
 			if str(p_res["label"]) != "":
+				var p_val_txt := ""
+				if p_chips > 0 and p_xm > 1.01:
+					p_val_txt = "+%d ×%.1f" % [p_chips, p_xm]
+				elif p_chips > 0:
+					p_val_txt = "+%d" % p_chips
+				elif p_xm > 1.01:
+					p_val_txt = "×%.1f" % p_xm
+				else:
+					p_val_txt = "FX"
+				breakdown_chips.append({"tag": str(card.get("rname", p_id)), "val": p_val_txt, "col": card.get("accent", Color(1.0, 0.85, 0.3))})
 				steps.append(_make_step(
 					"power",
 					str(p_res["label"]),
 					str(card.get("rname", p_id)),
-					int(p_res["chips"]), float(p_res["flat_mult"]), float(p_res["x_mult"]),
-					chips, flat_mult, x_mult_product,
+					p_chips, 0.0, p_xm,
+					base_subtotal + bonus_pts, mult_val, x_mult_product,
 					card.get("accent", Color(1.0, 0.85, 0.3)), "", bool(p_res["lightning"])
 				))
 
-	# 4. Equipped Relics Cascade (doubled if Prší Jester is active!)
-	var seven_grimoire_base := float(relic_scales.get("REL_SEVEN_GRIMOIRE", 0.0))
-	var seven_grimoire_cur := seven_grimoire_base
-	var seven_grimoire_delta := 0.0
-	var knuckle_override = context.get("knuckle_roll", null)
-
-	if not tutorial_mode:
-		for trig_i in range(jester_triggers):
-			# Flat Chip Relics (Card & Play triggered)
-			if "REL_KNUCKLE" in active_relics:
-				var k_hit := false
-				if knuckle_override != null:
-					k_hit = bool(knuckle_override)
-				elif not is_preview:
-					k_hit = (randf() < 0.35)
-				if k_hit:
-					var rt_c := get_base_card_chips(str(played_cards[0].get("rank", "")), int(played_cards[0].get("pts", 15)))
-					chips += rt_c
-					steps.append(_make_step("relic", "+%d Retrigger!" % rt_c, "Loaded Knucklebone", rt_c, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(0.96, 0.86, 0.62), "REL_KNUCKLE"))
-
-			if "REL_FORGEMASTER" in active_relics and cnt >= 2:
-				var f_c := 45 * cnt
-				chips += f_c
-				steps.append(_make_step("relic", "+%d Chips" % f_c, "Anvil Tally (%d× Slam)" % cnt, f_c, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(0.95, 0.65, 0.28), "REL_FORGEMASTER"))
-
-			if "REL_MERCHANT_LEDGER" in active_relics:
-				var stored_m := int(relic_scales.get("REL_MERCHANT_LEDGER", shop_rerolls * MERCHANT_LEDGER_CHIP_STEP))
-				var m_c := maxi(MERCHANT_LEDGER_CHIP_STEP, stored_m + MERCHANT_LEDGER_CHIP_STEP)
-				chips += m_c
-				steps.append(_make_step("relic", "+%d Chips" % m_c, "Peddler's Ledger", m_c, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(1.0, 0.84, 0.32), "REL_MERCHANT_LEDGER"))
-
+		# Active Passive Relics & Synergy Multipliers (transparently logged as breakdown chips)
+		for _rt in range(jester_triggers):
 			for card in played_cards:
 				var s_id := str(card.get("suit", ""))
 				var r_id := str(card.get("rank", ""))
 				var has_pwr := str(card.get("power_id", "")) != ""
 				if "REL_CHAMOIS" in active_relics and (s_id == "ZALUD" or has_pwr):
-					chips += 25
-					steps.append(_make_step("relic", "+25 Chips", "Chamois Horn", 25, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(0.92, 0.72, 0.32), "REL_CHAMOIS"))
+					bonus_pts += 10
+					breakdown_chips.append({"tag": "Chamois", "val": "+10", "col": Color(0.92, 0.72, 0.32)})
+					steps.append(_make_step("relic", "Chamois Horn (+10)", "Acorn / Power", 10, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.92, 0.72, 0.32), "REL_CHAMOIS"))
 				if "REL_ROYAL" in active_relics and (r_id in COURT_RANKS):
-					chips += 25
-					steps.append(_make_step("relic", "+25 Chips", "King's Signet", 25, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(1.0, 0.88, 0.38), "REL_ROYAL"))
-				if "REL_WOODCUTTER" in active_relics and (s_id == "ZALUD" or r_id == "7"):
-					chips += 30
-					steps.append(_make_step("relic", "+30 Chips", "Forest Cleaver", 30, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(0.76, 0.62, 0.30), "REL_WOODCUTTER"))
-				if "REL_RED_SEAL" in active_relics and (s_id in RED_SUITS):
-					chips += 28
-					steps.append(_make_step("relic", "+28 Chips", "Waxed Sigil", 28, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(0.94, 0.34, 0.30), "REL_RED_SEAL"))
+					bonus_pts += 10
+					breakdown_chips.append({"tag": "Signet", "val": "+10", "col": Color(1.0, 0.88, 0.38)})
+					steps.append(_make_step("relic", "King's Signet (+10)", "Court Card", 10, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.88, 0.38), "REL_ROYAL"))
 				if "REL_FANG" in active_relics and s_id == "CERVEN":
-					rival_drain += 10
-					steps.append(_make_step("relic", "Drain -10", "Crimson Fang", 0, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(0.90, 0.18, 0.30), "REL_FANG"))
+					rival_drain += 6
+					breakdown_chips.append({"tag": "Fang", "val": "-6 Rival", "col": Color(0.94, 0.22, 0.32)})
+					steps.append(_make_step("relic", "Crimson Fang (-6 Rival)", "Hearts Affinity", 0, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.94, 0.22, 0.32), "REL_FANG"))
 				if "REL_GREED" in active_relics and s_id == "GULA":
 					bonus_gold += 4
-					steps.append(_make_step("relic", "+4 Florins", "Merchant Scale", 0, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(1.0, 0.84, 0.20), "REL_GREED"))
-
-			# Flat Mult Relics
-			if "REL_FUJARA" in active_relics and cnt == 1:
-				flat_mult += 2.5
-				steps.append(_make_step("relic", "+2.5× Solo", "Copper Fujara", 0, 2.5, 1.0, chips, flat_mult, x_mult_product, Color(0.95, 0.56, 0.28), "REL_FUJARA"))
-
+					steps.append(_make_step("relic", "+4 Florins", "Merchant Scale", 0, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.84, 0.20), "REL_GREED"))
 			if "REL_STORMCAP" in active_relics and cnt >= 2:
-				flat_mult += 3.5
+				x_mult_product *= 1.25
 				lightning = true
-				steps.append(_make_step("relic", "+3.5× Storm!", "Storm Capacitor", 0, 3.5, 1.0, chips, flat_mult, x_mult_product, Color(0.38, 0.90, 1.0), "REL_STORMCAP", true))
-
-			if "REL_OVERCHARGE" in active_relics and cnt >= 2:
-				var o_m := float(cnt - 1) * 2.0
-				flat_mult += o_m
-				steps.append(_make_step("relic", "+%.1f× Rod" % o_m, "Tatra Rod", 0, o_m, 1.0, chips, flat_mult, x_mult_product, Color(0.46, 0.96, 1.0), "REL_OVERCHARGE"))
-
+				breakdown_chips.append({"tag": "Storm", "val": "×1.25", "col": Color(0.38, 0.90, 1.0)})
+				steps.append(_make_step("relic", "Storm Capacitor (×1.25)", "%d× Combo" % cnt, 0, 0.0, 1.25, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.38, 0.90, 1.0), "REL_STORMCAP", true))
 			if "REL_CRIMSON_CHOIR" in active_relics and all_red:
-				flat_mult += 5.0
-				steps.append(_make_step("relic", "+5.0× Choir!", "Crimson Choir", 0, 5.0, 1.0, chips, flat_mult, x_mult_product, Color(0.96, 0.28, 0.42), "REL_CRIMSON_CHOIR"))
+				x_mult_product *= 1.30
+				breakdown_chips.append({"tag": "Choir", "val": "×1.3", "col": Color(0.96, 0.28, 0.42)})
+				steps.append(_make_step("relic", "Crimson Choir (×1.3)", "All-Red Suit Affinity", 0, 0.0, 1.3, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.96, 0.28, 0.42), "REL_CRIMSON_CHOIR"))
 
-			if "REL_GREEN_CANOPY" in active_relics:
-				var bg_held := 0
-				for hc in current_hand:
-					if str(hc.get("suit", "")) in BLACK_GREEN_SUITS:
-						bg_held += 1
-				if bg_held >= 2:
-					flat_mult += 6.0
-					steps.append(_make_step("relic", "+6.0× Canopy!", "Highland Canopy (%d held)" % bg_held, 0, 6.0, 1.0, chips, flat_mult, x_mult_product, Color(0.26, 0.82, 0.52), "REL_GREEN_CANOPY"))
+		# Active Tabletop Relic Buffs (Blood-Ink Seal ×2, Hollow Mask ×2, Storm Surge)
+		if bool(context.get("blood_seal_active", false)):
+			x_mult_product *= 2.0
+			rival_drain += 10
+			lightning = true
+			breakdown_chips.append({"tag": "🩸 SEAL" if not cs else "🩸 PEČEŤ", "val": "×2.0", "col": Color(0.96, 0.14, 0.24)})
+			steps.append(_make_step("relic", "🩸 Blood-Ink Seal (×2.0)", "Crimson Resonance", 0, 0.0, 2.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.96, 0.14, 0.24), "TRELIC_BLOOD_SEAL", true))
+		if bool(context.get("hollow_mask_active", false)):
+			x_mult_product *= 2.0
+			lightning = true
+			breakdown_chips.append({"tag": "🎭 HOLLOW", "val": "×2.0 WILD", "col": Color(1.0, 0.22, 0.30)})
+			steps.append(_make_step("relic", "🎭 Hollow Mask (×2.0)", "Hollow Reiatsu", 0, 0.0, 2.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.22, 0.30), "TRELIC_HOLLOW_MASK", true))
+		var ctx_surge := float(context.get("surge_mult", 0.0))
+		if ctx_surge > 0.01:
+			var s_fac := 1.0 + ctx_surge * 0.5
+			x_mult_product *= s_fac
+			breakdown_chips.append({"tag": "⚡ SURGE", "val": "×%.2f" % s_fac, "col": Color(0.32, 0.90, 1.0)})
 
-			if "REL_PRSI_PURIST" in active_relics and cnt == 1 and str(played_cards[0].get("rank", "")) in ["7", "H", "E"]:
-				flat_mult += 4.5
-				steps.append(_make_step("relic", "+4.5× Purist!", "Tavern Purist", 0, 4.5, 1.0, chips, flat_mult, x_mult_product, Color(0.94, 0.78, 0.36), "REL_PRSI_PURIST"))
+	final_score = int(round(float(base_subtotal + bonus_pts) * x_mult_product))
+	var eff_mult := mult_val * x_mult_product
 
-			# Scaling & Explosive X-Mult Relics
-			if "REL_SEVEN_GRIMOIRE" in active_relics:
-				if sevens_played > 0:
-					var d := float(sevens_played) * SEVEN_GRIMOIRE_STEP
-					seven_grimoire_cur += d
-					seven_grimoire_delta += d
-				var s_x := 1.0 + seven_grimoire_cur
-				if s_x > 1.0:
-					x_mult_product *= s_x
-					steps.append(_make_step("relic", "×%.2f Grimoire" % s_x, "Ledger of Sevens (+%.2f/7)" % SEVEN_GRIMOIRE_STEP, 0, 0.0, s_x, chips, flat_mult, x_mult_product, Color(0.82, 0.46, 1.0), "REL_SEVEN_GRIMOIRE", s_x >= 1.6))
-
-			if "REL_PRISM_ORB" in active_relics and ed_card_count > 0:
-				var p_x := pow(1.25, float(ed_card_count))
-				x_mult_product *= p_x
-				steps.append(_make_step("relic", "×%.2f Seal" % p_x, "Guild Astral Seal (%d Cls)" % ed_card_count, 0, 0.0, p_x, chips, flat_mult, x_mult_product, Color(0.95, 0.52, 0.94), "REL_PRISM_ORB", true))
-
-			if "REL_PHOENIX_F" in active_relics and current_hand.size() <= 2:
-				x_mult_product *= 1.6
-				steps.append(_make_step("relic", "×1.60 Clutch!", "Phoenix Feather", 0, 0.0, 1.6, chips, flat_mult, x_mult_product, Color(1.0, 0.44, 0.22), "REL_PHOENIX_F", true))
-
-			if "REL_FINAL_TOLL" in active_relics:
-				if current_hand.is_empty():
-					x_mult_product *= 2.5
-					lightning = true
-					steps.append(_make_step("relic", "×2.50 Executioner!", "Executioner's Oath (0 left)", 0, 0.0, 2.5, chips, flat_mult, x_mult_product, Color(1.0, 0.24, 0.28), "REL_FINAL_TOLL", true))
-				elif current_hand.size() == 1:
-					x_mult_product *= 1.5
-					steps.append(_make_step("relic", "×1.50 Oath", "Executioner's Oath (1 left)", 0, 0.0, 1.5, chips, flat_mult, x_mult_product, Color(1.0, 0.46, 0.34), "REL_FINAL_TOLL"))
-
-			if "REL_COURT_SOVEREIGN" in active_relics:
-				var courts_held := 0
-				for hc in current_hand:
-					if str(hc.get("rank", "")) in COURT_RANKS:
-						courts_held += 1
-				if courts_held > 0:
-					var cs_x := pow(1.4, float(courts_held))
-					x_mult_product *= cs_x
-					lightning = lightning or (courts_held >= 2)
-					steps.append(_make_step("relic", "×%.2f Treasury (%d)" % [cs_x, courts_held], "Sovereign Treasury", 0, 0.0, cs_x, chips, flat_mult, x_mult_product, Color(1.0, 0.86, 0.28), "REL_COURT_SOVEREIGN", courts_held >= 2))
-
-			if trig_i == 0 and jester_triggers > 1:
-				steps.append(_make_step("power", "🎭 JESTER: RELICS 2×!", "Retriggering Relics!", 0, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(0.96, 0.34, 0.82), "", true))
-
-	# 5. Hand-Shedding Finisher Cash-Out (0 Cards Remaining!)
-	var did_shed := false
-	var shed_rem_turns := 0
-	var shed_x_mult := 1.0
-	var allow_shed := not (tutorial_mode and tutorial_step < 6)
-	if allow_shed and current_hand.is_empty():
-		did_shed = true
-		shed_rem_turns = maxi(0, SHED_PAR_TURNS - match_turn_count)
-		shed_x_mult = round(SHED_BASE_XMULT * pow(SHED_EXP_PER_TURN, float(shed_rem_turns)) * 100.0) / 100.0
-		chips += SHED_BASE_CHIPS
-		x_mult_product *= shed_x_mult
-		lightning = true
-		steps.append(_make_step(
-			"finisher",
-			"★ SHEDDING FINISHER +%d & ×%.2f!" % [SHED_BASE_CHIPS, shed_x_mult],
-			"%d turns saved vs Par %d" % [shed_rem_turns, SHED_PAR_TURNS],
-			SHED_BASE_CHIPS, 0.0, shed_x_mult,
-			chips, flat_mult, x_mult_product,
-			Color(0.42, 1.0, 0.64), "", true
-		))
-
-	var d_chalice := float(context.get("duel_chalice_mult", 0.0))
-	if not tutorial_mode and d_chalice > 0.01:
-		flat_mult += d_chalice
-		steps.append(_make_step("relic", "+%.1f× Plague Chalice" % d_chalice, "Peddler Curse Upgrade", 0, d_chalice, 1.0, chips, flat_mult, x_mult_product, Color(0.92, 0.26, 0.30)))
-
-	var d_whet := int(context.get("duel_whetstone_stacks", 0))
-	if not tutorial_mode and d_whet > 0:
-		var has_sharp := false
-		for pc in played_cards:
-			if str(pc.get("power_id", "")) != "" or str(pc.get("rank", "")) in COURT_RANKS:
-				has_sharp = true
-				break
-		if has_sharp:
-			var w_xm := 1.0 + 0.35 * float(d_whet)
-			x_mult_product *= w_xm
-			steps.append(_make_step("relic", "×%.2f Whetstone" % w_xm, "Gallows-Iron Edge", 0, 0.0, w_xm, chips, flat_mult, x_mult_product, Color(1.0, 0.40, 0.28), "", true))
-
-	var d_next_x := float(context.get("duel_next_xmult", 1.0))
-	if not tutorial_mode and d_next_x > 1.01:
-		x_mult_product *= d_next_x
-		lightning = true
-		steps.append(_make_step("power", "×%.2f Witch-Glass!" % d_next_x, "Belladonna Charge", 0, 0.0, d_next_x, chips, flat_mult, x_mult_product, Color(0.94, 0.48, 0.92), "", true))
-
-	var final_score := int(round(float(chips) * flat_mult * x_mult_product))
-
-	# 6. Boss Modifiers (Traveler mode softens penalties & rewards counterplay!)
-	var difficulty := str(context.get("campaign_difficulty", "traveler"))
-	if not tutorial_mode and boss_mod != "":
-		var lead_is_pwr := str(played_cards[0].get("power_id", "")) != ""
-		var is_combo := (cnt >= 2)
-		var lead_rank := str(played_cards[0].get("rank", ""))
-		if difficulty == "classic":
-			if boss_mod == "PHARAOH_SEAL" and not is_combo and not lead_is_pwr and final_score < 20:
-				final_score = maxi(1, final_score - 5)
-				steps.append(_make_step("boss", "-5 Pharaoh Seal", "Solo < 20 pts drained", 0, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(1.0, 0.45, 0.35)))
-			elif boss_mod == "IRON_JOUST" and not is_combo and not lead_is_pwr and lead_rank != "7":
-				final_score = maxi(1, final_score - 3)
-				steps.append(_make_step("boss", "-3 Iron Armor", "Play Combos or Sevens", 0, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(0.85, 0.45, 0.45)))
-			elif boss_mod == "CAESAR_TRIBUTE" and not is_combo:
-				rival_bonus += 12
-				steps.append(_make_step("boss", "☠ +12 Caesar Tribute", "Solo play feeds Rival", 0, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(1.0, 0.42, 0.36)))
-			elif boss_mod == "SYNDICATE_CUT" and not is_combo:
-				final_score = maxi(1, int(round(float(final_score) * 0.85)))
-				steps.append(_make_step("boss", "-15% Syndicate Tax", "2×+ Combos evade tax", 0, 0.0, 0.85, chips, flat_mult, x_mult_product, Color(0.95, 0.42, 0.48)))
-		else:
-			if boss_mod == "PHARAOH_SEAL":
-				if is_combo or lead_is_pwr:
-					final_score += 15
-					steps.append(_make_step("boss", "+15 Seal Broken!", "Combo/Power overpowers Pharaoh", 15, 0.0, 1.0, chips + 15, flat_mult, x_mult_product, Color(1.0, 0.86, 0.32)))
-				elif final_score < 20:
-					final_score = maxi(1, final_score - 2)
-					steps.append(_make_step("boss", "-2 Pharaoh Seal", "Mild solo ward", 0, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(1.0, 0.52, 0.40)))
-			elif boss_mod == "IRON_JOUST":
-				if is_combo or lead_is_pwr or lead_rank == "7":
-					final_score += 20
-					steps.append(_make_step("boss", "+20 Armor Shatter!", "Strong strike pierces Joust Plate", 20, 0.0, 1.0, chips + 20, flat_mult, x_mult_product, Color(0.55, 0.94, 1.0)))
-				else:
-					final_score = maxi(1, final_score - 1)
-					steps.append(_make_step("boss", "-1 Iron Armor", "Mild plate deflect", 0, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(0.85, 0.52, 0.50)))
-			elif boss_mod == "CAESAR_TRIBUTE":
-				if is_combo:
-					final_score += 25
-					steps.append(_make_step("boss", "+25 Counter-Tribute!", "Combo rallies against Caesar", 25, 0.0, 1.0, chips + 25, flat_mult, x_mult_product, Color(1.0, 0.86, 0.32)))
-				else:
-					rival_bonus += 4
-					steps.append(_make_step("boss", "☠ +4 Caesar Tribute", "Mild solo tax", 0, 0.0, 1.0, chips, flat_mult, x_mult_product, Color(1.0, 0.48, 0.40)))
-			elif boss_mod == "SYNDICATE_CUT":
-				if is_combo:
-					final_score += 30
-					bonus_gold += 8
-					steps.append(_make_step("boss", "+30 & +8g Tax Rebate!", "Combo busts the Syndicate", 30, 0.0, 1.0, chips + 30, flat_mult, x_mult_product, Color(0.46, 0.96, 0.64)))
-				else:
-					final_score = maxi(1, int(round(float(final_score) * 0.95)))
-					steps.append(_make_step("boss", "-5% Syndicate Fee", "2×+ Combos earn rebate", 0, 0.0, 0.95, chips, flat_mult, x_mult_product, Color(0.95, 0.50, 0.52)))
+	var did_shed := (not (tutorial_mode and tutorial_step < 6)) and current_hand.is_empty()
+	var formula_txt := ""
+	if bonus_pts > 0 or x_mult_product > 1.01:
+		var b_part := ("(%d×%d + %d)" % [display_card_val, cnt, bonus_pts]) if bonus_pts > 0 else ("%d×%d" % [display_card_val, cnt])
+		formula_txt = ("%s × %.2f = %d" % [b_part, x_mult_product, final_score]) if x_mult_product > 1.01 else ("%s = %d" % [b_part, final_score])
+	else:
+		formula_txt = ("%d × %d = %d b." if cs else "%d × %d = %d pts") % [display_card_val, cnt, final_score]
 
 	return {
-		"base_chips": base_chips,
-		"card_chips": card_chips_sum,
-		"total_chips": chips,
-		"flat_mult": flat_mult,
+		"card_value": display_card_val,
+		"card_count": cnt,
+		"base_subtotal": base_subtotal,
+		"bonus_pts": bonus_pts,
+		"base_chips": display_card_val,
+		"card_chips": base_subtotal + bonus_pts,
+		"total_chips": base_subtotal + bonus_pts,
+		"flat_mult": mult_val,
 		"x_mult_product": x_mult_product,
-		"effective_mult": flat_mult * x_mult_product,
+		"effective_mult": eff_mult,
 		"final_score": final_score,
 		"slam_name": slam_name,
 		"shed_finisher": did_shed,
-		"shed_rem_turns": shed_rem_turns,
-		"shed_x_mult": shed_x_mult,
+		"shed_rem_turns": 0,
+		"shed_x_mult": 1.0,
 		"rival_drain": rival_drain,
 		"rival_bonus": rival_bonus,
 		"bonus_gold": bonus_gold,
@@ -866,10 +525,10 @@ static func calculate_hand_score(
 		"surge_kept": surge_kept,
 		"new_surge_mult": new_surge_mult,
 		"jester_triggers": jester_triggers,
-		"seven_grimoire_delta": seven_grimoire_delta,
-		"seven_grimoire_new": seven_grimoire_cur,
-		"seven_draw_bonus": 14 * sevens_played,
-		"ace_stun_bonus": 25 * aces_played,
+		"seven_grimoire_delta": 0.0,
+		"seven_grimoire_new": 0.0,
+		"seven_draw_bonus": 0,
+		"ace_stun_bonus": 0,
 		"ace_hp_damage": ace_hp_damage,
 		"mage_charge_boost": mage_charge_boost,
 		"mage_draws": mage_draws,
@@ -878,7 +537,8 @@ static func calculate_hand_score(
 		"knight_mist_triggered": knight_mist_triggered,
 		"thief_heist_triggered": thief_heist_triggered,
 		"king_curse_suit": king_curse_suit,
-		"formula_summary": ("%d b. × %.1f× × %.2f = %d" if cs else "%d Chips × %.1f Mult × %.2f X-Mult = %d") % [chips, flat_mult, x_mult_product, final_score],
+		"formula_summary": formula_txt,
+		"breakdown_chips": breakdown_chips,
 		"steps": steps,
 	}
 
@@ -995,9 +655,4 @@ static func _apply_power_scoring(
 			var bonus_c := courts * 20
 			res["chips"] = bonus_c
 			res["label"] = ("👑 Královský dekret: +%d (%d figur)" if cs else "👑 Royal Decree: +%d (%d Courts)") % [bonus_c, courts]
-		"SPEC_PRISM":
-			var add_m := 0.6 * float(cnt)
-			res["flat_mult"] = add_m
-			res["lightning"] = true
-			res["label"] = ("💎 Prizma: +%.1f× & +4 b.!" if cs else "💎 Prism Core: +%.1f× & +4 Pts!") % add_m
 	return res

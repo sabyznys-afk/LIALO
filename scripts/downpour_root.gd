@@ -1,6 +1,6 @@
 extends Node
-## LIALO — Fujara Studios (Godot 4.x Engine)
-## 1) Animované intro "FUJARA STUDIOS" (Vystúpi hora -> Plynulo zasneží -> Kamzíky + znelka)
+## LIALO — Fujira Studios (Godot 4.x Engine)
+## 1) Animované intro "FUJIRA STUDIOS" (Vystúpi hora -> Plynulo zasneží -> Kamzíky + znelka)
 ## 2) Hlavné menu "LIALO" (5 epických kartových animácií + znelka + hero KAMPAŇ + čisté tabule)
 ## 3) 3D Mapa Kampane (Tmavozelený okraj + 3D oblaky po okrajoch, upscalovaná textúra, návod)
 ## 4) Skutočný 3D Stôl (BattleTable3D) v živej krčme s výhľadom z okien & close-up hodom kariet
@@ -9,6 +9,7 @@ const Catalog := preload("res://scripts/lialo_catalog.gd")
 const WOODCUT_POST_SHADER := preload("res://shaders/woodcut_post.gdshader")
 const MpConfig := preload("res://scripts/mp/mp_config.gd")
 const MpDevEntry := preload("res://scripts/mp/mp_dev_entry.gd")
+const LobbyOptions3DScript := preload("res://scripts/lobby_options_3d.gd")
 
 enum ScreenState { SPLASH, MAIN_MENU, WORLD_3D, MATCH_3D }
 
@@ -49,27 +50,8 @@ var map_print_btn: Button
 var woodcut_mode: int = 3 # 3 = Liar's Bar PBR, 0 = Living Woodcut, 1 = Broadsheet Sepia, 2 = Classic Toon
 var game_options: Dictionary = {}
 var options_layer: CanvasLayer
-var options_modal: PanelContainer
+var options_3d: LobbyOptions3DScript
 var lobby_options_btn: Button
-var options_title_lbl: Label
-var options_lang_btn: Button
-var options_vis_btn: Button
-var options_fx_btn: Button
-var options_disp_btn: Button
-var options_diff_btn: Button
-var options_mute_btn: Button
-var options_vol_slider: HSlider
-var options_vol_lbl: Label
-var options_sens_slider: HSlider
-var options_sens_lbl: Label
-var options_replay_tut_btn: Button
-var options_return_btn: Button
-var options_close_x: Button
-var options_left_hdr: Label
-var options_right_hdr: Label
-var options_sens_title: Label
-var options_keys_lbl: Label
-var options_done_btn: Button
 var collection_close_btn: Button
 var collection_det_close_btn: Button
 var map_btn_back: Button
@@ -96,7 +78,19 @@ var menu_control: Control
 var hud_3d_control: Control
 var signs_box: VBoxContainer
 
-# Splash animácia hory
+# Splash animácia 3D hory (Kriváň z Blenderu + sunrise + 3D sneženie + 3D animované kamzíky)
+var splash_sky_canvas: Control
+var splash_3d_container: SubViewportContainer
+var splash_3d_vp: SubViewport
+var splash_3d_cam: Camera3D
+var splash_3d_sun: DirectionalLight3D
+var splash_3d_rim_light: DirectionalLight3D
+var splash_mtn_root: Node3D
+var splash_mtn_mat: ShaderMaterial
+var splash_3d_snow_particles: GPUParticles3D
+var splash_chamois_nodes: Array[Node3D] = []
+var splash_chamois_anims: Array[AnimationPlayer] = []
+var splash_chamois_trails: Array[Dictionary] = []
 var splash_canvas: Control
 var splash_time: float = 0.0
 var splash_skipped: bool = false
@@ -122,8 +116,17 @@ var audio_pct_labels: Array[Label] = []
 var active_bgm_key: String = ""
 var music_enabled: bool = true # Active across Lialo Lobby, Map & In-Game Battle (paused automatically when unfocused).
 var window_focused: bool = true
+var _splash_audio_pending: bool = false
 var intro_handdrawn_tex: Texture2D
 var lobby_handdrawn_tex: Texture2D
+var lobby_king_sheet_tex: Texture2D
+var lobby_halberdier_sheet_tex: Texture2D
+var lobby_jester_sheet_tex: Texture2D
+var lobby_phoenix_sheet_tex: Texture2D
+var lobby_empty_cards: Dictionary = {}
+var suit_crest_cache: Dictionary = {}
+var lobby_slash_fx_tex: Texture2D
+var lobby_sparks_fx_tex: Texture2D
 
 # Main Menu & 5 alternating card animations + Epické otváracie intro
 var menu_sign_visuals: Array[Control] = []
@@ -213,6 +216,8 @@ const MAP_PARCHMENT_SHADER := preload("res://shaders/map_parchment.gdshader")
 const LOBBY_SUN_SHADER := preload("res://shaders/lobby_sun.gdshader")
 const FONT_DISPLAY_PATH := "res://assets/fonts/LialoDisplay.ttf"
 const FONT_UI_PATH := "res://assets/fonts/LialoBody.ttf"
+const FONT_QUILL_PATH := "res://assets/fonts/LialoQuill.ttf"
+var _cached_quill_font: Font = null
 
 const LOBBY_SUITS = [
 	{"id": "CERVEN", "sym": "♥", "col": Color(0.86, 0.20, 0.24)},
@@ -228,8 +233,10 @@ const PLAYER_DECKS = [
 		"era_id": "stredovek",
 		"name": "Classic Leather",
 		"name_cs": "Klasická kůže",
-		"desc": "Balanced deck & leather gauntlets.",
-		"desc_cs": "Vyvážený balíček a kožené rukavice.",
+		"desc": "Saddle-stitched tavern leather & oak crests. Balanced deck & gauntlets.",
+		"desc_cs": "Šitá krčmová kůže a dubové erby. Vyvážený balíček a rukavice.",
+		"back_tex": "res://assets/table/deck_back_klasic.png",
+		"box_style": "klasic",
 		"glove_col": Color(0.45, 0.30, 0.18),
 		"border_col": Color(0.85, 0.68, 0.30),
 		"use_iron": false,
@@ -242,8 +249,10 @@ const PLAYER_DECKS = [
 		"era_id": "antika",
 		"name": "Pharaoh's Vault",
 		"name_cs": "Faraonův poklad",
-		"desc": "Golden bracers & +15 start points.",
-		"desc_cs": "Zlaté nátepníky a +15 bodů do startu.",
+		"desc": "Winged scarab papyrus codex, golden bracers & +15 start points.",
+		"desc_cs": "Papyrus se skarabem a okem Hora, zlaté nátepníky a +15 b. do startu.",
+		"back_tex": "res://assets/table/deck_back_antika.png",
+		"box_style": "antika",
 		"glove_col": Color(0.62, 0.45, 0.14),
 		"border_col": Color(0.96, 0.74, 0.26),
 		"use_iron": false,
@@ -256,8 +265,10 @@ const PLAYER_DECKS = [
 		"era_id": "rim",
 		"name": "Legion's Aegis",
 		"name_cs": "Štít legie",
-		"desc": "Roman steel & +10 start points.",
-		"desc_cs": "Římská ocel a +10 bodů do startu.",
+		"desc": "Imperial vermilion scutum & Aquila bronze. Roman steel & +10 start pts.",
+		"desc_cs": "Purpurový štít s orlem a blesky, římská ocel a +10 bodů do startu.",
+		"back_tex": "res://assets/table/deck_back_rim.png",
+		"box_style": "rim",
 		"glove_col": Color(0.42, 0.18, 0.16),
 		"border_col": Color(0.91, 0.44, 0.32),
 		"use_iron": true,
@@ -270,8 +281,10 @@ const PLAYER_DECKS = [
 		"era_id": "stredovek",
 		"name": "Iron Crown",
 		"name_cs": "Železná koruna",
-		"desc": "Knightly plate & +1 Fire Phial.",
-		"desc_cs": "Rytířské pláty a +1 Baňka ohně navíc.",
+		"desc": "Cathedral iron & Wenceslas crown plate, knightly gloves & +1 Fire Phial.",
+		"desc_cs": "Katedrální železo se Svatováclavskou korunou, pláty a +1 Baňka ohně.",
+		"back_tex": "res://assets/table/deck_back_stredovek.png",
+		"box_style": "stredovek",
 		"glove_col": Color(0.28, 0.33, 0.40),
 		"border_col": Color(0.58, 0.83, 0.69),
 		"use_iron": true,
@@ -284,12 +297,62 @@ const PLAYER_DECKS = [
 		"era_id": "objavy",
 		"name": "Corsair's Grip",
 		"name_cs": "Korzárův stisk",
-		"desc": "Seafarer gloves & +1 extra starting card.",
-		"desc_cs": "Námořní rukavice a +1 karta do ruky navíc.",
+		"desc": "Portolan sea chart & caravel seal, seafarer gloves & +1 extra card.",
+		"desc_cs": "Námořní portolánová mapa s karavelou, rukavice a +1 karta navíc.",
+		"back_tex": "res://assets/table/deck_back_objavy.png",
+		"box_style": "objavy",
 		"glove_col": Color(0.14, 0.25, 0.36),
 		"border_col": Color(0.30, 0.78, 0.94),
 		"use_iron": false,
 		"start_bonus_pts": 0,
+		"bonus_puf": 0,
+		"extra_draw": 1,
+	},
+	{
+		"id": "prohibicia",
+		"era_id": "prohibicia",
+		"name": "Syndicate Noir",
+		"name_cs": "Syndikát prohibice",
+		"desc": "1920s Art Deco gold & black velvet speakeasy deck. +12 start pts & sleek dark gloves.",
+		"desc_cs": "Art Deco zlato a černý samet tajného baru. +12 bodů do startu a tmavé rukavice.",
+		"back_tex": "res://assets/table/deck_back_prohibicia.png",
+		"box_style": "prohibicia",
+		"glove_col": Color(0.14, 0.12, 0.16),
+		"border_col": Color(0.96, 0.76, 0.26),
+		"use_iron": false,
+		"start_bonus_pts": 12,
+		"bonus_puf": 0,
+		"extra_draw": 0,
+	},
+	{
+		"id": "reaper",
+		"era_id": "stredovek",
+		"name": "Soul Reaper Seal",
+		"name_cs": "Pečeť Žence duší",
+		"desc": "Stark sumi-e ink & crimson barrier seal. +1 Hellfire Phial & obsidian-steel gauntlets.",
+		"desc_cs": "Černá tuš a rudá bariéra Žence duší. +1 Baňka ohně a obsidiánové rukavice.",
+		"back_tex": "res://assets/table/deck_back_reaper.png",
+		"box_style": "reaper",
+		"glove_col": Color(0.12, 0.08, 0.10),
+		"border_col": Color(0.96, 0.18, 0.26),
+		"use_iron": true,
+		"start_bonus_pts": 10,
+		"bonus_puf": 1,
+		"extra_draw": 0,
+	},
+	{
+		"id": "quincy",
+		"era_id": "objavy",
+		"name": "Starlight Aegis",
+		"name_cs": "Hvězdný štít",
+		"desc": "Midnight indigo & blazing cyan star crest. +1 extra draw & silver celestial bracers.",
+		"desc_cs": "Půlnoční modř a zářící azurová hvězda. +1 karta navíc a stříbrné nátepníky.",
+		"back_tex": "res://assets/table/deck_back_quincy.png",
+		"box_style": "quincy",
+		"glove_col": Color(0.16, 0.24, 0.42),
+		"border_col": Color(0.24, 0.90, 1.0),
+		"use_iron": true,
+		"start_bonus_pts": 8,
 		"bonus_puf": 0,
 		"extra_draw": 1,
 	}
@@ -375,6 +438,23 @@ func _get_font(display: bool = false) -> Font:
 		if f:
 			return f
 	return ThemeDB.fallback_font
+
+func _get_quill_font() -> Font:
+	if _cached_quill_font != null:
+		return _cached_quill_font
+	if ResourceLoader.exists(FONT_QUILL_PATH):
+		var fq := load(FONT_QUILL_PATH) as Font
+		if fq:
+			_cached_quill_font = fq
+			return fq
+	if FileAccess.file_exists(FONT_QUILL_PATH):
+		var raw_bytes := FileAccess.get_file_as_bytes(FONT_QUILL_PATH)
+		if raw_bytes.size() > 0:
+			var ff := FontFile.new()
+			ff.data = raw_bytes
+			_cached_quill_font = ff
+			return ff
+	return _get_font(false)
 
 func _build_global_theme() -> Theme:
 	var th := Theme.new()
@@ -472,7 +552,11 @@ func _setup_audio_engine() -> void:
 	for sfx_key in [
 		"splash_fujara", "ui_hover", "ui_click", "card_hover",
 		"card_shuffle", "card_deal", "card_throw_whoosh", "card_slam",
-		"card_draw", "puf", "turn_player", "win", "lose", "error"
+		"card_draw", "puf", "turn_player", "win", "lose", "error",
+		"card_ace_strike", "card_seven_curse", "card_suit_shift", "card_shield_guard",
+		"anim_sword_unsheathe", "anim_sword_slash", "anim_sword_cleave",
+		"anim_parry_clang", "anim_combo_slam",
+		"btn_wooden_slam", "btn_card_tick", "btn_ghost_curse"
 	]:
 		var st := _load_audio("res://assets/audio/sfx_%s" % sfx_key, false)
 		if st:
@@ -600,6 +684,32 @@ func _generate_procedural_sfx_wavs() -> void:
 		s_ghost[i] = sig * env * 0.42
 	sfx_cache["ghost_speak"] = _make_pcm16_wav(s_ghost, sr)
 
+	# 8. Goose-Quill Ink Scratch on Parchment (3 organic dry-nib whisper variations)
+	for q_i in range(3):
+		var q_dur := 0.052 + float(q_i) * 0.008
+		var n_q := int(sr * q_dur)
+		var s_q := PackedFloat32Array()
+		s_q.resize(n_q)
+		var seed_v := 713 + q_i * 977
+		var prev_lp := 0.0
+		var prev_bp := 0.0
+		for i in range(n_q):
+			var t := float(i) / float(sr)
+			var u := clampf(t / q_dur, 0.0, 1.0)
+			var env := sin(PI * pow(u, 0.65)) * exp(-u * 1.45)
+			seed_v = int((seed_v * 1103515245 + 12345) & 0x7fffffff)
+			var white := (float(seed_v % 20001) / 10000.0) - 1.0
+			# Dual-band paper grain resonance (soft fiber rustle + subtle nib edge chirp)
+			prev_lp = lerpf(prev_lp, white, 0.32)
+			var hp := white - prev_lp
+			prev_bp = lerpf(prev_bp, hp, 0.48)
+			var grain := 0.42 * hp + 0.28 * prev_bp + 0.18 * sin(TAU * (1580.0 + float(q_i) * 210.0 + sin(u * PI * 3.0) * 320.0) * t)
+			s_q[i] = clampf(grain * env * 0.56, -0.95, 0.95)
+		var q_wav := _make_pcm16_wav(s_q, sr)
+		sfx_cache["quill_scratch_%d" % q_i] = q_wav
+		if q_i == 0:
+			sfx_cache["quill_scratch"] = q_wav
+
 func _load_audio(stem_or_path: String, loop: bool) -> AudioStream:
 	var stem := stem_or_path.get_basename() if (stem_or_path.ends_with(".mp3") or stem_or_path.ends_with(".wav")) else stem_or_path
 	var mp3_path := stem + ".mp3"
@@ -656,7 +766,14 @@ func _on_window_focus_changed(focused: bool) -> void:
 	if is_instance_valid(amb_player):
 		amb_player.stream_paused = paused
 	if is_instance_valid(splash_sfx_player):
-		splash_sfx_player.stream_paused = paused
+		if focused and current_screen == ScreenState.SPLASH and (_splash_audio_pending or not splash_sfx_player.playing) and splash_time < 4.5 and sfx_cache.has("splash_fujara") and not audio_muted and audio_volume_pct > 0:
+			splash_sfx_player.stream = sfx_cache["splash_fujara"]
+			splash_sfx_player.volume_db = _calc_vol_db(-3.5)
+			splash_sfx_player.stream_paused = false
+			splash_sfx_player.play()
+			_splash_audio_pending = false
+		else:
+			splash_sfx_player.stream_paused = paused
 	for k in battle_bgm_players.keys():
 		var bp: AudioStreamPlayer = battle_bgm_players[k]
 		if is_instance_valid(bp):
@@ -812,11 +929,16 @@ func _play_bgm(key: String, with_tavern_amb: bool = false) -> void:
 func _play_sfx(key: String, vol_db: float = -5.5, pitch: float = 1.0) -> void:
 	if key == "overdrive_hum" and not music_enabled:
 		return
-	if not window_focused or audio_muted or audio_volume_pct <= 0 or not sfx_cache.has(key) or sfx_pool.is_empty():
+	var resolved_key := key
+	if key == "quill_scratch":
+		var q_cand := "quill_scratch_%d" % (randi() % 3)
+		if sfx_cache.has(q_cand):
+			resolved_key = q_cand
+	if not window_focused or audio_muted or audio_volume_pct <= 0 or not sfx_cache.has(resolved_key) or sfx_pool.is_empty():
 		return
 	var p: AudioStreamPlayer = sfx_pool[sfx_pool_idx]
 	sfx_pool_idx = (sfx_pool_idx + 1) % sfx_pool.size()
-	p.stream = sfx_cache[key]
+	p.stream = sfx_cache[resolved_key]
 	p.volume_db = _calc_vol_db(vol_db)
 	p.pitch_scale = pitch
 	p.stream_paused = false
@@ -954,7 +1076,7 @@ func _ready() -> void:
 			window_focused = win.has_focus()
 	run_profile = Catalog.load_profile()
 	shop_offers = Catalog.generate_shop_offers(run_profile, str(game_options.get("language", "en")))
-	card_back_tex = Toon.tex("res://assets/table/card_back.png")
+	card_back_tex = Toon.tex(str(PLAYER_DECKS[selected_deck_idx].get("back_tex", "res://assets/table/card_back.png")))
 	menu_icons_tex = Toon.tex("res://assets/lobby/menu_icons.png")
 	_preload_custom_card_faces()
 
@@ -978,7 +1100,16 @@ func _ready() -> void:
 		battle_3d.match_lost_details.connect(_on_match_lost_details)
 	if battle_3d.has_signal("play_sfx_requested"):
 		battle_3d.play_sfx_requested.connect(func(sname: String):
-			var v := -5.0 if sname != "card_hover" else -11.5
+			var v := -5.0
+			match sname:
+				"card_hover":
+					v = -11.5
+				"btn_card_tick":
+					v = -8.0
+				"btn_wooden_slam":
+					v = -5.5
+				"card_ace_strike", "anim_parry_clang":
+					v = -3.5
 			_play_sfx(sname, v, randf_range(0.96, 1.04))
 		)
 	if battle_3d.has_signal("play_sfx_pitched_requested"):
@@ -1027,23 +1158,49 @@ func _preload_custom_card_faces() -> void:
 			var ptex := Toon.tex("res://assets/cards/%s.png" % pc_id)
 			if ptex:
 				card_face_cache[pc_id] = ptex
+	for d_raw in PLAYER_DECKS:
+		var did := str(d_raw.get("id", ""))
+		var bp := str(d_raw.get("back_tex", ""))
+		if did != "" and bp != "":
+			var dtex := Toon.tex(bp)
+			if dtex:
+				card_face_cache["DECK_" + did] = dtex
 	intro_handdrawn_tex = Toon.tex("res://assets/ui/intro_krivan_handdrawn.png")
 	lobby_handdrawn_tex = Toon.tex("res://assets/ui/lobby_tavern_handdrawn.png")
+	lobby_king_sheet_tex = Toon.tex("res://assets/lobby/duel_sprites/lobby_king_sheet.png")
+	lobby_halberdier_sheet_tex = Toon.tex("res://assets/lobby/duel_sprites/lobby_halberdier_sheet.png")
+	lobby_jester_sheet_tex = Toon.tex("res://assets/lobby/duel_sprites/lobby_jester_sheet.png")
+	lobby_phoenix_sheet_tex = Toon.tex("res://assets/lobby/duel_sprites/lobby_phoenix_sheet.png")
+	lobby_slash_fx_tex = Toon.tex("res://assets/vfx/sword_card/slash_cel_sheet.png")
+	lobby_sparks_fx_tex = Toon.tex("res://assets/vfx/sword_card/ink_sparks_sheet.png")
+	for ek in ["CERVEN_K", "ZALUD_H", "SPEC_JESTER", "SPEC_PHOENIX"]:
+		var etex := Toon.tex("res://assets/lobby/duel_sprites/empty_%s.png" % ek)
+		if etex:
+			lobby_empty_cards[ek] = etex
+	for sk in ["CERVEN", "ZALUD", "GULA", "ZELEN"]:
+		var stex := Toon.tex("res://assets/ui/suits/suit_%s.png" % sk.to_lower())
+		if stex:
+			suit_crest_cache[sk] = stex
 
 func _switch_to(next_state: ScreenState) -> void:
 	var prev_state := current_screen
 	current_screen = next_state
 	splash_control.visible = (next_state == ScreenState.SPLASH)
+	if is_instance_valid(splash_3d_vp):
+		splash_3d_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS if (next_state == ScreenState.SPLASH) else SubViewport.UPDATE_DISABLED
 	menu_control.visible = (next_state == ScreenState.MAIN_MENU)
 	if next_state != ScreenState.SPLASH and is_instance_valid(splash_sfx_player):
 		splash_sfx_player.stop()
 	if next_state == ScreenState.SPLASH:
 		_play_bgm("", false)
-		if is_instance_valid(splash_sfx_player) and sfx_cache.has("splash_fujara") and window_focused and not audio_muted and audio_volume_pct > 0:
+		_splash_audio_pending = false
+		if is_instance_valid(splash_sfx_player) and sfx_cache.has("splash_fujara") and not audio_muted and audio_volume_pct > 0:
 			splash_sfx_player.stream = sfx_cache["splash_fujara"]
-			splash_sfx_player.volume_db = _calc_vol_db(-4.5)
+			splash_sfx_player.volume_db = _calc_vol_db(-3.5)
 			splash_sfx_player.stream_paused = not window_focused
 			splash_sfx_player.play()
+			if not window_focused:
+				_splash_audio_pending = true
 	elif next_state == ScreenState.MAIN_MENU:
 		_play_bgm("lobby", false)
 		if prev_state != ScreenState.MAIN_MENU:
@@ -1081,13 +1238,22 @@ func _build_roguelite_loadout_for_era(era: Dictionary, is_quick_showcase: bool =
 
 	if is_quick_showcase:
 		# Loaded Quick Table showcase so player immediately experiences Power Cards, Relics & Three-Tier Scoring!
-		var q_cards: Array = run_profile.get("custom_cards", []).duplicate()
-		for sc in ["SPEC_VAMPIRE", "SPEC_STORM", "SPEC_MIRROR", "SPEC_CHRONOS", "SPEC_JESTER", "SPEC_PRISM"]:
+		var q_cards: Array = []
+		for cc_raw in run_profile.get("custom_cards", []):
+			var cid := str(cc_raw)
+			if not (cid in Catalog.ARCHIVED_CARD_IDS) and not Catalog.get_power_card(cid).is_empty():
+				q_cards.append(cid)
+		for sc in ["SPEC_VAMPIRE", "SPEC_STORM", "SPEC_MIRROR", "SPEC_CHRONOS", "SPEC_JESTER"]:
 			if not (sc in q_cards):
 				q_cards.append(sc)
-		var q_rel: Array = run_profile.get("active_relics", []).duplicate()
-		for sr in ["REL_CHAMOIS", "REL_STORMCAP", "REL_PRISM_ORB"]:
-			if not (sr in q_rel):
+		var q_rel: Array = []
+		for ar_raw in run_profile.get("active_relics", []):
+			var rid := str(ar_raw)
+			if not (rid in Catalog.ARCHIVED_RELIC_IDS) and not Catalog.is_relic_hidden(rid) and not Catalog.get_relic(rid).is_empty():
+				if not (rid in q_rel):
+					q_rel.append(rid)
+		for sr in ["REL_GREED", "REL_FANG", "REL_FUJARA"]:
+			if not (sr in q_rel) and not Catalog.is_relic_hidden(sr):
 				q_rel.append(sr)
 		var q_ed: Dictionary = run_profile.get("card_editions", {}).duplicate()
 		q_ed["CERVEN_E"] = "MAGE"
@@ -1097,13 +1263,13 @@ func _build_roguelite_loadout_for_era(era: Dictionary, is_quick_showcase: bool =
 		return {
 			"custom_cards": q_cards,
 			"active_relics": q_rel,
+			"table_relics": run_profile.get("table_relics", ["TRELIC_BLOOD_SEAL", "TRELIC_STAR_BOW"]).duplicate(),
 			"card_editions": q_ed,
 			"removed_cards": run_profile.get("removed_cards", []).duplicate(),
 			"added_cards": run_profile.get("added_cards", []).duplicate(),
 			"suit_overrides": run_profile.get("suit_overrides", {}).duplicate(),
 			"relic_scales": run_profile.get("relic_scales", {}).duplicate(),
 			"shop_rerolls": int(run_profile.get("shop_rerolls", 0)),
-			"prism_pts_bonus": int(run_profile.get("prism_pts_bonus", 0)),
 			"endless_ante": 0,
 			"stage_data": {"stage_idx": 1, "stage_name": _tr("Quick Duel Showcase", "Rychlý duel"), "stage_name_cs": "Rychlý duel", "boss_mod": "", "boss_desc": "", "boss_desc_cs": "", "gold": 55},
 			"target_score": int(era.get("target", 1800)),
@@ -1125,16 +1291,22 @@ func _build_roguelite_loadout_for_era(era: Dictionary, is_quick_showcase: bool =
 		st_data = st_data.duplicate()
 		scaled_goal = Catalog.compute_target_score(e_id, st_idx, asc, 0, diff_mode)
 
+	var active_rel_clean: Array = []
+	for ar_raw in run_profile.get("active_relics", []):
+		var rid := str(ar_raw)
+		if not (rid in Catalog.ARCHIVED_RELIC_IDS) and not Catalog.is_relic_hidden(rid) and not Catalog.get_relic(rid).is_empty():
+			active_rel_clean.append(rid)
+
 	return {
 		"custom_cards": run_profile.get("custom_cards", []).duplicate(),
-		"active_relics": run_profile.get("active_relics", []).duplicate(),
+		"active_relics": active_rel_clean,
+		"table_relics": run_profile.get("table_relics", ["TRELIC_BLOOD_SEAL", "TRELIC_STAR_BOW"]).duplicate(),
 		"card_editions": run_profile.get("card_editions", {}).duplicate(),
 		"removed_cards": run_profile.get("removed_cards", []).duplicate(),
 		"added_cards": run_profile.get("added_cards", []).duplicate(),
 		"suit_overrides": run_profile.get("suit_overrides", {}).duplicate(),
 		"relic_scales": run_profile.get("relic_scales", {}).duplicate(),
 		"shop_rerolls": int(run_profile.get("shop_rerolls", 0)),
-		"prism_pts_bonus": int(run_profile.get("prism_pts_bonus", 0)),
 		"endless_ante": e_ante,
 		"stage_data": st_data,
 		"target_score": scaled_goal,
@@ -1149,6 +1321,8 @@ func _on_match_won_details(details: Dictionary) -> void:
 	var earned := int(details.get("gold_earned", 40)) + int(details.get("duel_gold_delta", 0))
 	var e_id: String = str(details.get("era_id", "stredovek"))
 	run_profile["gold"] = maxi(0, int(run_profile.get("gold", 0)) + earned)
+	for tid_v in details.get("table_relics", []):
+		Catalog.grant_table_relic(run_profile, str(tid_v))
 	run_profile["retry_blessing"] = 0
 	pending_post_loss_spoils.clear()
 	run_profile["total_wins"] = int(run_profile.get("total_wins", 0)) + 1
@@ -1161,7 +1335,6 @@ func _on_match_won_details(details: Dictionary) -> void:
 		for sk in d_scales.keys():
 			cur_scales[sk] = d_scales[sk]
 		run_profile["relic_scales"] = cur_scales
-	run_profile["prism_pts_bonus"] = maxi(int(run_profile.get("prism_pts_bonus", 0)), int(details.get("prism_pts_bonus", 0)))
 
 	var won_ante := int(details.get("endless_ante", 0))
 	if won_ante >= 1:
@@ -1218,6 +1391,8 @@ func _on_match_lost_details(details: Dictionary) -> void:
 	var st_gold := maxi(50, int(details.get("stage_gold", 90)))
 	var consolation_gold := maxi(35, int(round(float(st_gold) * 0.60)))
 	run_profile["gold"] = maxi(0, int(run_profile.get("gold", 0)) + consolation_gold)
+	for tid_v in details.get("table_relics", []):
+		Catalog.grant_table_relic(run_profile, str(tid_v))
 	var next_bless := clampi(int(run_profile.get("retry_blessing", 0)) + 1, 1, 3)
 	run_profile["retry_blessing"] = next_bless
 
@@ -1255,16 +1430,234 @@ func _launch_era_battle(era_idx: int, force_tutorial: bool = false) -> void:
 	_switch_to(ScreenState.MATCH_3D)
 
 # ============================================================================
-# 1. EPICKÉ INTRO: FUJARA STUDIOS (Vystúpi hora -> Zasneží -> Kamzíky & iskry)
+# 1. EPICKÉ INTRO: FUJIRA STUDIOS (Vystúpi hora -> Zasneží -> Kamzíky & iskry)
 # ============================================================================
+func _load_glb_scene(res_path: String) -> Node3D:
+	if ResourceLoader.exists(res_path):
+		var packed := load(res_path) as PackedScene
+		if packed:
+			var inst := packed.instantiate()
+			if inst is Node3D:
+				return inst as Node3D
+	if FileAccess.file_exists(res_path):
+		var gltf := GLTFDocument.new()
+		var state := GLTFState.new()
+		var abs_path := ProjectSettings.globalize_path(res_path)
+		if gltf.append_from_file(abs_path, state) == OK:
+			var gen := gltf.generate_scene(state)
+			if gen is Node3D:
+				return gen as Node3D
+	return null
+
+
+func _apply_mat_recursive(node: Node, mat: Material) -> void:
+	if node is MeshInstance3D:
+		(node as MeshInstance3D).material_override = mat
+	for ch in node.get_children():
+		_apply_mat_recursive(ch, mat)
+
+
+func _attach_outline_to_surfaces(node: Node, outline_mat: ShaderMaterial) -> void:
+	if node is MeshInstance3D:
+		var mi := node as MeshInstance3D
+		if mi.mesh != null:
+			for si in range(mi.mesh.get_surface_count()):
+				var base_mat := mi.get_active_material(si)
+				if base_mat != null:
+					var m_copy := base_mat.duplicate() as Material
+					m_copy.next_pass = outline_mat
+					mi.set_surface_override_material(si, m_copy)
+	for ch in node.get_children():
+		_attach_outline_to_surfaces(ch, outline_mat)
+
+
+func _find_anim_player_recursive(node: Node) -> AnimationPlayer:
+	if node is AnimationPlayer:
+		return node as AnimationPlayer
+	for ch in node.get_children():
+		var found := _find_anim_player_recursive(ch)
+		if found != null:
+			return found
+	return null
+
+
 func _build_splash_screen() -> void:
 	splash_control = Control.new()
 	splash_control.set_anchors_preset(Control.PRESET_FULL_RECT)
 	splash_control.theme = game_theme
 	ui_layer.add_child(splash_control)
 
+	# 1. Back layer: sunrise parchment sky + rising sun behind the 3D mountain
+	splash_sky_canvas = Control.new()
+	splash_sky_canvas.set_anchors_preset(Control.PRESET_FULL_RECT)
+	splash_sky_canvas.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	splash_sky_canvas.draw.connect(_draw_splash_sky)
+	splash_control.add_child(splash_sky_canvas)
+
+	# 2. Middle layer: isolated 3D SubViewport clipped cleanly along the 0.62 horizon line!
+	splash_3d_container = SubViewportContainer.new()
+	splash_3d_container.anchor_left = 0.0
+	splash_3d_container.anchor_top = 0.0
+	splash_3d_container.anchor_right = 1.0
+	splash_3d_container.anchor_bottom = 0.62
+	splash_3d_container.stretch = true
+	splash_3d_container.clip_contents = true
+	splash_3d_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	splash_control.add_child(splash_3d_container)
+
+	splash_3d_vp = SubViewport.new()
+	splash_3d_vp.transparent_bg = true
+	splash_3d_vp.own_world_3d = true
+	splash_3d_vp.msaa_3d = Viewport.MSAA_4X
+	splash_3d_vp.size = Vector2i(1280, 446)
+	splash_3d_container.add_child(splash_3d_vp)
+
+	var we := WorldEnvironment.new()
+	var env := Environment.new()
+	env.background_mode = Environment.BG_CLEAR_COLOR
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.76, 0.62, 0.52)
+	env.ambient_light_energy = 0.54
+	we.environment = env
+	splash_3d_vp.add_child(we)
+
+	splash_3d_sun = DirectionalLight3D.new()
+	splash_3d_sun.light_color = Color(1.0, 0.86, 0.62)
+	splash_3d_sun.light_energy = 1.12
+	splash_3d_sun.rotation_degrees = Vector3(-28.0, 52.0, 0.0)
+	splash_3d_sun.shadow_enabled = true
+	splash_3d_vp.add_child(splash_3d_sun)
+
+	var fill_sun := DirectionalLight3D.new()
+	fill_sun.light_color = Color(0.54, 0.68, 0.92)
+	fill_sun.light_energy = 0.28
+	fill_sun.rotation_degrees = Vector3(-42.0, -125.0, 0.0)
+	fill_sun.shadow_enabled = false
+	splash_3d_vp.add_child(fill_sun)
+
+	# Golden sunrise rim backlight catching snow crests and leaping 3D chamois silhouettes
+	splash_3d_rim_light = DirectionalLight3D.new()
+	splash_3d_rim_light.light_color = Color(1.0, 0.78, 0.40)
+	splash_3d_rim_light.light_energy = 0.85
+	splash_3d_rim_light.rotation_degrees = Vector3(14.0, 162.0, 0.0)
+	splash_3d_rim_light.shadow_enabled = false
+	splash_3d_vp.add_child(splash_3d_rim_light)
+
+	splash_3d_cam = Camera3D.new()
+	splash_3d_cam.fov = 26.5
+	splash_3d_cam.position = Vector3(0.0, 0.72, 8.35)
+	splash_3d_vp.add_child(splash_3d_cam)
+	splash_3d_cam.look_at(Vector3(0.0, 1.36, 0.0), Vector3.UP)
+
+	splash_mtn_mat = ShaderMaterial.new()
+	splash_mtn_mat.shader = MOUNTAIN_SHADER
+	splash_mtn_mat.set_shader_parameter("rock_tint", Color(0.86, 0.44, 0.20))
+	var rock_tex := Toon.tex("res://assets/map/mountain_rock.png")
+	if rock_tex:
+		splash_mtn_mat.set_shader_parameter("rock_tex", rock_tex)
+	splash_mtn_mat.set_shader_parameter("uv_scale", Vector2(2.6, 2.6))
+	splash_mtn_mat.set_shader_parameter("peak_height", 3.06)
+	splash_mtn_mat.set_shader_parameter("snow_line_ratio", 1.28)
+	splash_mtn_mat.set_shader_parameter("snow_col", Color(0.96, 0.94, 0.90))
+	splash_mtn_mat.set_shader_parameter("snow_shadow_col", Color(0.50, 0.62, 0.80))
+	splash_mtn_mat.set_shader_parameter("snow_sun_tint", Color(1.0, 0.95, 0.84))
+	splash_mtn_mat.set_shader_parameter("wind_drift_strength", 0.62)
+	splash_mtn_mat.set_shader_parameter("sparkle_strength", 0.60)
+	splash_mtn_mat.set_shader_parameter("snow_time", 0.0)
+	splash_mtn_mat.set_shader_parameter("shadow_tint", Color(0.42, 0.24, 0.20))
+	splash_mtn_mat.set_shader_parameter("band_soft", 0.055)
+	var m_outline := ShaderMaterial.new()
+	m_outline.shader = preload("res://shaders/outline.gdshader")
+	m_outline.set_shader_parameter("thickness", 0.022)
+	splash_mtn_mat.next_pass = m_outline
+
+	var loaded_mtn := _load_glb_scene("res://assets/models/krivan_intro_massif.glb")
+	if loaded_mtn != null:
+		splash_mtn_root = loaded_mtn
+		_apply_mat_recursive(splash_mtn_root, splash_mtn_mat)
+	else:
+		splash_mtn_root = Node3D.new()
+		var fb := MeshInstance3D.new()
+		fb.mesh = _build_jagged_peak_mesh(0.28, 2.2, 2.65, 16, 42)
+		fb.material_override = splash_mtn_mat
+		splash_mtn_root.add_child(fb)
+	splash_mtn_root.position = Vector3(0.0, -3.0, 0.0)
+	splash_3d_vp.add_child(splash_mtn_root)
+
+	# 3D fine summit micro-snow & drifting mist particles
+	splash_3d_snow_particles = GPUParticles3D.new()
+	splash_3d_snow_particles.amount = 110
+	splash_3d_snow_particles.lifetime = 3.2
+	splash_3d_snow_particles.emitting = false
+	splash_3d_snow_particles.position = Vector3(-0.2, 2.55, 0.55)
+	var snow_pm := ParticleProcessMaterial.new()
+	snow_pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	snow_pm.emission_box_extents = Vector3(3.8, 0.90, 1.4)
+	snow_pm.direction = Vector3(0.38, -0.75, 0.08)
+	snow_pm.spread = 28.0
+	snow_pm.initial_velocity_min = 0.28
+	snow_pm.initial_velocity_max = 0.65
+	snow_pm.gravity = Vector3(0.14, -0.34, 0.02)
+	snow_pm.turbulence_enabled = true
+	snow_pm.turbulence_noise_strength = 0.85
+	snow_pm.turbulence_noise_scale = 2.6
+	snow_pm.scale_min = 0.45
+	snow_pm.scale_max = 1.05
+	splash_3d_snow_particles.process_material = snow_pm
+	var snow_qm := QuadMesh.new()
+	snow_qm.size = Vector2(0.012, 0.012)
+	var soft_grad := Gradient.new()
+	soft_grad.set_color(0, Color(1.0, 1.0, 1.0, 1.0))
+	soft_grad.set_color(1, Color(1.0, 1.0, 1.0, 0.0))
+	soft_grad.add_point(0.4, Color(1.0, 1.0, 1.0, 0.45))
+	var soft_tex := GradientTexture2D.new()
+	soft_tex.gradient = soft_grad
+	soft_tex.fill = GradientTexture2D.FILL_RADIAL
+	soft_tex.fill_from = Vector2(0.5, 0.5)
+	soft_tex.fill_to = Vector2(1.0, 0.5)
+	soft_tex.width = 32
+	soft_tex.height = 32
+	var snow_qmat := StandardMaterial3D.new()
+	snow_qmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	snow_qmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	snow_qmat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	snow_qmat.albedo_texture = soft_tex
+	snow_qmat.albedo_color = Color(0.96, 0.98, 1.0, 0.42)
+	snow_qm.material = snow_qmat
+	splash_3d_snow_particles.draw_pass_1 = snow_qm
+	splash_3d_vp.add_child(splash_3d_snow_particles)
+
+	# 3 Animated Blender 3D Tatra Chamois leaping across Krivan's snow-draped front ridge
+	splash_chamois_nodes.clear()
+	splash_chamois_anims.clear()
+	splash_chamois_trails.clear()
+	var chamois_outline := ShaderMaterial.new()
+	chamois_outline.shader = preload("res://shaders/outline.gdshader")
+	chamois_outline.set_shader_parameter("thickness", 0.005)
+	chamois_outline.set_shader_parameter("outline_color", Color(0.08, 0.05, 0.03, 1.0))
+	var chamois_scales := [0.56, 0.50, 0.46]
+	for c_idx in range(3):
+		var c_inst := _load_glb_scene("res://assets/models/intro_chamois.glb")
+		if c_inst == null:
+			continue
+		c_inst.visible = false
+		c_inst.scale = Vector3.ONE * float(chamois_scales[c_idx])
+		_attach_outline_to_surfaces(c_inst, chamois_outline)
+		splash_3d_vp.add_child(c_inst)
+		splash_chamois_nodes.append(c_inst)
+		var ap := _find_anim_player_recursive(c_inst)
+		if ap != null:
+			if ap.has_animation("LeapCycle"):
+				var anim_l := ap.get_animation("LeapCycle")
+				if anim_l != null:
+					anim_l.loop_mode = Animation.LOOP_LINEAR
+			ap.speed_scale = 1.30
+		splash_chamois_anims.append(ap)
+
+	# 3. Front layer: foreground snow flakes, golden hoof spindrift, studio title & dark curtain
 	splash_canvas = Control.new()
 	splash_canvas.set_anchors_preset(Control.PRESET_FULL_RECT)
+	splash_canvas.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	splash_canvas.draw.connect(_draw_splash_animation)
 	splash_control.add_child(splash_canvas)
 
@@ -1275,78 +1668,118 @@ func _draw_snowflake_star(canvas: Control, c: Vector2, r: float, ang: float, col
 		canvas.draw_line(c - d, c + d, col, 1.35)
 	canvas.draw_circle(c, r * 0.28, col)
 
-func _draw_alpine_chamois(canvas: Control, pos: Vector2, pitch: float, gp: float, alpha: float) -> void:
-	if alpha <= 0.01:
+func _draw_splash_sky() -> void:
+	if not is_instance_valid(splash_sky_canvas):
 		return
-	var coat_dark := Color(0.16, 0.11, 0.08, alpha)
-	var coat_mid := Color(0.28, 0.19, 0.13, alpha)
-	var chest_cream := Color(0.92, 0.84, 0.68, alpha)
-	var horn_col := Color(0.07, 0.05, 0.04, alpha)
-	var gold_rim := Color(1.0, 0.84, 0.38, 0.82 * alpha)
+	var rect := splash_sky_canvas.get_viewport_rect()
+	var cx := rect.size.x * 0.5
+	var horizon_y := rect.size.y * 0.62
+	var t := splash_time * 0.88
 
-	canvas.draw_set_transform(pos, pitch, Vector2(1.22, 1.22))
+	var sun_rise := clampf((t - 0.05) / 0.85, 0.0, 1.0)
+	var bg_col := Color(0.11, 0.10, 0.12).lerp(Color(0.95, 0.92, 0.87), ease(sun_rise, 0.45))
+	splash_sky_canvas.draw_rect(rect, bg_col)
 
-	# Zadné nohy (2-článkové so stehnom, pätou a kopýtkom v dynamickom odraze)
-	var stride := sin(gp * PI * 3.2)
-	var h1_knee := Vector2(-9.0 - stride * 3.0, 6.0)
-	var h1_hoof := Vector2(-17.0 - stride * 6.5, 13.0 - stride * 2.0)
-	var h2_knee := Vector2(-6.0 + stride * 2.5, 6.5)
-	var h2_hoof := Vector2(-12.0 + stride * 5.0, 14.0 + stride * 1.5)
-	canvas.draw_line(Vector2(-7.0, 1.0), h2_knee, coat_dark.darkened(0.2), 2.6)
-	canvas.draw_line(h2_knee, h2_hoof, horn_col, 2.0)
-	canvas.draw_line(Vector2(-8.5, 0.5), h1_knee, coat_mid, 3.0)
-	canvas.draw_line(h1_knee, h1_hoof, coat_dark, 2.2)
+	var sun_y := lerpf(horizon_y + 50.0, horizon_y - 225.0, ease(clampf(t / 1.15, 0.0, 1.0), 0.4))
+	var sun_pos := Vector2(cx + 68.0, sun_y)
+	splash_sky_canvas.draw_circle(sun_pos, 148.0 * sun_rise, Color(1.0, 0.78, 0.36, 0.36 * sun_rise))
+	splash_sky_canvas.draw_circle(sun_pos, 82.0 * sun_rise, Color(1.0, 0.88, 0.54, 0.82 * sun_rise))
 
-	# Predné nohy (vystreté dopredu/pod seba počas skoku)
-	var f1_knee := Vector2(9.0 + stride * 3.0, 5.5)
-	var f1_hoof := Vector2(17.5 + stride * 6.0, 11.5 + stride * 2.0)
-	var f2_knee := Vector2(6.5 - stride * 2.5, 6.0)
-	var f2_hoof := Vector2(12.5 - stride * 4.5, 13.0 - stride * 1.5)
-	canvas.draw_line(Vector2(6.0, 1.0), f2_knee, coat_dark.darkened(0.2), 2.5)
-	canvas.draw_line(f2_knee, f2_hoof, horn_col, 1.9)
-	canvas.draw_line(Vector2(7.5, 0.5), f1_knee, coat_mid, 2.8)
-	canvas.draw_line(f1_knee, f1_hoof, coat_dark, 2.1)
 
-	# Svalnatý trup, klenutý chrbát, štíhly krk a hlava kamzíka
-	var torso := PackedVector2Array([
-		Vector2(-12.0, 0.5),   # Zadok
-		Vector2(-10.5, -4.5),  # Bedrá
-		Vector2(-2.0, -5.5),   # Chrbát
-		Vector2(6.5, -6.5),    # Kohútik
-		Vector2(11.5, -14.5),  # Zadná línia krku
-		Vector2(14.5, -15.5),  # Temeno hlavy
-		Vector2(20.0, -12.0),  # Ňufák
-		Vector2(15.0, -9.5),   # Sánka
-		Vector2(11.5, -3.5),   # Hruď
-		Vector2(7.5, 2.5),     # Predná hruď
-		Vector2(-1.0, 2.0),    # Brucho
-		Vector2(-8.5, 2.5),    # Slabiny
-	])
-	canvas.draw_colored_polygon(torso, coat_mid)
-	# Tmavý tatranský zimný pás srsti a svetlá maska na tvári
-	var belly_saddle := PackedVector2Array([
-		Vector2(-9.5, -1.0), Vector2(7.5, -2.5), Vector2(10.5, -6.5),
-		Vector2(8.0, 2.0), Vector2(-1.0, 1.8), Vector2(-8.0, 2.2)
-	])
-	canvas.draw_colored_polygon(belly_saddle, coat_dark)
-	canvas.draw_line(Vector2(14.2, -13.8), Vector2(18.5, -11.8), chest_cream, 1.8)
-	canvas.draw_circle(Vector2(15.2, -13.2), 1.1, horn_col)
+func _krivan_chamois_arc_pos(gp: float, c_idx: int) -> Vector3:
+	var x := lerpf(-2.45, 2.58, gp)
+	var shoulder_y := 1.44 + (1.0 - pow(clampf(absf(x) / 2.6, 0.0, 1.0), 1.45)) * 0.74
+	var y := shoulder_y + sin(gp * PI) * 0.62 + float(c_idx % 2) * 0.14
+	var z := 0.94 + float(c_idx) * 0.14 - sin(gp * PI) * 0.08
+	return Vector3(x, y, z)
 
-	# Krátky vztýčený chvostík
-	canvas.draw_line(Vector2(-11.5, -1.5), Vector2(-15.5, -4.5), coat_dark, 2.2)
 
-	# Ikonické hákovité tatranské rohy kamzíka (zahnuté dozadu na špičke!)
-	var horn1 := PackedVector2Array([
-		Vector2(13.2, -15.0), Vector2(12.2, -21.5), Vector2(9.8, -22.2), Vector2(8.8, -20.2)
-	])
-	var horn2 := PackedVector2Array([
-		Vector2(14.4, -14.8), Vector2(13.8, -20.8), Vector2(11.6, -21.4), Vector2(10.8, -19.6)
-	])
-	canvas.draw_polyline(horn2, horn_col, 1.6)
-	canvas.draw_polyline(horn1, horn_col, 2.0)
-	canvas.draw_polyline(torso + PackedVector2Array([torso[0]]), gold_rim, 1.1)
+func _update_splash_3d() -> void:
+	var t := splash_time * 0.88
+	var rise_p := clampf((t - 0.38) / 0.92, 0.0, 1.0)
+	var rise_ease := clampf(ease(rise_p, 0.32), 0.0, 1.05)
+	if rise_p > 0.75:
+		var settle := (rise_p - 0.75) / 0.25
+		rise_ease = 1.0 + sin(settle * PI) * 0.035
 
-	canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if is_instance_valid(splash_mtn_root):
+		splash_mtn_root.position.y = lerpf(-2.95, -0.22, rise_ease)
+		splash_mtn_root.rotation_degrees.y = sin(t * 0.42) * 3.5
+
+	if is_instance_valid(splash_3d_cam):
+		var cam_dolly := clampf(t / 4.2, 0.0, 1.0)
+		splash_3d_cam.position = Vector3(sin(t * 0.35) * 0.18, lerpf(0.72, 0.82, cam_dolly), lerpf(8.35, 7.75, cam_dolly))
+		splash_3d_cam.look_at(Vector3(0.0, lerpf(1.36, 1.30, cam_dolly), 0.0), Vector3.UP)
+
+	if is_instance_valid(splash_3d_sun):
+		var sun_sweep := clampf((t - 0.2) / 3.2, 0.0, 1.0)
+		splash_3d_sun.rotation_degrees = Vector3(lerpf(-18.0, -34.0, sun_sweep), lerpf(62.0, 40.0, sun_sweep), 0.0)
+
+	if splash_mtn_mat:
+		var snow_cov := clampf((t - 1.05) / 1.30, 0.0, 1.0)
+		var snow_line := lerpf(1.28, 0.36, ease(snow_cov, 0.54))
+		splash_mtn_mat.set_shader_parameter("snow_line_ratio", snow_line)
+		splash_mtn_mat.set_shader_parameter("snow_time", t)
+
+	if is_instance_valid(splash_3d_snow_particles):
+		splash_3d_snow_particles.emitting = (t >= 0.90 and t <= 4.10)
+
+	# Animate 3 Blender 3D Tatra Chamois leaping gracefully across Krivan's snow-draped ridge
+	splash_chamois_trails.clear()
+	var can_unproject := (
+		is_instance_valid(splash_3d_cam)
+		and is_instance_valid(splash_3d_vp)
+		and is_instance_valid(splash_3d_container)
+		and splash_3d_vp.size.x > 0
+		and splash_3d_vp.size.y > 0
+	)
+	var vp_to_canvas := Vector2.ONE
+	if can_unproject:
+		vp_to_canvas = splash_3d_container.size / Vector2(splash_3d_vp.size)
+
+	for c_idx in range(splash_chamois_nodes.size()):
+		var ch := splash_chamois_nodes[c_idx]
+		if not is_instance_valid(ch):
+			continue
+		var ap: AnimationPlayer = splash_chamois_anims[c_idx] if c_idx < splash_chamois_anims.size() else null
+		var g_start := 2.02 + float(c_idx) * 0.34
+		var gp := (t - g_start) / 1.18
+		if gp > 0.005 and gp < 0.995:
+			if not ch.visible:
+				ch.visible = true
+				if is_instance_valid(ap) and ap.has_animation("LeapCycle"):
+					ap.play("LeapCycle")
+					ap.seek(fmod(float(c_idx) * 0.22, 1.1), true)
+			var pos_now := _krivan_chamois_arc_pos(gp, c_idx)
+			var pos_next := _krivan_chamois_arc_pos(minf(gp + 0.025, 1.0), c_idx)
+			var vel := pos_next - pos_now
+			ch.position = pos_now
+			var pitch_deg := rad_to_deg(atan2(vel.y, maxf(0.001, vel.x)))
+			ch.rotation_degrees = Vector3(sin(gp * PI * 2.0) * 4.5, -12.0 + float(c_idx) * 3.0, clampf(pitch_deg, -34.0, 34.0))
+
+			if can_unproject:
+				var edge_fade := clampf(sin(gp * PI) * 2.6, 0.0, 1.0)
+				for tr_i in range(1, 7):
+					var tp := clampf(gp - float(tr_i) * 0.024, 0.0, 1.0)
+					var w_tr := _krivan_chamois_arc_pos(tp, c_idx) + Vector3(-0.14, 0.04, 0.0)
+					if not splash_3d_cam.is_position_behind(w_tr):
+						var s_pt := splash_3d_cam.unproject_position(w_tr) * vp_to_canvas
+						splash_chamois_trails.append({
+							"pos": s_pt,
+							"step": tr_i,
+							"alpha": edge_fade,
+						})
+		else:
+			if ch.visible:
+				ch.visible = false
+				if is_instance_valid(ap):
+					ap.stop()
+
+	if is_instance_valid(splash_sky_canvas):
+		splash_sky_canvas.queue_redraw()
+	if is_instance_valid(splash_canvas):
+		splash_canvas.queue_redraw()
+
 
 func _draw_splash_animation() -> void:
 	var rect := splash_canvas.get_viewport_rect()
@@ -1354,168 +1787,62 @@ func _draw_splash_animation() -> void:
 	var h := rect.size.y
 	var cx := w * 0.5
 	var horizon_y := h * 0.62
-	# Brisk majestic pacing (~5.3s total instead of 13.4s)
+	# Brisk majestic pacing (~5.3s total) with Blender 3D Krivan peak underneath
 	var t := splash_time * 0.88
 
-	# Teplý pergamenovo-ranný prechod oblohy (jemné rozjasnenie východom slnka)
-	var sun_rise := clampf((t - 0.05) / 0.85, 0.0, 1.0)
-	var bg_col := Color(0.11, 0.10, 0.12).lerp(Color(0.95, 0.92, 0.87), ease(sun_rise, 0.45))
-	splash_canvas.draw_rect(rect, bg_col)
-
-	# Slnko stúpajúce za horu
-	var sun_y := lerpf(horizon_y + 70.0, horizon_y - 125.0, ease(clampf(t / 1.1, 0.0, 1.0), 0.4))
-	splash_canvas.draw_circle(Vector2(cx, sun_y), 96.0 * sun_rise, Color(1.0, 0.78, 0.36, 0.42 * sun_rise))
-	splash_canvas.draw_circle(Vector2(cx, sun_y), 66.0 * sun_rise, Color(1.0, 0.88, 0.54, 0.85 * sun_rise))
-
-	# Fáza 1: Hora sa vysunie zospodu a pevne sa postaví s miernym úderom
 	var rise_p := clampf((t - 0.38) / 0.92, 0.0, 1.0)
 	var rise_ease := clampf(ease(rise_p, 0.32), 0.0, 1.05)
 	if rise_p > 0.75:
 		var settle := (rise_p - 0.75) / 0.25
 		rise_ease = 1.0 + sin(settle * PI) * 0.035
 
-	var m_h := 228.0 * rise_ease
-	var peak := Vector2(cx, horizon_y - m_h)
+	if rise_ease > 0.05 and t >= 1.12 and t <= 1.85:
+		var dp := (t - 1.12) / 0.73
+		for i in range(6):
+			var side := -1.0 if i < 3 else 1.0
+			var k := float(i % 3)
+			var px := cx + side * (75.0 + k * 55.0 + dp * 42.0)
+			var py := horizon_y - 8.0 - sin(dp * PI) * 18.0
+			splash_canvas.draw_circle(Vector2(px, py), (18.0 - k * 3.0) * (1.0 - dp * 0.5), Color(0.86, 0.80, 0.72, (1.0 - dp) * 0.55))
 
-	# Zadné bočné vrchy + hlavný štít
-	if rise_ease > 0.05 and m_h > 14.0:
-		var sl_top := Vector2(cx - 175.0, horizon_y - m_h * 0.62)
-		var sr_top := Vector2(cx + 185.0, horizon_y - m_h * 0.56)
-		var side_l := PackedVector2Array([
-			Vector2(cx - 320.0, horizon_y),
-			sl_top,
-			Vector2(cx - 45.0, horizon_y),
-		])
-		var side_r := PackedVector2Array([
-			Vector2(cx + 45.0, horizon_y),
-			sr_top,
-			Vector2(cx + 330.0, horizon_y),
-		])
-		splash_canvas.draw_colored_polygon(side_l, Color(0.68, 0.33, 0.16, 0.75))
-		splash_canvas.draw_colored_polygon(side_r, Color(0.58, 0.26, 0.12, 0.75))
-
-		# Hlavný skalnatý štít s pevne definovanými hranami
-		var p_left_base := Vector2(cx - 210.0, horizon_y)
-		var p_left_sh := Vector2(cx - 34.0, peak.y + m_h * 0.035)
-		var p_top := Vector2(cx + 4.0, peak.y)
-		var p_right_sh := Vector2(cx + 38.0, peak.y + m_h * 0.052)
-		var p_right_base := Vector2(cx + 215.0, horizon_y)
-
-		var main_mtn := PackedVector2Array([p_left_base, p_left_sh, p_top, p_right_sh, p_right_base])
-		splash_canvas.draw_colored_polygon(main_mtn, Color(0.86, 0.39, 0.14))
-		var mtn_shadow := PackedVector2Array([p_top, p_right_sh, p_right_base, Vector2(cx + 28.0, horizon_y)])
-		splash_canvas.draw_colored_polygon(mtn_shadow, Color(0.66, 0.25, 0.09))
-
-		# Fáza 2: Vylepšená bohatá snehová pokrývka (aj na bočných štítoch + ľadové odlesky!)
-		var snow_cov := clampf((t - 1.15) / 1.10, 0.0, 1.0)
-		if snow_cov > 0.01:
-			var s_depth := ease(snow_cov, 0.62) * 0.48
-			# Snehové čiapočky na bočných vrchoch
-			var sl_l := sl_top.lerp(Vector2(cx - 320.0, horizon_y), s_depth * 0.72)
-			var sl_r := sl_top.lerp(Vector2(cx - 45.0, horizon_y), s_depth * 0.72)
-			splash_canvas.draw_colored_polygon(PackedVector2Array([sl_top, sl_r, Vector2(sl_top.x, lerpf(sl_l.y, sl_r.y, 0.5) + 8.0 * s_depth), sl_l]), Color(0.94, 0.96, 1.0, minf(0.88, snow_cov * 1.5)))
-			var sr_l := sr_top.lerp(Vector2(cx + 45.0, horizon_y), s_depth * 0.72)
-			var sr_r := sr_top.lerp(Vector2(cx + 330.0, horizon_y), s_depth * 0.72)
-			splash_canvas.draw_colored_polygon(PackedVector2Array([sr_top, sr_r, Vector2(sr_top.x, lerpf(sr_l.y, sr_r.y, 0.5) + 8.0 * s_depth), sr_l]), Color(0.88, 0.92, 0.98, minf(0.85, snow_cov * 1.5)))
-
-			var p_l_rim := p_left_sh.lerp(p_left_base, s_depth)
-			var p_r_rim := p_right_sh.lerp(p_right_base, s_depth)
-			var mid_x := lerpf(p_l_rim.x, p_r_rim.x, 0.5)
-			var mid_y := lerpf(p_l_rim.y, p_r_rim.y, 0.5)
-
-			var snow_poly := PackedVector2Array([
-				p_left_sh,
-				p_top,
-				p_right_sh,
-				p_r_rim,
-				Vector2(lerpf(p_l_rim.x, p_r_rim.x, 0.78), mid_y - 14.0 * s_depth * 2.2),
-				Vector2(lerpf(p_l_rim.x, p_r_rim.x, 0.62), mid_y + 10.0 * s_depth * 2.2),
-				Vector2(mid_x + 8.0, mid_y + 18.0 * s_depth * 2.2),
-				Vector2(lerpf(p_l_rim.x, p_r_rim.x, 0.36), mid_y - 8.0 * s_depth * 2.2),
-				Vector2(lerpf(p_l_rim.x, p_r_rim.x, 0.18), mid_y + 8.0 * s_depth * 2.2),
-				p_l_rim,
-			])
-			splash_canvas.draw_colored_polygon(snow_poly, Color(0.98, 0.99, 1.0, minf(1.0, snow_cov * 1.8)))
-			var snow_sh := PackedVector2Array([
-				p_top,
-				p_right_sh,
-				p_r_rim,
-				Vector2(lerpf(p_l_rim.x, p_r_rim.x, 0.78), mid_y - 14.0 * s_depth * 2.2),
-				Vector2(lerpf(p_l_rim.x, p_r_rim.x, 0.62), mid_y + 10.0 * s_depth * 2.2),
-				Vector2(mid_x + 8.0, mid_y + 18.0 * s_depth * 2.2),
-			])
-			splash_canvas.draw_colored_polygon(snow_sh, Color(0.84, 0.90, 0.98, minf(0.88, snow_cov * 1.4)))
-
-			# Trblietavé kryštáliky ľadu na snehovej hrane
-			for gl_i in range(9):
-				var gu := float(gl_i + 1) / 10.0
-				var gp_pos := p_l_rim.lerp(p_r_rim, gu) + Vector2(0.0, sin(float(gl_i) * 2.1) * 6.0)
-				var gl_a := (0.45 + 0.55 * sin(t * 7.0 + float(gl_i) * 1.7)) * snow_cov
-				splash_canvas.draw_circle(gp_pos, 2.2, Color(1.0, 0.98, 0.82, gl_a))
-
-		splash_canvas.draw_polyline(main_mtn, Color(0.18, 0.12, 0.08, 0.85), 3.0)
-
-		if t >= 1.12 and t <= 1.85:
-			var dp := (t - 1.12) / 0.73
-			for i in range(6):
-				var side := -1.0 if i < 3 else 1.0
-				var k := float(i % 3)
-				var px := cx + side * (75.0 + k * 55.0 + dp * 42.0)
-				var py := horizon_y - 8.0 - sin(dp * PI) * 18.0
-				splash_canvas.draw_circle(Vector2(px, py), (18.0 - k * 3.0) * (1.0 - dp * 0.5), Color(0.86, 0.80, 0.72, (1.0 - dp) * 0.55))
-
-	# Vylepšené 3-vrstvové sneženie: jemný prašan v pozadí + 6-cípe snehové hviezdičky + veterné záveje (t = 0.95 .. 3.75)
-	if t >= 0.95 and t <= 3.75:
-		var fl_alpha := clampf((t - 0.95) / 0.35, 0.0, 1.0) * clampf((3.75 - t) / 0.65, 0.0, 1.0)
-		# Jemné veterné prúdy snehu ponad štít
-		for w_i in range(3):
-			var wy := horizon_y - 190.0 + float(w_i) * 52.0 + sin(t * 2.2 + float(w_i)) * 8.0
-			var wx_off := fmod(t * 140.0 + float(w_i) * 90.0, 260.0) - 130.0
-			splash_canvas.draw_arc(Vector2(cx + wx_off, wy), 68.0, 0.15 * PI, 0.85 * PI, 20, Color(1.0, 1.0, 1.0, 0.22 * fl_alpha), 1.6)
-		for f_i in range(72):
+	# Falling alpine mist wisps drifting slowly down Krivan + tiny sub-pixel micro-snow motes (t = 0.95 .. 4.10)
+	if t >= 0.95 and t <= 4.10:
+		var mist_alpha := clampf((t - 0.95) / 0.45, 0.0, 1.0) * clampf((4.10 - t) / 0.70, 0.0, 1.0)
+		# Layered translucent falling mountain mist/fog sheets
+		for w_i in range(28):
+			var cyc := fmod((t - 0.95) * (0.14 + fmod(float(w_i) * 0.037, 0.10)) + float(w_i) * 0.17, 1.0)
+			var mx := cx + (fmod(float(w_i) * 97.3, 620.0) - 310.0) + sin(t * 0.85 + float(w_i) * 0.9) * 26.0 + cyc * 18.0
+			var my := (horizon_y - 290.0) + ease(cyc, 0.85) * 305.0
+			var rx := 38.0 + fmod(float(w_i) * 19.0, 44.0)
+			var edge_f := sin(cyc * PI)
+			var m_col := Color(0.92, 0.95, 0.99, (0.048 + fmod(float(w_i), 3.0) * 0.016) * mist_alpha * edge_f)
+			splash_canvas.draw_set_transform(Vector2(mx, my), 0.06 * sin(t + float(w_i)), Vector2(1.9, 0.42))
+			splash_canvas.draw_circle(Vector2.ZERO, rx, m_col)
+			splash_canvas.draw_circle(Vector2(14.0, -5.0), rx * 0.68, Color(0.96, 0.97, 1.0, m_col.a * 0.75))
+		splash_canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		# Tiny delicate micro-snow specks
+		for f_i in range(44):
 			var seed_x := fmod(float(f_i) * 73.1, 560.0) - 280.0
-			var spd := 0.42 + fmod(float(f_i) * 0.19, 0.48)
+			var spd := 0.24 + fmod(float(f_i) * 0.13, 0.22)
 			var fy_cyc := fmod((t - 0.95) * spd + float(f_i) * 0.13, 1.0)
-			var drift := sin(t * 2.4 + float(f_i) * 0.7) * (12.0 + fmod(float(f_i), 10.0)) + (fy_cyc * 28.0)
+			var drift := sin(t * 1.6 + float(f_i) * 0.7) * 9.0 + fy_cyc * 16.0
 			var fx := cx + seed_x + drift
-			var fy := (horizon_y - 315.0) + fy_cyc * 315.0
-			var layer := f_i % 3
-			if layer == 0:
-				# Kryštálová 6-cípa snehová vločka v popredí
-				var sr := 3.6 + fmod(float(f_i) * 0.5, 2.2)
-				_draw_snowflake_star(splash_canvas, Vector2(fx, fy), sr, t * 1.4 + float(f_i), Color(1.0, 1.0, 1.0, 0.88 * fl_alpha))
-			elif layer == 1:
-				var rad := 2.2 + fmod(float(f_i) * 0.7, 1.8)
-				splash_canvas.draw_circle(Vector2(fx, fy), rad, Color(1.0, 1.0, 1.0, 0.78 * fl_alpha))
-			else:
-				var rad_bg := 1.4 + fmod(float(f_i) * 0.4, 1.2)
-				splash_canvas.draw_circle(Vector2(fx, fy), rad_bg, Color(0.94, 0.97, 1.0, 0.48 * fl_alpha))
+			var fy := (horizon_y - 310.0) + fy_cyc * 310.0
+			var rad := 0.9 + fmod(float(f_i) * 0.31, 0.75)
+			splash_canvas.draw_circle(Vector2(fx, fy), rad, Color(0.96, 0.98, 1.0, 0.46 * mist_alpha * sin(fy_cyc * PI)))
 
-	# Fáza 3: Detailné tatranské Kamzíky (Sculpted Alpine Chamois) preskakujúce hrebeň so snehovým gejzírom!
-	if t >= 2.10 and t <= 4.12:
-		for g_i in range(3):
-			var g_start := 2.10 + float(g_i) * 0.34
-			var gp := (t - g_start) / 1.08
-			if gp > 0.005 and gp < 0.995:
-				var gx := lerpf(cx - 215.0, cx + 220.0, gp)
-				var gy := horizon_y - 90.0 - sin(gp * PI) * 166.0 + float(g_i % 2) * 14.0
-				var edge_fade := clampf(sin(gp * PI) * 2.8, 0.0, 1.0)
-				var pitch := cos(gp * PI) * -0.44
-
-				# Snehovo-zlatistá stopa a obláčiky prašanu za kopytami kamzíka
-				for tr_i in range(1, 7):
-					var tp := clampf(gp - float(tr_i) * 0.022, 0.0, 1.0)
-					var tx := lerpf(cx - 215.0, cx + 220.0, tp)
-					var ty := horizon_y - 90.0 - sin(tp * PI) * 166.0 + float(g_i % 2) * 14.0
-					var p_col := Color(1.0, 0.98, 0.92, (0.52 - float(tr_i) * 0.07) * edge_fade) if (tr_i % 2 == 0) else Color(0.98, 0.80, 0.34, (0.56 - float(tr_i) * 0.08) * edge_fade)
-					splash_canvas.draw_circle(Vector2(tx - 8.0, ty + 6.0), (6.5 - float(tr_i) * 0.7), p_col)
-
-				_draw_alpine_chamois(splash_canvas, Vector2(gx, gy), pitch, gp, edge_fade)
+	# Zlatisté obláčiky snežného prašanu za kopytami 3D kamzíkov
+	for tr in splash_chamois_trails:
+		var tr_i: int = int(tr["step"])
+		var edge_fade: float = float(tr["alpha"])
+		var s_pos: Vector2 = tr["pos"]
+		var p_col := Color(1.0, 0.98, 0.92, (0.50 - float(tr_i) * 0.07) * edge_fade) if (tr_i % 2 == 0) else Color(0.98, 0.80, 0.34, (0.54 - float(tr_i) * 0.08) * edge_fade)
+		splash_canvas.draw_circle(s_pos, maxf(1.2, 6.2 - float(tr_i) * 0.7), p_col)
 
 	# Podkladová linka horizontu
-	splash_canvas.draw_line(Vector2(cx - 350.0 * rise_ease, horizon_y), Vector2(cx + 350.0 * rise_ease, horizon_y), Color(0.24, 0.18, 0.13, 0.85), 3.0)
+	splash_canvas.draw_line(Vector2(cx - 460.0 * rise_ease, horizon_y), Vector2(cx + 460.0 * rise_ease, horizon_y), Color(0.24, 0.18, 0.13, 0.88), 3.2)
 
-	# Názov FUJARA STUDIOS pod horou
+	# Názov FUJIRA STUDIOS pod horou
 	var title_a := clampf((t - 2.0) / 0.65, 0.0, 1.0)
 	if title_a > 0.01:
 		var df := _get_font(true)
@@ -1718,7 +2045,7 @@ func _build_main_menu() -> void:
 		mp_dev.attach(self, menu_control)
 
 	var legal_footer := Label.new()
-	legal_footer.text = "© 2026 Fujara Studios. Všechna práva vyhrazena. • LIALO" if _is_cs() else "© 2026 Fujara Studios. All Rights Reserved.  •  LIALO"
+	legal_footer.text = "© 2026 Fujira Studios. Všechna práva vyhrazena. • LIALO" if _is_cs() else "© 2026 Fujira Studios. All Rights Reserved.  •  LIALO"
 	legal_footer.anchor_left = 0.0
 	legal_footer.anchor_top = 1.0
 	legal_footer.anchor_bottom = 1.0
@@ -1815,7 +2142,12 @@ func _build_deck_selector_modal() -> void:
 	tab_hb.add_theme_constant_override("separation", 12)
 	vbox.add_child(tab_hb)
 	collection_tab_btns.clear()
-	var t_arr: Array[String] = ["Classic Cards (32)", "Power Cards (16)", "Choose Deck (5)", "Relics & Blades (29)"]
+	var t_arr: Array[String] = [
+		"Classic Cards (32)",
+		"Power Cards (%d)" % Catalog.POWER_CARDS.size(),
+		"Choose Deck (5)",
+		"Relics & Blades (%d)" % (Catalog.get_visible_relics().size() + Catalog.SWORD_SKINS.size()),
+	]
 	for ti in range(t_arr.size()):
 		var t_txt: String = t_arr[ti]
 		var tb := Button.new()
@@ -2076,68 +2408,105 @@ func _draw_custom_arsenal_illustration(ctrl: Control, entry: Dictionary, show_fr
 
 	elif kind == "relic":
 		var rel: Dictionary = entry.get("raw_data", {})
+		var rel_id := str(rel.get("id", ""))
 		var icon_id := str(rel.get("icon", "Relic"))
-		ctrl.draw_circle(c, sz.x * 0.33, Color(accent.r, accent.g, accent.b, 0.20))
-		ctrl.draw_arc(c, sz.x * 0.31, 0.0, TAU, 36, ink, 2.2)
-		ctrl.draw_arc(c, sz.x * 0.27, 0.0, TAU, 32, accent.darkened(0.15), 2.0)
-		# Distinct woodcut artifact illustration based on relic icon type
-		if icon_id in ["Horn", "Fang", "Plume", "Leaf"]:
-			var horn_pts := PackedVector2Array([
-				c + Vector2(-28, 22), c + Vector2(-12, 28), c + Vector2(18, 10),
-				c + Vector2(30, -26), c + Vector2(12, -10), c + Vector2(-10, 8)
-			])
-			ctrl.draw_colored_polygon(horn_pts, accent)
-			ctrl.draw_polyline(horn_pts + PackedVector2Array([horn_pts[0]]), ink, 2.6)
-		elif icon_id in ["Flask", "Mug", "Seal"]:
-			ctrl.draw_circle(c + Vector2(0, 10), 22.0, accent)
-			ctrl.draw_arc(c + Vector2(0, 10), 22.0, 0.0, TAU, 24, ink, 2.6)
-			ctrl.draw_rect(Rect2(c.x - 8, c.y - 26, 16, 18), accent.lightened(0.2))
-			ctrl.draw_rect(Rect2(c.x - 8, c.y - 26, 16, 18), ink, false, 2.4)
-		elif icon_id in ["Crown", "Ring", "Coin"]:
-			var cr_pts := PackedVector2Array([
-				c + Vector2(-28, 18), c + Vector2(-32, -12), c + Vector2(-14, 4),
-				c + Vector2(0, -22), c + Vector2(14, 4), c + Vector2(32, -12), c + Vector2(28, 18)
-			])
-			ctrl.draw_colored_polygon(cr_pts, accent)
-			ctrl.draw_polyline(cr_pts + PackedVector2Array([cr_pts[0]]), ink, 2.6)
-		elif icon_id in ["Grim", "Scroll"]:
-			var bk_r := Rect2(c.x - 24, c.y - 28, 48, 56)
-			ctrl.draw_rect(bk_r, accent.darkened(0.2))
-			ctrl.draw_rect(bk_r, ink, false, 2.6)
-			ctrl.draw_rect(bk_r.grow(-7.0), Color(0.98, 0.92, 0.76), false, 1.8)
-		elif icon_id in ["Axe", "Blade", "Anvil", "Armor", "Tower"]:
-			var sh_pts := PackedVector2Array([
-				c + Vector2(-24, -24), c + Vector2(24, -24),
-				c + Vector2(26, 4), c + Vector2(0, 30), c + Vector2(-26, 4)
-			])
-			ctrl.draw_colored_polygon(sh_pts, accent)
-			ctrl.draw_polyline(sh_pts + PackedVector2Array([sh_pts[0]]), ink, 2.6)
-			ctrl.draw_line(c + Vector2(0, -20), c + Vector2(0, 24), ink, 2.4)
-		else:
-			# Starburst / Astrolabe relic artifact
-			for ri in range(8):
-				var ra := float(ri) * (TAU / 8.0)
-				ctrl.draw_line(c, c + Vector2(cos(ra), sin(ra)) * 28.0, ink, 3.2)
-			ctrl.draw_circle(c, 16.0, accent)
-			ctrl.draw_arc(c, 16.0, 0.0, TAU, 24, ink, 2.5)
+		ctrl.draw_circle(c, sz.x * 0.34, Color(accent.r, accent.g, accent.b, 0.22))
+		ctrl.draw_arc(c, sz.x * 0.33, 0.0, TAU, 36, ink, 2.2)
+		ctrl.draw_arc(c, sz.x * 0.29, 0.0, TAU, 32, accent.darkened(0.15), 2.0)
+		var r_art_p := Catalog.get_relic_art_path(rel_id)
+		var drew_tex := false
+		if ResourceLoader.exists(r_art_p):
+			var rtex := Toon.tex(r_art_p)
+			if rtex:
+				var art_sz := minf(sz.x * 0.62, sz.y * 0.48)
+				ctrl.draw_texture_rect(rtex, Rect2(c - Vector2(art_sz * 0.5, art_sz * 0.5), Vector2(art_sz, art_sz)), false)
+				drew_tex = true
+		if not drew_tex:
+			if icon_id in ["Horn", "Fang", "Plume", "Leaf"]:
+				var horn_pts := PackedVector2Array([
+					c + Vector2(-28, 22), c + Vector2(-12, 28), c + Vector2(18, 10),
+					c + Vector2(30, -26), c + Vector2(12, -10), c + Vector2(-10, 8)
+				])
+				ctrl.draw_colored_polygon(horn_pts, accent)
+				ctrl.draw_polyline(horn_pts + PackedVector2Array([horn_pts[0]]), ink, 2.6)
+			elif icon_id in ["Flask", "Mug", "Seal"]:
+				ctrl.draw_circle(c + Vector2(0, 10), 22.0, accent)
+				ctrl.draw_arc(c + Vector2(0, 10), 22.0, 0.0, TAU, 24, ink, 2.6)
+				ctrl.draw_rect(Rect2(c.x - 8, c.y - 26, 16, 18), accent.lightened(0.2))
+				ctrl.draw_rect(Rect2(c.x - 8, c.y - 26, 16, 18), ink, false, 2.4)
+			elif icon_id in ["Crown", "Ring", "Coin"]:
+				var cr_pts := PackedVector2Array([
+					c + Vector2(-28, 18), c + Vector2(-32, -12), c + Vector2(-14, 4),
+					c + Vector2(0, -22), c + Vector2(14, 4), c + Vector2(32, -12), c + Vector2(28, 18)
+				])
+				ctrl.draw_colored_polygon(cr_pts, accent)
+				ctrl.draw_polyline(cr_pts + PackedVector2Array([cr_pts[0]]), ink, 2.6)
+			elif icon_id in ["Grim", "Scroll"]:
+				var bk_r := Rect2(c.x - 24, c.y - 28, 48, 56)
+				ctrl.draw_rect(bk_r, accent.darkened(0.2))
+				ctrl.draw_rect(bk_r, ink, false, 2.6)
+				ctrl.draw_rect(bk_r.grow(-7.0), Color(0.98, 0.92, 0.76), false, 1.8)
+			elif icon_id in ["Axe", "Blade", "Anvil", "Armor", "Tower"]:
+				var sh_pts := PackedVector2Array([
+					c + Vector2(-24, -24), c + Vector2(24, -24),
+					c + Vector2(26, 4), c + Vector2(0, 30), c + Vector2(-26, 4)
+				])
+				ctrl.draw_colored_polygon(sh_pts, accent)
+				ctrl.draw_polyline(sh_pts + PackedVector2Array([sh_pts[0]]), ink, 2.6)
+				ctrl.draw_line(c + Vector2(0, -20), c + Vector2(0, 24), ink, 2.4)
+			else:
+				for ri in range(8):
+					var ra := float(ri) * (TAU / 8.0)
+					ctrl.draw_line(c, c + Vector2(cos(ra), sin(ra)) * 28.0, ink, 3.2)
+				ctrl.draw_circle(c, 16.0, accent)
+				ctrl.draw_arc(c, 16.0, 0.0, TAU, 24, ink, 2.5)
 		ctrl.draw_string(df, Vector2(12, 26), "✦ " + _tr(str(rel.get("category", "RELIC")), str(rel.get("category_cs", rel.get("category", "RELIKVIE")))).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, sz.x - 24, 11, ink)
 		ctrl.draw_string(df, Vector2(10, sz.y - 18), _tr(str(rel.get("name", "Relic")), str(rel.get("name_cs", rel.get("name", "Relikvie")))), HORIZONTAL_ALIGNMENT_CENTER, sz.x - 20, 13, ink)
 
+	elif kind == "table_relic":
+		var tr_d: Dictionary = entry.get("raw_data", {})
+		var r_col: Color = tr_d.get("col", accent)
+		# Ornate Bleach-TYBW inspired concentric ritual seal + 3D Tabletop Relic medallion
+		ctrl.draw_circle(c, sz.x * 0.35, Color(r_col.r, r_col.g, r_col.b, 0.22))
+		ctrl.draw_arc(c, sz.x * 0.35, 0.0, TAU, 36, ink, 2.6)
+		ctrl.draw_arc(c, sz.x * 0.30, 0.0, TAU, 32, r_col, 2.2)
+		# Eight-point spiritual pressure star inside the medallion
+		for si in range(8):
+			var sa := float(si) * (TAU / 8.0)
+			var len_r := sz.x * (0.28 if (si % 2 == 0) else 0.17)
+			ctrl.draw_line(c, c + Vector2(cos(sa), sin(sa)) * len_r, ink, 2.8)
+			ctrl.draw_line(c, c + Vector2(cos(sa), sin(sa)) * (len_r - 3.0), r_col.lightened(0.25), 1.6)
+		ctrl.draw_circle(c, 15.0, Color(0.06, 0.04, 0.07))
+		ctrl.draw_arc(c, 15.0, 0.0, TAU, 24, r_col.lightened(0.35), 2.2)
+		ctrl.draw_string(df, Vector2(c.x - 16.0, c.y + 5.0), "3D", HORIZONTAL_ALIGNMENT_CENTER, 32.0, 14, r_col.lightened(0.40))
+		ctrl.draw_string(df, Vector2(12, 26), _tr("✦ 3D TABLE RELIC", "✦ 3D RELIKVIE NA STŮL"), HORIZONTAL_ALIGNMENT_LEFT, sz.x - 24, 11, ink)
+		ctrl.draw_string(df, Vector2(10, sz.y - 18), _tr(str(tr_d.get("name", "Table Relic")), str(tr_d.get("name_cs", tr_d.get("name", "Relikvie")))), HORIZONTAL_ALIGNMENT_CENTER, sz.x - 20, 13, ink)
+
 	elif kind == "deck":
 		var d: Dictionary = entry.get("raw_data", {})
-		var g_col: Color = d.get("glove_col", Color(0.45, 0.30, 0.18))
 		var b_col: Color = d.get("border_col", accent)
-		# Fanned stack of 5 miniature cards inside the deck card
+		var did := str(d.get("id", ""))
+		var back_p := str(d.get("back_tex", "res://assets/table/card_back.png"))
+		var deck_tex: Texture2D = card_face_cache.get("DECK_" + did, null) as Texture2D
+		if deck_tex == null and ResourceLoader.exists(back_p):
+			deck_tex = Toon.tex(back_p)
+			if deck_tex:
+				card_face_cache["DECK_" + did] = deck_tex
+		if deck_tex == null:
+			deck_tex = card_back_tex
+		# Fanned spread of this deck's bespoke woodcut back artwork (zero flat color blocks!)
 		for fi in range(5):
-			var off_x := (float(fi) - 2.0) * 14.0
-			var off_y := absf(float(fi) - 2.0) * 4.0
-			var mini_r := Rect2(c.x - 28 + off_x, c.y - 42 + off_y, 56, 80)
-			if card_back_tex and fi < 4:
-				ctrl.draw_texture_rect(card_back_tex, mini_r, false)
+			var off_x := (float(fi) - 2.0) * 16.0
+			var off_y := absf(float(fi) - 2.0) * 5.0 - 4.0
+			var w_c := 74.0 if fi == 2 else 60.0
+			var h_c := 110.0 if fi == 2 else 88.0
+			var mini_r := Rect2(c.x - w_c * 0.5 + off_x, c.y - h_c * 0.5 + off_y, w_c, h_c)
+			if deck_tex:
+				ctrl.draw_texture_rect(deck_tex, mini_r, false)
 			else:
-				ctrl.draw_rect(mini_r, g_col.lightened(0.15))
-			ctrl.draw_rect(mini_r, b_col, false, 2.0)
-		ctrl.draw_string(df, Vector2(10, 26), _tr("🂠 40-CARD DECK", "🂠 SADA KARET"), HORIZONTAL_ALIGNMENT_CENTER, sz.x - 20, 12, ink)
+				ctrl.draw_rect(mini_r, b_col.darkened(0.4))
+			ctrl.draw_rect(mini_r, b_col if fi == 2 else ink, false, 2.4 if fi == 2 else 1.6)
+		ctrl.draw_string(df, Vector2(10, 26), _tr("🂠 BESPOKE SET", "🂠 UNIKÁTNÍ SADA"), HORIZONTAL_ALIGNMENT_CENTER, sz.x - 20, 12, ink)
 		ctrl.draw_string(df, Vector2(10, sz.y - 18), _tr(str(d.get("name", "Deck")), str(d.get("name_cs", d.get("name", "Balíček")))), HORIZONTAL_ALIGNMENT_CENTER, sz.x - 20, 14, ink)
 
 func _build_collection_card_slot(entry: Dictionary) -> Control:
@@ -2419,7 +2788,9 @@ func _rebuild_collection_view() -> void:
 	if collection_stats_lbl:
 		collection_stats_lbl.text = "%d / %d %s" % [mini(unlocked_cnt, total_cards), total_cards, "Odemčeno" if cs else "Unlocked"]
 
-	var tab_labels := ["Klasické karty (32)", "Mocné karty (16)", "Sady balíčků (5)", "Relikvie a meče (29)"] if cs else ["Classic Cards (32)", "Power Cards (16)", "Choose Deck (5)", "Relics & Blades (29)"]
+	var vis_rel_cnt := Catalog.get_visible_relics().size()
+	var pwr_cnt := Catalog.POWER_CARDS.size()
+	var tab_labels := ["Klasické karty (32)", "Mocné karty (%d)" % pwr_cnt, "Sady balíčků (5)", "Relikvie a meče (%d)" % (vis_rel_cnt + Catalog.SWORD_SKINS.size())] if cs else ["Classic Cards (32)", "Power Cards (%d)" % pwr_cnt, "Choose Deck (5)", "Relics & Blades (%d)" % (vis_rel_cnt + Catalog.SWORD_SKINS.size())]
 	for ti in range(collection_tab_btns.size()):
 		var tb: Button = collection_tab_btns[ti]
 		if is_instance_valid(tb):
@@ -2544,6 +2915,7 @@ func _rebuild_collection_view() -> void:
 				"desc": d_desc,
 				"on_select": func():
 					selected_deck_idx = deck_idx_cap
+					card_back_tex = Toon.tex(str(PLAYER_DECKS[selected_deck_idx].get("back_tex", "res://assets/table/card_back.png")))
 					_rebuild_collection_view()
 					_populate_menu_signs()
 			}))
@@ -2574,9 +2946,29 @@ func _rebuild_collection_view() -> void:
 						Catalog.save_profile(run_profile)
 						_rebuild_collection_view()
 			}))
+		var owned_tr: Array = run_profile.get("table_relics", [])
+		for tr_raw in Catalog.TABLE_RELICS:
+			var tid := str(tr_raw["id"])
+			var tr_loc := Catalog.get_table_relic_loc(tid, lang)
+			var is_own_tr := (tid in owned_tr)
+			collection_grid.add_child(_build_collection_card_slot({
+				"key": tid,
+				"custom_kind": "table_relic",
+				"raw_data": tr_loc,
+				"unlocked": is_own_tr,
+				"equipped": is_own_tr,
+				"tex": null,
+				"col": tr_loc["col"],
+				"cap": "⛓ %dg" % int(tr_loc["cost"]),
+				"title": "✦ " + str(tr_loc["name"]),
+				"sub": _tr("3D Active Table Relic • %s", "3D Relikvie na stůl • %s") % _tr("ON TABLE IN DUEL" if is_own_tr else ("Locked • Shop: %d 🪙" % int(tr_loc["cost"])), "NA STOLE V DUELU" if is_own_tr else ("Zamčeno • Obchod: %d 🪙" % int(tr_loc["cost"]))),
+				"desc": str(tr_loc["desc"]),
+			}))
 		var owned_rel: Array = run_profile.get("active_relics", [])
 		for r_raw in Catalog.RELICS:
 			var rid := str(r_raw["id"])
+			if Catalog.is_relic_hidden(rid):
+				continue
 			var r := Catalog.get_relic_loc(rid, lang)
 			var is_own := (rid in owned_rel)
 			collection_grid.add_child(_build_collection_card_slot({
@@ -2593,343 +2985,107 @@ func _rebuild_collection_view() -> void:
 				"desc": str(r["desc"]),
 			}))
 
-func _wrap_option_card(parent_vb: VBoxContainer, ctrl: Control) -> PanelContainer:
-	var card := PanelContainer.new()
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.068, 0.055, 0.048, 0.94)
-	sb.set_border_width_all(0)
-	sb.set_corner_radius_all(10)
-	sb.content_margin_left = 10
-	sb.content_margin_right = 10
-	sb.content_margin_top = 6
-	sb.content_margin_bottom = 6
-	card.add_theme_stylebox_override("panel", sb)
-	card.add_child(ctrl)
-	parent_vb.add_child(card)
-	return card
-
 func _build_options_modal() -> void:
 	options_layer = CanvasLayer.new()
 	options_layer.layer = 12
 	add_child(options_layer)
 
-	options_modal = PanelContainer.new()
-	options_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
-	options_modal.offset_left = 0
-	options_modal.offset_top = 0
-	options_modal.offset_right = 0
-	options_modal.offset_bottom = 0
-	options_modal.visible = false
-	var opt_bg := StyleBoxFlat.new()
-	opt_bg.bg_color = Color(0.030, 0.024, 0.022, 0.99)
-	opt_bg.border_color = Color(0.84, 0.64, 0.24, 0.95)
-	opt_bg.set_border_width_all(3)
-	opt_bg.content_margin_left = 48
-	opt_bg.content_margin_right = 48
-	opt_bg.content_margin_top = 30
-	opt_bg.content_margin_bottom = 28
-	options_modal.add_theme_stylebox_override("panel", opt_bg)
-	options_layer.add_child(options_modal)
+	options_3d = LobbyOptions3DScript.new()
+	options_3d.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	options_3d.setup(_get_font(true), _get_font(false), _get_quill_font())
+	options_layer.add_child(options_3d)
+	options_3d.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
-	var root_vb := VBoxContainer.new()
-	root_vb.add_theme_constant_override("separation", 18)
-	options_modal.add_child(root_vb)
-
-	var hdr := HBoxContainer.new()
-	hdr.add_theme_constant_override("separation", 14)
-	root_vb.add_child(hdr)
-	options_title_lbl = Label.new()
-	options_title_lbl.text = "⚙ LIALO — OPTIONS"
-	options_title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	options_title_lbl.add_theme_font_override("font", _get_font(true))
-	options_title_lbl.add_theme_font_size_override("font_size", 30)
-	options_title_lbl.add_theme_color_override("font_color", Color(0.98, 0.82, 0.38))
-	hdr.add_child(options_title_lbl)
-
-	options_close_x = Button.new()
-	options_close_x.text = _tr("✕ Close [ESC]", "✕ Zavřít [ESC]")
-	options_close_x.custom_minimum_size = Vector2(146, 42)
-	options_close_x.add_theme_color_override("font_color", Color(1.0, 0.78, 0.70))
-	options_close_x.pressed.connect(func():
-		_play_sfx("ui_click")
-		_close_animated_modal(options_modal)
+	options_3d.option_changed.connect(func(key: String, value: Variant):
+		match key:
+			"language":
+				game_options["language"] = str(value)
+				Catalog.save_options(game_options)
+				_refresh_options_ui()
+			"fullscreen":
+				var fs := bool(value)
+				game_options["fullscreen"] = fs
+				DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fs else DisplayServer.WINDOW_MODE_WINDOWED)
+				if not fs:
+					DisplayServer.window_set_size(Vector2i(1366, 768))
+				Catalog.save_options(game_options)
+				_refresh_options_ui()
+			"visual_mode":
+				var next_mode := int(value)
+				game_options["visual_mode"] = next_mode
+				Catalog.save_options(game_options)
+				_apply_woodcut_mode(next_mode, true)
+				_refresh_options_ui()
+			"high_fx":
+				game_options["high_fx"] = bool(value)
+				Catalog.save_options(game_options)
+				_refresh_options_ui()
+			"game_pace":
+				game_options["game_pace"] = str(value)
+				Catalog.save_options(game_options)
+				_refresh_options_ui()
+			"cam_sensitivity":
+				game_options["cam_sensitivity"] = float(value)
+				Catalog.save_options(game_options)
+				_refresh_options_ui()
 	)
-	hdr.add_child(options_close_x)
-
-	var sep := ColorRect.new()
-	sep.custom_minimum_size = Vector2(0, 2)
-	sep.color = Color(0.76, 0.58, 0.24, 0.45)
-	root_vb.add_child(sep)
-
-	var cols_hb := HBoxContainer.new()
-	cols_hb.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	cols_hb.add_theme_constant_override("separation", 24)
-	root_vb.add_child(cols_hb)
-
-	# LEFT COLUMN: Display, Visuals & Language
-	var left_pan := PanelContainer.new()
-	left_pan.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left_pan.add_theme_stylebox_override("panel", _make_pill_style(Color(0.052, 0.042, 0.036, 0.96), Color(0.68, 0.52, 0.24, 0.78), 4))
-	cols_hb.add_child(left_pan)
-
-	var left_vb := VBoxContainer.new()
-	left_vb.add_theme_constant_override("separation", 12)
-	left_pan.add_child(left_vb)
-
-	options_left_hdr = Label.new()
-	options_left_hdr.text = _tr("DISPLAY & ATMOSPHERE", "ZOBRAZENÍ A ATMOSFÉRA")
-	options_left_hdr.add_theme_font_override("font", _get_font(true))
-	options_left_hdr.add_theme_font_size_override("font_size", 20)
-	options_left_hdr.add_theme_color_override("font_color", Color(0.95, 0.80, 0.44))
-	left_vb.add_child(options_left_hdr)
-
-	options_lang_btn = Button.new()
-	options_lang_btn.custom_minimum_size = Vector2(0, 48)
-	options_lang_btn.pressed.connect(func():
-		_play_sfx("ui_click")
-		game_options["language"] = "cs" if str(game_options.get("language", "en")) == "en" else "en"
-		Catalog.save_options(game_options)
-		_refresh_options_ui()
-	)
-	_wrap_option_card(left_vb, options_lang_btn)
-
-	options_disp_btn = Button.new()
-	options_disp_btn.custom_minimum_size = Vector2(0, 48)
-	options_disp_btn.pressed.connect(func():
-		_play_sfx("ui_click")
-		var fs := not bool(game_options.get("fullscreen", true))
-		game_options["fullscreen"] = fs
-		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fs else DisplayServer.WINDOW_MODE_WINDOWED)
-		if not fs:
-			DisplayServer.window_set_size(Vector2i(1366, 768))
-		Catalog.save_options(game_options)
-		_refresh_options_ui()
-	)
-	_wrap_option_card(left_vb, options_disp_btn)
-
-	options_vis_btn = Button.new()
-	options_vis_btn.custom_minimum_size = Vector2(0, 48)
-	options_vis_btn.pressed.connect(func():
-		_play_sfx("ui_click")
-		var order: Array[int] = [3, 0, 1, 2]
-		var cur_i := order.find(int(game_options.get("visual_mode", 3)))
-		var next_mode: int = order[(maxi(0, cur_i) + 1) % order.size()]
-		game_options["visual_mode"] = next_mode
-		Catalog.save_options(game_options)
-		_apply_woodcut_mode(next_mode, true)
-		_refresh_options_ui()
-	)
-	_wrap_option_card(left_vb, options_vis_btn)
-
-	options_fx_btn = Button.new()
-	options_fx_btn.custom_minimum_size = Vector2(0, 48)
-	options_fx_btn.pressed.connect(func():
-		_play_sfx("ui_click")
-		game_options["high_fx"] = not bool(game_options.get("high_fx", true))
-		Catalog.save_options(game_options)
-		_refresh_options_ui()
-	)
-	_wrap_option_card(left_vb, options_fx_btn)
-
-	# RIGHT COLUMN: Gameplay, Audio & Controls
-	var right_pan := PanelContainer.new()
-	right_pan.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right_pan.add_theme_stylebox_override("panel", _make_pill_style(Color(0.052, 0.042, 0.036, 0.96), Color(0.68, 0.52, 0.24, 0.78), 4))
-	cols_hb.add_child(right_pan)
-
-	var right_vb := VBoxContainer.new()
-	right_vb.add_theme_constant_override("separation", 12)
-	right_pan.add_child(right_vb)
-
-	options_right_hdr = Label.new()
-	options_right_hdr.text = _tr("AUDIO, GAMEPLAY & CONTROLS", "ZVUK, HRA A OVLÁDÁNÍ")
-	options_right_hdr.add_theme_font_override("font", _get_font(true))
-	options_right_hdr.add_theme_font_size_override("font_size", 20)
-	options_right_hdr.add_theme_color_override("font_color", Color(0.95, 0.80, 0.44))
-	right_vb.add_child(options_right_hdr)
-
-	options_diff_btn = Button.new()
-	options_diff_btn.custom_minimum_size = Vector2(0, 48)
-	options_diff_btn.pressed.connect(func():
-		_play_sfx("ui_click")
+	options_3d.difficulty_toggled.connect(func():
 		var cur_d := str(run_profile.get("campaign_difficulty", "traveler"))
 		run_profile["campaign_difficulty"] = "classic" if cur_d == "traveler" else "traveler"
 		Catalog.save_profile(run_profile)
 		_update_campaign_card(selected_era_idx)
 		_refresh_options_ui()
 	)
-	_wrap_option_card(right_vb, options_diff_btn)
-
-	var vol_hb := HBoxContainer.new()
-	vol_hb.add_theme_constant_override("separation", 12)
-	options_mute_btn = Button.new()
-	options_mute_btn.custom_minimum_size = Vector2(148, 40)
-	options_mute_btn.pressed.connect(func():
+	options_3d.mute_toggled.connect(func():
 		_toggle_audio_mute()
 		game_options["muted"] = audio_muted
 		Catalog.save_options(game_options)
 		_refresh_options_ui()
 	)
-	vol_hb.add_child(options_mute_btn)
-
-	options_vol_slider = HSlider.new()
-	options_vol_slider.min_value = 0.0; options_vol_slider.max_value = 100.0; options_vol_slider.step = 5.0
-	options_vol_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	options_vol_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	options_vol_slider.value_changed.connect(func(v: float):
-		_set_audio_volume(int(round(v)))
-		game_options["sfx_volume"] = int(round(v))
+	options_3d.volume_changed.connect(func(vol_pct: int):
+		_set_audio_volume(vol_pct)
+		game_options["sfx_volume"] = vol_pct
 		Catalog.save_options(game_options)
 		_refresh_options_ui()
 	)
-	vol_hb.add_child(options_vol_slider)
-
-	options_vol_lbl = Label.new()
-	options_vol_lbl.custom_minimum_size = Vector2(54, 0)
-	options_vol_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	vol_hb.add_child(options_vol_lbl)
-	_wrap_option_card(right_vb, vol_hb)
-
-	var sens_hb := HBoxContainer.new()
-	sens_hb.add_theme_constant_override("separation", 12)
-	options_sens_title = Label.new()
-	options_sens_title.text = _tr("Camera Look", "Citlivost myši")
-	options_sens_title.custom_minimum_size = Vector2(156, 0)
-	options_sens_title.add_theme_font_size_override("font_size", 16)
-	sens_hb.add_child(options_sens_title)
-	options_sens_slider = HSlider.new()
-	options_sens_slider.min_value = 0.5; options_sens_slider.max_value = 2.0; options_sens_slider.step = 0.1
-	options_sens_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	options_sens_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	options_sens_slider.value_changed.connect(func(v: float):
-		game_options["cam_sensitivity"] = v
-		Catalog.save_options(game_options)
-		_refresh_options_ui()
-	)
-	sens_hb.add_child(options_sens_slider)
-	options_sens_lbl = Label.new()
-	options_sens_lbl.custom_minimum_size = Vector2(54, 0)
-	options_sens_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	sens_hb.add_child(options_sens_lbl)
-	_wrap_option_card(right_vb, sens_hb)
-
-	options_keys_lbl = Label.new()
-	options_keys_lbl.text = _tr(
-		"CONTROLS: [SPACE] Hand Peek  •  [W] Play Card\n[M] Redraw  •  [RMB] Look Around  •  [1/2/3] Sort",
-		"OVLÁDÁNÍ: [SPACE] Karty nahoru/dolů  •  [W] Zahrát\n[M] Výměna  •  [Pravé tl.] Rozhlížení  •  [1/2/3] Seřadit"
-	)
-	options_keys_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	options_keys_lbl.add_theme_font_size_override("font_size", 15)
-	options_keys_lbl.add_theme_color_override("font_color", Color(0.84, 0.78, 0.66))
-	_wrap_option_card(right_vb, options_keys_lbl)
-
-	var bot_hb := HBoxContainer.new()
-	bot_hb.add_theme_constant_override("separation", 16)
-	root_vb.add_child(bot_hb)
-
-	options_replay_tut_btn = Button.new()
-	options_replay_tut_btn.custom_minimum_size = Vector2(260, 48)
-	options_replay_tut_btn.pressed.connect(func():
-		_play_sfx("ui_click")
+	options_3d.replay_tutorial_requested.connect(func():
 		game_options["tutorial_done"] = false
 		Catalog.save_options(game_options)
-		_close_animated_modal(options_modal)
+		options_3d.close_3d()
 		_play_transition_to(func(): _launch_era_battle(0, true))
 	)
-	bot_hb.add_child(options_replay_tut_btn)
-
-	options_return_btn = Button.new()
-	options_return_btn.text = "← Return to Campaign Map"
-	options_return_btn.custom_minimum_size = Vector2(240, 48)
-	options_return_btn.visible = false
-	options_return_btn.pressed.connect(func():
-		_play_sfx("ui_click")
-		_close_animated_modal(options_modal)
+	options_3d.return_requested.connect(func():
+		options_3d.close_3d()
 		if current_screen == ScreenState.MATCH_3D:
 			_switch_to(ScreenState.WORLD_3D)
 		elif current_screen == ScreenState.WORLD_3D:
 			_switch_to(ScreenState.MAIN_MENU)
 	)
-	bot_hb.add_child(options_return_btn)
-
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bot_hb.add_child(spacer)
-
-	options_done_btn = Button.new()
-	options_done_btn.text = _tr("✓ Save & Resume", "✓ Uložit a zpět")
-	options_done_btn.custom_minimum_size = Vector2(220, 48)
-	options_done_btn.add_theme_font_size_override("font_size", 17)
-	options_done_btn.add_theme_stylebox_override("normal", _make_pill_style(Color(0.28, 0.20, 0.08, 0.98), Color(1.0, 0.84, 0.34), 4))
-	options_done_btn.add_theme_color_override("font_color", Color(1.0, 0.94, 0.72))
-	options_done_btn.pressed.connect(func():
-		_play_sfx("ui_click")
-		_close_animated_modal(options_modal)
+	options_3d.close_requested.connect(func():
+		if is_instance_valid(options_3d):
+			options_3d.close_3d()
 	)
-	bot_hb.add_child(options_done_btn)
+	options_3d.sfx_requested.connect(func(sname: String):
+		_play_sfx(sname)
+	)
 	_refresh_options_ui()
 
 func _open_options_modal() -> void:
 	_refresh_options_ui()
-	_open_animated_modal(options_modal)
+	if is_instance_valid(options_3d):
+		options_3d.open_3d()
 
 func _refresh_options_ui() -> void:
 	var cs := _is_cs()
 	if lobby_options_btn:
 		lobby_options_btn.text = "⚙ NASTAVENÍ" if cs else "⚙ OPTIONS"
-	if options_title_lbl:
-		options_title_lbl.text = "⚙ LIALO — NASTAVENÍ HRY" if cs else "⚙ LIALO — OPTIONS"
-	if options_close_x:
-		options_close_x.text = "✕ Zavřít [ESC]" if cs else "✕ Close [ESC]"
-	if options_left_hdr:
-		options_left_hdr.text = "ZOBRAZENÍ A ATMOSFÉRA" if cs else "DISPLAY & ATMOSPHERE"
-	if options_right_hdr:
-		options_right_hdr.text = "ZVUK, HRA A OVLÁDÁNÍ" if cs else "AUDIO, GAMEPLAY & CONTROLS"
-	if options_sens_title:
-		options_sens_title.text = "Citlivost myši" if cs else "Camera Look"
-	if options_keys_lbl:
-		options_keys_lbl.text = (
-			"OVLÁDÁNÍ: [SPACE] Karty nahoru/dolů  •  [W] Zahrát\n[M] Výměna  •  [Pravé tl.] Rozhlížení  •  [1/2/3] Seřadit"
-			if cs else
-			"CONTROLS: [SPACE] Hand Peek  •  [W] Play Card\n[M] Redraw  •  [RMB] Look Around  •  [1/2/3] Sort"
-		)
-	if options_done_btn:
-		options_done_btn.text = "✓ Uložit a zpět" if cs else "✓ Save & Resume"
-	if options_lang_btn:
-		options_lang_btn.text = "Jazyk / Language: Čeština" if cs else "Language / Jazyk: English"
-	if options_vis_btn:
-		var vm := int(game_options.get("visual_mode", 3))
-		var vnames := {
-			3: "Visual Mode: Liar's Bar PBR" if not cs else "Grafika: Filmové 3D PBR",
-			0: "Visual Mode: Woodcut Ink" if not cs else "Grafika: Dřevorytový Inkoust",
-			1: "Visual Mode: Broadsheet Sepia" if not cs else "Grafika: Stará Sepie",
-			2: "Visual Mode: Classic 3D" if not cs else "Grafika: Čisté 3D",
-		}
-		options_vis_btn.text = str(vnames.get(vm, vnames[3]))
-	if options_fx_btn:
-		var hfx := bool(game_options.get("high_fx", true))
-		options_fx_btn.text = ("Tavern FX: High" if hfx else "Tavern FX: Performance") if not cs else ("Efekty krčmy: Vysoké" if hfx else "Efekty krčmy: Výkon")
-	if options_disp_btn:
-		var fs := bool(game_options.get("fullscreen", true))
-		options_disp_btn.text = ("Display: Fullscreen" if fs else "Display: Windowed") if not cs else ("Obrazovka: Celá obrazovka" if fs else "Obrazovka: V okně")
-	if options_diff_btn:
-		var is_t := str(run_profile.get("campaign_difficulty", "traveler")) == "traveler"
-		options_diff_btn.text = ("Difficulty: Traveler (Easy)" if is_t else "Difficulty: Classic (Hard)") if not cs else ("Obtížnost: Poutník (Lehčí)" if is_t else "Obtížnost: Klasická (Těžší)")
-	if options_mute_btn:
-		options_mute_btn.text = ("🔇 Ztlumeno" if cs else "🔇 Muted") if (audio_muted or audio_volume_pct <= 0) else ("🔊 Zvuk ZAP" if cs else "🔊 Audio ON")
-	if options_vol_slider:
-		options_vol_slider.set_value_no_signal(float(audio_volume_pct))
-	if options_vol_lbl:
-		options_vol_lbl.text = "%d%%" % (0 if audio_muted else audio_volume_pct)
-	if options_sens_slider:
-		options_sens_slider.set_value_no_signal(float(game_options.get("cam_sensitivity", 1.0)))
-	if options_sens_lbl:
-		options_sens_lbl.text = "%.1f×" % float(game_options.get("cam_sensitivity", 1.0))
-	if options_replay_tut_btn:
-		options_replay_tut_btn.text = "Zopakovat Tutoriál" if cs else "Replay Tutorial"
-	if options_return_btn:
-		options_return_btn.visible = (current_screen == ScreenState.MATCH_3D or current_screen == ScreenState.WORLD_3D)
-		options_return_btn.text = ("← Zpět na Mapu" if current_screen == ScreenState.MATCH_3D else "← Zpět do Menu") if cs else ("← Return to Map" if current_screen == ScreenState.MATCH_3D else "← Return to Lobby")
+	if is_instance_valid(options_3d):
+		var sk := "MAIN_MENU"
+		if current_screen == ScreenState.MATCH_3D:
+			sk = "MATCH_3D"
+		elif current_screen == ScreenState.WORLD_3D:
+			sk = "WORLD_3D"
+		options_3d.sync_state(game_options, run_profile, audio_muted, audio_volume_pct, sk)
 	if battle_3d and battle_3d.has_method("apply_options"):
 		battle_3d.apply_options(game_options)
 	_populate_menu_signs()
@@ -3549,7 +3705,7 @@ func _draw_lobby_card_showcase() -> void:
 		# 6: 2D ALCHYMISTICKÝ SOUBOJ DRAKA A MÁGA MEZI KARTAMI — křížová palba plamenů, blesků a runových pečetí!
 		_draw_lobby_phase_arcane_card_clash(w, h, phase_t, fade, card_sz)
 
-func _draw_lobby_card(pos: Vector2, size: Vector2, rot: float, flip_cos: float, suit: Dictionary, rank: String, alpha: float) -> void:
+func _draw_lobby_card(pos: Vector2, size: Vector2, rot: float, flip_cos: float, suit: Dictionary, rank: String, alpha: float, override_tex: Texture2D = null) -> void:
 	if alpha <= 0.02:
 		return
 	var sx := maxf(0.06, absf(flip_cos))
@@ -3566,9 +3722,10 @@ func _draw_lobby_card(pos: Vector2, size: Vector2, rot: float, flip_cos: float, 
 		lobby_fx_canvas.draw_rect(rect.grow(3.5), Color(0.95, 0.72, 0.22, 0.38 * alpha), false, 3.0)
 
 	var key := rank if is_power else ("%s_%s" % [suit["id"], rank])
+	var face_tex: Texture2D = override_tex if override_tex != null else (card_face_cache.get(key, null) as Texture2D)
 	if flip_cos >= 0.0:
-		if card_face_cache.has(key):
-			lobby_fx_canvas.draw_texture_rect(card_face_cache[key], rect, false, Color(1, 1, 1, alpha))
+		if face_tex != null:
+			lobby_fx_canvas.draw_texture_rect(face_tex, rect, false, Color(1, 1, 1, alpha))
 			var rim_col := Color(0.96, 0.78, 0.28, 0.88 * alpha) if is_power else Color(0.22, 0.15, 0.09, 0.92 * alpha)
 			lobby_fx_canvas.draw_rect(rect, rim_col, false, 2.4 if is_power else 2.0)
 		else:
@@ -3579,8 +3736,16 @@ func _draw_lobby_card(pos: Vector2, size: Vector2, rot: float, flip_cos: float, 
 			if sx > 0.25:
 				var df := _get_font(true)
 				var c_col := Color(suit["col"].r, suit["col"].g, suit["col"].b, alpha)
-				lobby_fx_canvas.draw_string(df, Vector2(-hw + 10, -hh + 28), str(suit["sym"]) + rank, HORIZONTAL_ALIGNMENT_LEFT, -1, int(size.x * 0.21), c_col)
-				lobby_fx_canvas.draw_string(df, Vector2(-hw, 14), str(suit["sym"]), HORIZONTAL_ALIGNMENT_CENTER, size.x, int(size.x * 0.38), c_col)
+				var crest_t := suit_crest_cache.get(str(suit["id"]), null) as Texture2D
+				if crest_t != null:
+					var top_c_sz := Vector2(size.x * 0.24, size.x * 0.24)
+					lobby_fx_canvas.draw_texture_rect(crest_t, Rect2(Vector2(-hw + 8, -hh + 8), top_c_sz), false, Color(1, 1, 1, alpha))
+					lobby_fx_canvas.draw_string(df, Vector2(-hw + 12 + top_c_sz.x, -hh + 28), rank, HORIZONTAL_ALIGNMENT_LEFT, -1, int(size.x * 0.21), c_col)
+					var mid_c_sz := Vector2(size.x * 0.52, size.x * 0.52)
+					lobby_fx_canvas.draw_texture_rect(crest_t, Rect2(-mid_c_sz * 0.5 + Vector2(0, 6), mid_c_sz), false, Color(1, 1, 1, alpha))
+				else:
+					lobby_fx_canvas.draw_string(df, Vector2(-hw + 10, -hh + 28), str(suit["sym"]) + rank, HORIZONTAL_ALIGNMENT_LEFT, -1, int(size.x * 0.21), c_col)
+					lobby_fx_canvas.draw_string(df, Vector2(-hw, 14), str(suit["sym"]), HORIZONTAL_ALIGNMENT_CENTER, size.x, int(size.x * 0.38), c_col)
 	else:
 		if card_back_tex:
 			lobby_fx_canvas.draw_texture_rect(card_back_tex, rect, false, Color(1, 1, 1, alpha))
@@ -3795,469 +3960,250 @@ func _draw_stylized_gloved_hand(pos: Vector2, side_dir: float, alpha: float, ani
 
 	lobby_fx_canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-func _draw_lobby_phase_knight_card_duel(w: float, h: float, phase_t: float, fade: float, card_sz: Vector2) -> void:
-	# Fáze 5: Z levé karty Krále Srdcí (♥K) vyskočí 2D dřevorytový Rytíř vysokým obloukem přímo do pravé karty
-	# Žaludového Svrška (♣H), kde s jejím obráncem svede divoký šermířský souboj plný jisker a otřesů karet!
+func _draw_lobby_sheet_frame(
+	tex: Texture2D,
+	frame_idx: int,
+	cols: int,
+	rows: int,
+	pos: Vector2,
+	draw_size: Vector2,
+	rot: float,
+	flip_x: bool,
+	modulate: Color
+) -> void:
+	if tex == null or modulate.a <= 0.02:
+		return
+	var total := maxi(1, cols * rows)
+	var safe_idx := posmod(frame_idx, total)
+	var col := safe_idx % cols
+	var row := int(safe_idx / cols)
+	var tw := tex.get_width()
+	var th := tex.get_height()
+	if tw <= 0 or th <= 0:
+		return
+	var cell_w := float(tw) / float(cols)
+	var cell_h := float(th) / float(rows)
+	var src := Rect2(float(col) * cell_w + 1.5, float(row) * cell_h + 1.5, cell_w - 3.0, cell_h - 3.0)
+	lobby_fx_canvas.draw_set_transform(pos, rot, Vector2(-1.0 if flip_x else 1.0, 1.0))
+	lobby_fx_canvas.draw_texture_rect_region(tex, Rect2(-draw_size * 0.5, draw_size), src, modulate)
+	lobby_fx_canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_lobby_card_jump_duel(
+	w: float,
+	h: float,
+	phase_t: float,
+	fade: float,
+	card_sz: Vector2,
+	left_suit: Dictionary,
+	left_rank: String,
+	left_key: String,
+	right_suit: Dictionary,
+	right_rank: String,
+	right_key: String,
+	atk_sheet: Texture2D,
+	def_sheet: Texture2D,
+	left_aura: Color,
+	right_aura: Color,
+	slash_tint: Color
+) -> void:
+	## Draws authentic 2D woodcut cutout fighters leaping out of left_key card into right_key card at ~4.8 stepped FPS.
+	const STEP_FPS := 4.8
+	var step_t := floorf(phase_t * STEP_FPS) / STEP_FPS
 	var enter := ease(clampf(phase_t / 0.55, 0.0, 1.0), 0.38)
 	var hero_sz := card_sz * 1.46
+	var sprite_sz := Vector2(hero_sz.x * 0.80, hero_sz.x * 0.80)
 
-	# Polokruh diváckých karet v pozadí tvořících rytířskou arénu
+	# Semicircle of spectator tavern cards (fade smoothly when edge-on so no thin vertical slivers appear)
 	for bg_i in range(10):
 		var u_bg := float(bg_i) / 9.0
 		var ang_bg := lerpf(-2.45, -0.69, u_bg)
-		var bg_pos := Vector2(w * 0.5 + cos(ang_bg) * w * 0.43, h * 0.54 + sin(ang_bg) * h * 0.34 + sin(phase_t * 2.4 + float(bg_i)) * 8.0)
+		var bg_pos := Vector2(w * 0.5 + cos(ang_bg) * w * 0.43, h * 0.48 + sin(ang_bg) * h * 0.28 + sin(phase_t * 2.2 + float(bg_i)) * 7.0)
 		var bg_rot := (u_bg - 0.5) * 0.55
-		_draw_lobby_card(bg_pos, card_sz * 0.78, bg_rot, cos(phase_t * 1.4 + float(bg_i)), LOBBY_SUITS[bg_i % 4], _pick_lobby_card_rank(bg_i + 2), 0.36 * fade)
+		var bg_fc := cos(phase_t * 1.4 + float(bg_i))
+		var bg_edge_fade := clampf((absf(bg_fc) - 0.16) / 0.30, 0.0, 1.0)
+		_draw_lobby_card(bg_pos, card_sz * 0.78, bg_rot, bg_fc, LOBBY_SUITS[bg_i % 4], _pick_lobby_card_rank(bg_i + 2), 0.32 * fade * bg_edge_fade)
 
-	var left_base := Vector2(lerpf(-180.0, w * 0.25, enter), h * 0.56 + sin(phase_t * 3.0) * 5.0)
-	var right_base := Vector2(lerpf(w + 180.0, w * 0.75, enter), h * 0.56 + cos(phase_t * 3.0) * 5.0)
+	var left_base := Vector2(lerpf(-180.0, w * 0.25, enter), h * 0.56 + sin(phase_t * 2.8) * 4.0)
+	var right_base := Vector2(lerpf(w + 180.0, w * 0.75, enter), h * 0.56 + cos(phase_t * 2.8) * 4.0)
 
 	var left_recoil := Vector2.ZERO
 	var right_recoil := Vector2.ZERO
 	var left_rot := -0.08
 	var right_rot := 0.08
 	var clash_active := false
+	var duel_step := 0
 	var clash_intensity := 0.0
 	var strike_phase := 0.0
 
-	if phase_t >= 0.75 and phase_t < 1.15:
-		# Odraz rytíře z levé karty zatlačí levou kartu dolů a doleva
-		var push := sin(((phase_t - 0.75) / 0.40) * PI)
-		left_recoil = Vector2(-14.0 * push, 18.0 * push)
-		left_rot -= 0.12 * push
+	if phase_t >= 0.68 and phase_t < 1.05:
+		var push := sin(((phase_t - 0.68) / 0.37) * PI)
+		left_recoil = Vector2(-12.0 * push, 14.0 * push)
+		left_rot -= 0.11 * push
 	elif phase_t >= 1.55 and phase_t < 5.65:
-		# Souboj přímo na pravé kartě — každý úder mečem otřese pravou kartou!
 		clash_active = true
 		var duel_t := phase_t - 1.55
-		strike_phase = fmod(duel_t * 2.35, 1.0)
-		clash_intensity = pow(maxf(0.0, sin(strike_phase * PI)), 3.0)
-		var hit_dir := 1.0 if (int(duel_t * 2.35) % 2 == 0) else -1.0
-		right_recoil = Vector2(clash_intensity * 18.0 * hit_dir, clash_intensity * 10.0)
-		right_rot += clash_intensity * 0.14 * hit_dir
+		duel_step = int(floorf((step_t - 1.55) * 2.4))
+		strike_phase = fmod(maxf(0.0, step_t - 1.55) * 2.4, 1.0)
+		clash_intensity = pow(maxf(0.0, sin(strike_phase * PI)), 2.2)
+		var hit_dir := 1.0 if (duel_step % 2 == 0) else -1.0
+		right_recoil = Vector2(clash_intensity * 16.0 * hit_dir, clash_intensity * 9.0)
+		right_rot += clash_intensity * 0.12 * hit_dir
 
 	var l_pos := left_base + left_recoil
 	var r_pos := right_base + right_recoil
 
-	# Zlatá heraldická aura kolem obou soubojových karet
-	lobby_fx_canvas.draw_circle(l_pos, hero_sz.x * 0.72, Color(0.95, 0.24, 0.22, 0.18 * fade))
-	lobby_fx_canvas.draw_arc(l_pos, hero_sz.x * 0.68, 0.0, TAU, 48, Color(1.0, 0.78, 0.28, 0.46 * fade), 2.5)
-	lobby_fx_canvas.draw_circle(r_pos, hero_sz.x * 0.74, Color(0.92, 0.68, 0.22, (0.18 + clash_intensity * 0.22) * fade))
-	lobby_fx_canvas.draw_arc(r_pos, hero_sz.x * 0.70, 0.0, TAU, 48, Color(1.0, 0.86, 0.34, (0.48 + clash_intensity * 0.42) * fade), 2.8)
+	# Subtle heraldic / arcane card glows behind both cards
+	lobby_fx_canvas.draw_circle(l_pos, hero_sz.x * 0.72, Color(left_aura.r, left_aura.g, left_aura.b, 0.16 * fade))
+	lobby_fx_canvas.draw_arc(l_pos, hero_sz.x * 0.68, 0.0, TAU, 48, Color(1.0, 0.80, 0.32, 0.44 * fade), 2.4)
+	lobby_fx_canvas.draw_circle(r_pos, hero_sz.x * 0.74, Color(right_aura.r, right_aura.g, right_aura.b, (0.16 + clash_intensity * 0.22) * fade))
+	lobby_fx_canvas.draw_arc(r_pos, hero_sz.x * 0.70, 0.0, TAU, 48, Color(1.0, 0.86, 0.36, (0.46 + clash_intensity * 0.42) * fade), 2.8)
 
-	# Vykreslení obou velkých karet (♥K vlevo, ♣H vpravo)
-	_draw_lobby_card(l_pos, hero_sz, left_rot, 1.0, LOBBY_SUITS[0], "K", 0.98 * fade)
-	_draw_lobby_card(r_pos, hero_sz, right_rot, 1.0, LOBBY_SUITS[2], "H", 0.98 * fade)
+	# Empty-center cards once characters step out to jump/duel, returning cleanly at end!
+	var left_vacated := (phase_t >= 0.72 and phase_t < 6.55)
+	var right_vacated := (phase_t >= 1.48 and phase_t < 6.05)
+	var l_override: Texture2D = (lobby_empty_cards.get(left_key, null) as Texture2D) if left_vacated else null
+	var r_override: Texture2D = (lobby_empty_cards.get(right_key, null) as Texture2D) if right_vacated else null
 
-	# Zlatý portálový rám na levé kartě, ze kterého rytíř vyskočí
-	var portal_pulse := 0.5 + 0.5 * sin(phase_t * 8.0)
-	lobby_fx_canvas.draw_set_transform(l_pos, left_rot, Vector2.ONE)
-	lobby_fx_canvas.draw_rect(Rect2(-hero_sz.x * 0.42, -hero_sz.y * 0.42, hero_sz.x * 0.84, hero_sz.y * 0.84), Color(1.0, 0.84, 0.32, (0.42 + portal_pulse * 0.35) * fade), false, 3.2)
-	lobby_fx_canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	_draw_lobby_card(l_pos, hero_sz, left_rot, 1.0, left_suit, left_rank, 0.98 * fade, l_override)
+	_draw_lobby_card(r_pos, hero_sz, right_rot, 1.0, right_suit, right_rank, 0.98 * fade, r_override)
 
-	# 1. Obránce pravé karty (Žaludový Železný Rytíř) čekající v bojovém střehu na pravé kartě
-	var def_pos := r_pos + Vector2(28.0, 10.0)
-	var def_sword_ang := -0.55
-	var def_shield_up := 0.2
-	var def_lunge := 0.0
-	if clash_active:
-		var duel_step := int((phase_t - 1.55) * 2.35)
-		var s_wave := sin(strike_phase * PI)
-		if duel_step % 2 == 0:
-			# Obránce kryje štítem a odráží útok
-			def_shield_up = 0.85 * s_wave
-			def_sword_ang = -0.35 + s_wave * 0.65
-			def_lunge = -10.0 * s_wave
+	# Portal outline glint on left card just before jump
+	if phase_t >= 0.45 and phase_t < 1.25:
+		var portal_a := sin(clampf((phase_t - 0.45) / 0.80, 0.0, 1.0) * PI) * 0.72 * fade
+		lobby_fx_canvas.draw_set_transform(l_pos, left_rot, Vector2.ONE)
+		lobby_fx_canvas.draw_rect(Rect2(-hero_sz.x * 0.40, -hero_sz.y * 0.34, hero_sz.x * 0.80, hero_sz.y * 0.64), Color(1.0, 0.86, 0.36, portal_a), false, 3.0)
+		lobby_fx_canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	# Defender cutout steps onto right side of right_key card while dueling
+	if right_vacated:
+		var def_frame := 0
+		var def_pos := r_pos + Vector2(hero_sz.x * 0.24, -4.0)
+		var def_rot := 0.0
+		if phase_t < 1.55:
+			def_frame = 0
+		elif phase_t < 5.65:
+			var sub := duel_step % 4
+			if sub == 0:
+				def_frame = 1 # high block
+				def_pos.x += clash_intensity * 8.0
+			elif sub == 1:
+				def_frame = 3 # recoil
+				def_pos.x += clash_intensity * 14.0
+				def_rot = 0.08 * clash_intensity
+			elif sub == 2:
+				def_frame = 2 # counter-strike!
+				def_pos.x -= clash_intensity * 14.0
+			else:
+				def_frame = 0
 		else:
-			# Obránce vyráží do protiútoku
-			def_lunge = 18.0 * s_wave
-			def_sword_ang = lerpf(-0.95, 0.85, s_wave)
-			def_shield_up = 0.35
-	_draw_lobby_2d_woodcut_knight(def_pos + Vector2(-def_lunge, 0.0), -1.0, def_sword_ang, def_shield_up, def_lunge, Color(0.24, 0.56, 0.34), Color(0.95, 0.78, 0.26), fade)
+			def_frame = 0
+			def_pos = def_pos.lerp(r_pos + Vector2(0.0, -6.0), clampf((phase_t - 5.65) / 0.40, 0.0, 1.0))
+		_draw_lobby_sheet_frame(def_sheet, def_frame, 2, 2, def_pos, sprite_sz, def_rot, false, Color(1, 1, 1, 0.98 * fade))
 
-	# 2. Útočící Srdcový Rytíř (vyskočí z levé karty -> letí obloukem -> šermuje na pravé kartě -> skočí zpět)
-	var atk_pos := l_pos + Vector2(8.0, 6.0)
-	var atk_facing := 1.0
-	var atk_sword_ang := -0.45
-	var atk_shield_up := 0.25
-	var atk_lunge := 0.0
-	var jump_rot := 0.0
+	# Attacker cutout jumps from left card into right card, fights, then hops back cleanly
+	if left_vacated:
+		var atk_pos := l_pos + Vector2(0.0, -6.0)
+		var atk_frame := 0
+		var atk_rot := 0.0
+		var atk_flip := false
 
-	if phase_t < 0.85:
-		# Příprava ke skoku na levé kartě
-		var prep := clampf(phase_t / 0.85, 0.0, 1.0)
-		atk_pos = l_pos + Vector2(10.0, 12.0 * sin(prep * PI))
-		atk_sword_ang = lerpf(-0.2, -1.15, prep)
-		atk_shield_up = 0.5
-	elif phase_t < 1.55:
-		# Parabolický skok přes obrazovku z levé karty do pravé karty!
-		var ju := clampf((phase_t - 0.85) / 0.70, 0.0, 1.0)
-		var start_p := l_pos + Vector2(14.0, 0.0)
-		var end_p := r_pos + Vector2(-38.0, 8.0)
-		atk_pos = start_p.lerp(end_p, ju) + Vector2(0.0, -sin(ju * PI) * 210.0)
-		atk_sword_ang = lerpf(-1.25, 0.55, pow(ju, 1.6))
-		atk_shield_up = 0.75
-		jump_rot = sin(ju * PI) * 0.22
-		# Zlatá pohybová stopa a siluety za skákajícím rytířem
-		for tr_i in range(1, 6):
-			var tu := clampf(ju - float(tr_i) * 0.07, 0.0, 1.0)
-			var tp := start_p.lerp(end_p, tu) + Vector2(0.0, -sin(tu * PI) * 210.0)
-			lobby_fx_canvas.draw_circle(tp, 18.0 - float(tr_i) * 2.4, Color(1.0, 0.78, 0.28, (0.32 - float(tr_i) * 0.05) * fade))
-	elif phase_t < 5.65:
-		# Aktivní šermířský souboj přímo na pravé kartě!
-		var duel_t := phase_t - 1.55
-		var duel_step := int(duel_t * 2.35)
-		var s_wave := sin(strike_phase * PI)
-		var base_duel_p := r_pos + Vector2(-38.0, 8.0)
-		if duel_step % 2 == 0:
-			# Drtivý výpad mečem vpřed!
-			atk_lunge = 22.0 * s_wave
-			atk_sword_ang = lerpf(-1.20, 0.92, s_wave)
-			atk_shield_up = 0.30
+		if phase_t < 0.85:
+			atk_frame = 0
+			atk_pos = l_pos + Vector2(4.0, 4.0)
+		elif phase_t < 1.55:
+			var ju := clampf((step_t - 0.85) / 0.70, 0.0, 1.0)
+			var start_p := l_pos + Vector2(8.0, -4.0)
+			var end_p := r_pos + Vector2(-hero_sz.x * 0.25, -4.0)
+			for tr_i in range(2, 0, -1):
+				var tu := clampf(ju - float(tr_i) * 0.14, 0.0, 1.0)
+				var tp := start_p.lerp(end_p, tu) + Vector2(0.0, -sin(tu * PI) * 195.0)
+				_draw_lobby_sheet_frame(atk_sheet, 1, 2, 2, tp, sprite_sz * 0.94, sin(tu * PI) * 0.12, false, Color(0.95, 0.84, 0.62, (0.28 - float(tr_i) * 0.09) * fade))
+			atk_pos = start_p.lerp(end_p, ju) + Vector2(0.0, -sin(ju * PI) * 195.0)
+			atk_frame = 1 if ju < 0.88 else 2
+			atk_rot = -0.10 + sin(ju * PI) * 0.18
+		elif phase_t < 5.65:
+			var sub := duel_step % 4
+			var base_atk := r_pos + Vector2(-hero_sz.x * 0.24, -4.0)
+			if sub == 0:
+				atk_frame = 2 # cleave/strike!
+				atk_pos = base_atk + Vector2(clash_intensity * 16.0, -clash_intensity * 8.0)
+				atk_rot = 0.07 * clash_intensity
+			elif sub == 1:
+				atk_frame = 1 # soaring pressure strike
+				atk_pos = base_atk + Vector2(10.0, -12.0)
+			elif sub == 2:
+				atk_frame = 3 # parry / guard against counter!
+				atk_pos = base_atk + Vector2(-clash_intensity * 10.0, 2.0)
+				atk_rot = -0.08 * clash_intensity
+			else:
+				atk_frame = 0
+				atk_pos = base_atk
 		else:
-			# Kryt štítem a úhyb
-			atk_lunge = -10.0 * s_wave
-			atk_sword_ang = -0.50 + s_wave * 0.45
-			atk_shield_up = 0.90 * s_wave
-		atk_pos = base_duel_p + Vector2(atk_lunge, -absf(s_wave) * 10.0)
-	else:
-		# Vítězné salto zpět do levé karty!
-		var bu := clampf((phase_t - 5.65) / 1.15, 0.0, 1.0)
-		var start_b := r_pos + Vector2(-34.0, 8.0)
-		var end_b := l_pos + Vector2(6.0, 6.0)
-		atk_pos = start_b.lerp(end_b, bu) + Vector2(0.0, -sin(bu * PI) * 195.0)
-		atk_facing = -1.0 if bu < 0.75 else 1.0
-		atk_sword_ang = -0.85 + sin(bu * TAU) * 0.65
-		jump_rot = -sin(bu * PI) * 0.28
+			var bu := clampf((step_t - 5.65) / 0.90, 0.0, 1.0)
+			var start_b := r_pos + Vector2(-hero_sz.x * 0.24, -4.0)
+			var end_b := l_pos + Vector2(0.0, -6.0)
+			atk_pos = start_b.lerp(end_b, bu) + Vector2(0.0, -sin(bu * PI) * 185.0)
+			atk_flip = (bu < 0.82)
+			atk_frame = 1 if bu < 0.84 else 0
+			atk_rot = -sin(bu * PI) * 0.16
 
-	_draw_lobby_2d_woodcut_knight(atk_pos, atk_facing, atk_sword_ang + jump_rot, atk_shield_up, atk_lunge, Color(0.86, 0.18, 0.20), Color(1.0, 0.84, 0.28), fade)
+		_draw_lobby_sheet_frame(atk_sheet, atk_frame, 2, 2, atk_pos, sprite_sz, atk_rot, atk_flip, Color(1, 1, 1, 0.99 * fade))
 
-	# 3. Efekty střetu čepelí: 2D záblesky mečů, tlakové prstence, jiskry a odletující symboly barev!
-	if clash_active and clash_intensity > 0.15:
-		var clash_pt := r_pos + Vector2(-4.0, -14.0)
+	# Hand-drawn cel sword slash arcs & woodcut spark starbursts on fight impact beats!
+	if clash_active and clash_intensity > 0.18:
+		var clash_pt := r_pos + Vector2(0.0, -16.0)
 		var c_a := clash_intensity * fade
-		# Křížový záblesk seknutí mečem
-		var slash_angle := float(int((phase_t - 1.55) * 2.35)) * 1.1 + 0.45
-		var s_dir1 := Vector2(cos(slash_angle), sin(slash_angle)) * (48.0 + clash_intensity * 32.0)
-		var s_dir2 := Vector2(cos(slash_angle + 1.45), sin(slash_angle + 1.45)) * (42.0 + clash_intensity * 26.0)
-		lobby_fx_canvas.draw_line(clash_pt - s_dir1, clash_pt + s_dir1, Color(1.0, 0.88, 0.36, c_a), 6.0)
-		lobby_fx_canvas.draw_line(clash_pt - s_dir1, clash_pt + s_dir1, Color(1.0, 1.0, 0.96, c_a), 2.8)
-		lobby_fx_canvas.draw_line(clash_pt - s_dir2, clash_pt + s_dir2, Color(1.0, 0.72, 0.24, c_a * 0.9), 4.5)
-		lobby_fx_canvas.draw_arc(clash_pt, 18.0 + (1.0 - clash_intensity) * 44.0, 0.0, TAU, 32, Color(1.0, 0.86, 0.38, c_a * 0.85), 3.0)
-		# Rozletující se dřevorytové jiskry
-		for sp_i in range(10):
-			var sp_ang := float(sp_i) * (TAU / 10.0) + phase_t * 6.0
-			var sp_r1 := 10.0 + strike_phase * 28.0
-			var sp_r2 := sp_r1 + 14.0
-			var p_a := clash_pt + Vector2(cos(sp_ang), sin(sp_ang)) * sp_r1
-			var p_b := clash_pt + Vector2(cos(sp_ang), sin(sp_ang)) * sp_r2
-			lobby_fx_canvas.draw_line(p_a, p_b, Color(1.0, 0.92, 0.48, c_a), 2.4)
+		var slash_frame := 2 + ((int(floorf(step_t * 14.0))) % 11)
+		_draw_lobby_sheet_frame(
+			lobby_slash_fx_tex,
+			slash_frame,
+			6,
+			4,
+			clash_pt,
+			Vector2(178.0, 178.0),
+			float(duel_step) * 1.15,
+			(duel_step % 2 == 1),
+			Color(slash_tint.r, slash_tint.g, slash_tint.b, c_a * 0.95)
+		)
+		_draw_lobby_sheet_frame(
+			lobby_sparks_fx_tex,
+			14,
+			4,
+			4,
+			clash_pt + Vector2(0.0, -4.0),
+			Vector2(74.0 + clash_intensity * 26.0, 74.0 + clash_intensity * 26.0),
+			float(duel_step) * 0.7,
+			false,
+			Color(1.0, 0.94, 0.72, c_a)
+		)
+		lobby_fx_canvas.draw_arc(clash_pt, 16.0 + (1.0 - clash_intensity) * 42.0, 0.0, TAU, 28, Color(slash_tint.r, slash_tint.g, slash_tint.b, c_a * 0.75), 2.8)
 
-func _draw_lobby_2d_woodcut_knight(pos: Vector2, facing: float, sword_ang: float, shield_up: float, lunge: float, tunic_col: Color, plume_col: Color, alpha: float) -> void:
-	if alpha <= 0.02:
-		return
-	lobby_fx_canvas.draw_set_transform(pos, 0.0, Vector2(facing * 1.15, 1.15))
-	var ink := Color(0.06, 0.04, 0.03, alpha)
-	var steel := Color(0.76, 0.80, 0.86, alpha)
-	var steel_hi := Color(0.94, 0.96, 1.0, alpha)
-	var steel_sh := Color(0.46, 0.50, 0.58, alpha)
-	var brass := Color(0.94, 0.76, 0.30, alpha)
-	var cape_col := Color(tunic_col.r * 0.85, tunic_col.g * 0.85, tunic_col.b * 0.85, alpha)
-	var tunic := Color(tunic_col.r, tunic_col.g, tunic_col.b, alpha)
-	var plume := Color(plume_col.r, plume_col.g, plume_col.b, alpha)
 
-	# 1. Vlající rytířský plášť vzadu
-	var cape_wave := sin(Time.get_ticks_msec() * 0.012 + pos.x * 0.05) * 8.0
-	var cape := PackedVector2Array([
-		Vector2(-10, -28), Vector2(-36, -12 + cape_wave * 0.5),
-		Vector2(-48, 18 + cape_wave), Vector2(-22, 24 + cape_wave * 0.4), Vector2(-4, 4)
-	])
-	lobby_fx_canvas.draw_colored_polygon(cape, cape_col)
-	lobby_fx_canvas.draw_polyline(cape + PackedVector2Array([cape[0]]), ink, 2.4)
+func _draw_lobby_phase_knight_card_duel(w: float, h: float, phase_t: float, fade: float, card_sz: Vector2) -> void:
+	_draw_lobby_card_jump_duel(
+		w, h, phase_t, fade, card_sz,
+		LOBBY_SUITS[0], "K", "CERVEN_K",
+		LOBBY_SUITS[2], "H", "ZALUD_H",
+		lobby_king_sheet_tex,
+		lobby_halberdier_sheet_tex,
+		Color(0.95, 0.24, 0.22),
+		Color(0.92, 0.68, 0.22),
+		Color(1.0, 0.88, 0.42)
+	)
 
-	# 2. Obrněné nohy v nakročeném šermířském postoji
-	var stride := clampf(lunge * 0.35, -8.0, 12.0)
-	var back_foot := Vector2(-14.0 - stride * 0.4, 38.0)
-	var front_foot := Vector2(14.0 + stride * 0.6, 38.0)
-	lobby_fx_canvas.draw_line(Vector2(-6, 12), back_foot, ink, 11.0)
-	lobby_fx_canvas.draw_line(Vector2(-6, 12), back_foot, steel_sh, 7.0)
-	lobby_fx_canvas.draw_line(Vector2(6, 12), front_foot, ink, 11.5)
-	lobby_fx_canvas.draw_line(Vector2(6, 12), front_foot, steel, 7.5)
-	lobby_fx_canvas.draw_circle(front_foot + Vector2(3, 0), 4.5, steel_hi)
-
-	# 3. Kyrys & heraldický varkoč (surcoat) se zlatým křížem
-	var torso := PackedVector2Array([
-		Vector2(-15, -26), Vector2(15, -26), Vector2(18, 14), Vector2(-16, 14)
-	])
-	lobby_fx_canvas.draw_colored_polygon(torso, tunic)
-	var chest_plate := PackedVector2Array([
-		Vector2(-14, -25), Vector2(14, -25), Vector2(11, -2), Vector2(-11, -2)
-	])
-	lobby_fx_canvas.draw_colored_polygon(chest_plate, steel)
-	lobby_fx_canvas.draw_line(Vector2(0, -24), Vector2(0, 13), brass, 3.0)
-	lobby_fx_canvas.draw_line(Vector2(-11, -10), Vector2(11, -10), brass, 2.8)
-	lobby_fx_canvas.draw_polyline(torso + PackedVector2Array([torso[0]]), ink, 2.6)
-
-	# 4. Ramenní plát (pauldron) + paže s mečem a široký rytířský meč se záštitou
-	var shoulder := Vector2(-4.0, -22.0)
-	var elbow := shoulder + Vector2(cos(sword_ang - 0.35), sin(sword_ang - 0.35)) * 18.0
-	var hilt := elbow + Vector2(cos(sword_ang), sin(sword_ang)) * 16.0
-	var b_dir := Vector2(cos(sword_ang - 0.15), sin(sword_ang - 0.15))
-	var b_perp := Vector2(-b_dir.y, b_dir.x)
-	var blade_tip := hilt + b_dir * 54.0
-
-	# Švihová stopa čepele při seku
-	if absf(sword_ang) > 0.3:
-		var arc_p1 := hilt + Vector2(cos(sword_ang - 0.55), sin(sword_ang - 0.55)) * 46.0
-		var arc_p2 := hilt + Vector2(cos(sword_ang - 0.95), sin(sword_ang - 0.95)) * 38.0
-		var swing_poly := PackedVector2Array([hilt + b_dir * 12.0, blade_tip, arc_p1, arc_p2])
-		lobby_fx_canvas.draw_colored_polygon(swing_poly, Color(1.0, 0.94, 0.72, 0.28 * alpha))
-
-	# Čepel meče
-	var blade_poly := PackedVector2Array([
-		hilt + b_perp * 3.8,
-		hilt + b_dir * 42.0 + b_perp * 2.8,
-		blade_tip,
-		hilt + b_dir * 42.0 - b_perp * 2.8,
-		hilt - b_perp * 3.8
-	])
-	lobby_fx_canvas.draw_colored_polygon(blade_poly, steel_hi)
-	lobby_fx_canvas.draw_line(hilt, blade_tip, steel_sh, 1.6)
-	lobby_fx_canvas.draw_polyline(blade_poly + PackedVector2Array([blade_poly[0]]), ink, 2.0)
-	# Zlatá křížová záštita a hlavice
-	lobby_fx_canvas.draw_line(hilt - b_perp * 11.0, hilt + b_perp * 11.0, ink, 5.5)
-	lobby_fx_canvas.draw_line(hilt - b_perp * 10.0, hilt + b_perp * 10.0, brass, 3.2)
-	lobby_fx_canvas.draw_circle(hilt - b_dir * 5.0, 3.8, brass)
-
-	# Paže držící meč
-	lobby_fx_canvas.draw_line(shoulder, elbow, ink, 10.0)
-	lobby_fx_canvas.draw_line(shoulder, elbow, steel, 6.5)
-	lobby_fx_canvas.draw_line(elbow, hilt, ink, 9.0)
-	lobby_fx_canvas.draw_line(elbow, hilt, steel_hi, 5.5)
-	lobby_fx_canvas.draw_circle(shoulder, 7.5, ink)
-	lobby_fx_canvas.draw_circle(shoulder, 5.5, steel)
-
-	# 5. Kbelcová přilba (Great Helm) s průzorem a bohatým chocholem
-	var plume_poly := PackedVector2Array([
-		Vector2(-4, -50), Vector2(-20, -58 + cape_wave * 0.4),
-		Vector2(-34, -46 + cape_wave * 0.7), Vector2(-24, -36), Vector2(-6, -40)
-	])
-	lobby_fx_canvas.draw_colored_polygon(plume_poly, plume)
-	lobby_fx_canvas.draw_polyline(plume_poly + PackedVector2Array([plume_poly[0]]), ink, 2.2)
-
-	var helm := PackedVector2Array([
-		Vector2(-12, -46), Vector2(10, -48), Vector2(15, -36),
-		Vector2(13, -24), Vector2(-12, -24)
-	])
-	lobby_fx_canvas.draw_colored_polygon(helm, steel)
-	var helm_hi := PackedVector2Array([
-		Vector2(-8, -45), Vector2(9, -47), Vector2(13, -36), Vector2(-4, -36)
-	])
-	lobby_fx_canvas.draw_colored_polygon(helm_hi, steel_hi)
-	# Průzor přilby + zlatý kříž
-	lobby_fx_canvas.draw_line(Vector2(1, -37), Vector2(13, -37), ink, 3.4)
-	lobby_fx_canvas.draw_line(Vector2(7, -44), Vector2(7, -27), brass, 2.2)
-	lobby_fx_canvas.draw_polyline(helm + PackedVector2Array([helm[0]]), ink, 2.6)
-
-	# 6. Heraldický mandlový štít (Kite Shield) v přední ruce
-	var sh_pos := Vector2(13.0, -4.0 - shield_up * 10.0)
-	var shield_poly := PackedVector2Array([
-		sh_pos + Vector2(-9, -18), sh_pos + Vector2(11, -18),
-		sh_pos + Vector2(12, 2), sh_pos + Vector2(1, 20), sh_pos + Vector2(-10, 2)
-	])
-	lobby_fx_canvas.draw_colored_polygon(shield_poly, tunic)
-	lobby_fx_canvas.draw_line(sh_pos + Vector2(1, -16), sh_pos + Vector2(1, 17), brass, 3.0)
-	lobby_fx_canvas.draw_line(sh_pos + Vector2(-8, -4), sh_pos + Vector2(10, -4), brass, 2.8)
-	lobby_fx_canvas.draw_polyline(shield_poly + PackedVector2Array([shield_poly[0]]), brass, 2.6)
-	lobby_fx_canvas.draw_polyline(shield_poly + PackedVector2Array([shield_poly[0]]), ink, 1.6)
-
-	lobby_fx_canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _draw_lobby_phase_arcane_card_clash(w: float, h: float, phase_t: float, fade: float, card_sz: Vector2) -> void:
-	# Fáze 6: 2D Alchymistický souboj mezi kartami — z levé dračí karty se vynoří 2D dřevorytový Drak chrlící
-	# ohnivé koule a z pravé karty Věže vystoupí Mág sesílající blesky a runové řetězy napříč kartami!
-	var enter := ease(clampf(phase_t / 0.55, 0.0, 1.0), 0.38)
-	var hero_sz := card_sz * 1.42
-	var cen := Vector2(w * 0.5, h * 0.54)
-
-	# Doprovodné karty kroužící kolem obou mágů/draků, které při zásahu rotují a jiskří
-	for s_i in range(2):
-		var side := -1.0 if s_i == 0 else 1.0
-		var anchor := Vector2(w * (0.21 if s_i == 0 else 0.79), h * 0.56)
-		for g_i in range(3):
-			var off_y := (float(g_i) - 1.0) * 145.0
-			var off_x := -side * (48.0 + float(abs(g_i - 1)) * 26.0)
-			var hit_wave := sin(phase_t * 7.5 + float(g_i) * 2.1 + float(s_i) * 3.0)
-			var g_pos := anchor + Vector2(off_x + hit_wave * 8.0, off_y)
-			var g_rot := side * 0.14 + hit_wave * 0.18
-			var g_flip := cos(phase_t * 2.8 + float(g_i) * 1.4 + float(s_i))
-			_draw_lobby_card(g_pos, card_sz * 0.88, g_rot, g_flip, LOBBY_SUITS[(g_i + s_i * 2) % 4], _pick_lobby_card_rank(g_i + s_i * 4 + 1), 0.78 * fade)
-
-	var l_card := Vector2(lerpf(-180.0, w * 0.22, enter), h * 0.56 + sin(phase_t * 2.8) * 7.0)
-	var r_card := Vector2(lerpf(w + 180.0, w * 0.78, enter), h * 0.56 + cos(phase_t * 2.8) * 7.0)
-
-	# Magické runové kruhy pod oběma hlavními kartami
-	for r_k in range(2):
-		var cp := l_card if r_k == 0 else r_card
-		var col_c := Color(1.0, 0.45, 0.14, 0.34 * fade) if r_k == 0 else Color(0.28, 0.88, 1.0, 0.34 * fade)
-		lobby_fx_canvas.draw_circle(cp, hero_sz.x * 0.76, Color(col_c.r, col_c.g, col_c.b, 0.14 * fade))
-		lobby_fx_canvas.draw_arc(cp, hero_sz.x * 0.70, phase_t * (1.5 if r_k == 0 else -1.5), phase_t * (1.5 if r_k == 0 else -1.5) + TAU * 0.82, 40, col_c, 3.0)
-
-	_draw_lobby_card(l_card, hero_sz, -0.06 + sin(phase_t * 5.0) * 0.04, 1.0, LOBBY_SUITS[3], "E", 0.98 * fade)
-	_draw_lobby_card(r_card, hero_sz, 0.06 + cos(phase_t * 5.0) * 0.04, 1.0, LOBBY_SUITS[1], "K", 0.98 * fade)
-
-	var ink := Color(0.06, 0.04, 0.03, fade)
-	var gold := Color(1.0, 0.84, 0.30, fade)
-
-	# 1. 2D Dřevorytový Okřídlený Drak vystupující z levé karty (GULA Eso)
-	var dr_pos := l_card + Vector2(28.0, -14.0 + sin(phase_t * 5.5) * 10.0)
-	var wing_flap := sin(phase_t * 11.0) * 26.0
-	# Ocas draka s ostny ukotvený do karty
-	var tail_pts := PackedVector2Array([
-		dr_pos + Vector2(-14, 28), dr_pos + Vector2(-38, 44),
-		dr_pos + Vector2(-56, 32 + sin(phase_t * 7.0) * 6.0), dr_pos + Vector2(-42, 16)
-	])
-	lobby_fx_canvas.draw_colored_polygon(tail_pts, Color(0.68, 0.18, 0.12, fade))
-	lobby_fx_canvas.draw_polyline(tail_pts + PackedVector2Array([tail_pts[0]]), ink, 2.4)
-	# Žebrované dračí křídlo
-	var wing_tip := dr_pos + Vector2(-58, -54 + wing_flap)
-	var wing_mid := dr_pos + Vector2(-50, 2 + wing_flap * 0.45)
-	var wing_poly := PackedVector2Array([
-		dr_pos + Vector2(-6, -12), wing_tip, wing_mid, dr_pos + Vector2(-8, 10)
-	])
-	lobby_fx_canvas.draw_colored_polygon(wing_poly, Color(0.76, 0.20, 0.14, fade))
-	lobby_fx_canvas.draw_line(dr_pos + Vector2(-6, -12), wing_tip, gold, 2.4)
-	lobby_fx_canvas.draw_line(dr_pos + Vector2(-6, -12), (wing_tip + wing_mid) * 0.5, ink, 1.8)
-	lobby_fx_canvas.draw_line(dr_pos + Vector2(-6, -12), wing_mid, ink, 1.8)
-	lobby_fx_canvas.draw_polyline(wing_poly + PackedVector2Array([wing_poly[0]]), ink, 2.6)
-	# Tělo, pancéřová hruď a drápy draka
-	var dr_body := PackedVector2Array([
-		dr_pos + Vector2(-22, 34), dr_pos + Vector2(-12, -12),
-		dr_pos + Vector2(14, -26), dr_pos + Vector2(22, -4), dr_pos + Vector2(10, 30)
-	])
-	lobby_fx_canvas.draw_colored_polygon(dr_body, Color(0.90, 0.30, 0.15, fade))
-	for sc_i in range(4):
-		var sy := -4.0 + float(sc_i) * 8.0
-		lobby_fx_canvas.draw_line(dr_pos + Vector2(2, sy), dr_pos + Vector2(16, sy + 2), gold, 2.2)
-	lobby_fx_canvas.draw_polyline(dr_body + PackedVector2Array([dr_body[0]]), ink, 2.8)
-	# Hlava draka s rohy, otevřenou čelistí a tesáky
-	var head_top := PackedVector2Array([
-		dr_pos + Vector2(8, -24), dr_pos + Vector2(24, -34),
-		dr_pos + Vector2(44, -26), dr_pos + Vector2(38, -17), dr_pos + Vector2(14, -15)
-	])
-	lobby_fx_canvas.draw_colored_polygon(head_top, Color(0.94, 0.36, 0.16, fade))
-	lobby_fx_canvas.draw_polyline(head_top + PackedVector2Array([head_top[0]]), ink, 2.5)
-	var jaw_low := PackedVector2Array([
-		dr_pos + Vector2(14, -14), dr_pos + Vector2(38, -11), dr_pos + Vector2(34, -4), dr_pos + Vector2(12, -7)
-	])
-	lobby_fx_canvas.draw_colored_polygon(jaw_low, Color(0.76, 0.22, 0.12, fade))
-	lobby_fx_canvas.draw_polyline(jaw_low + PackedVector2Array([jaw_low[0]]), ink, 2.2)
-	lobby_fx_canvas.draw_line(dr_pos + Vector2(14, -30), dr_pos + Vector2(-6, -48), gold, 3.4)
-	lobby_fx_canvas.draw_line(dr_pos + Vector2(8, -26), dr_pos + Vector2(-12, -38), gold, 2.6)
-	lobby_fx_canvas.draw_circle(dr_pos + Vector2(24, -24), 3.4, Color(1.0, 0.95, 0.44, fade))
-	var maw_pos := dr_pos + Vector2(40.0, -15.0)
-	lobby_fx_canvas.draw_circle(maw_pos, 7.5 + sin(phase_t * 16.0) * 2.5, Color(1.0, 0.65, 0.14, 0.88 * fade))
-
-	# 2. 2D Dřevorytový Alchymista / Arcimág vystupující z pravé karty (ZELEN Král)
-	var mg_pos := r_card + Vector2(-28.0, -8.0 + cos(phase_t * 4.8) * 8.0)
-	# Plášť a roucho mága se zlatým lemem a opaskem
-	var robe_poly := PackedVector2Array([
-		mg_pos + Vector2(-15, -18), mg_pos + Vector2(17, -18),
-		mg_pos + Vector2(28, 38), mg_pos + Vector2(-24, 38)
-	])
-	lobby_fx_canvas.draw_colored_polygon(robe_poly, Color(0.13, 0.44, 0.40, fade))
-	var mantle_poly := PackedVector2Array([
-		mg_pos + Vector2(-18, -18), mg_pos + Vector2(19, -18),
-		mg_pos + Vector2(22, 2), mg_pos + Vector2(-20, 2)
-	])
-	lobby_fx_canvas.draw_colored_polygon(mantle_poly, Color(0.18, 0.56, 0.48, fade))
-	lobby_fx_canvas.draw_line(mg_pos + Vector2(-2, -18), mg_pos + Vector2(-2, 37), gold, 2.6)
-	lobby_fx_canvas.draw_line(mg_pos + Vector2(-18, 6), mg_pos + Vector2(20, 6), gold, 3.0)
-	lobby_fx_canvas.draw_polyline(robe_poly + PackedVector2Array([robe_poly[0]]), ink, 2.6)
-	# Tvář a dlouhý stříbrný plnovous mága
-	lobby_fx_canvas.draw_circle(mg_pos + Vector2(-3, -24), 9.0, Color(0.92, 0.78, 0.64, fade))
-	var beard_poly := PackedVector2Array([
-		mg_pos + Vector2(-10, -21), mg_pos + Vector2(4, -21),
-		mg_pos + Vector2(-1, 2), mg_pos + Vector2(-13, -4)
-	])
-	lobby_fx_canvas.draw_colored_polygon(beard_poly, Color(0.88, 0.90, 0.94, fade))
-	lobby_fx_canvas.draw_polyline(beard_poly + PackedVector2Array([beard_poly[0]]), ink, 1.8)
-	lobby_fx_canvas.draw_circle(mg_pos + Vector2(-6, -25), 2.2, Color(0.36, 0.96, 1.0, fade))
-	# Špičatý klobouk mága se zlatou přezkou
-	var hat_brim := PackedVector2Array([
-		mg_pos + Vector2(-24, -28), mg_pos + Vector2(22, -26),
-		mg_pos + Vector2(14, -33), mg_pos + Vector2(-16, -34)
-	])
-	var hat_cone := PackedVector2Array([
-		mg_pos + Vector2(-13, -31), mg_pos + Vector2(12, -30),
-		mg_pos + Vector2(8, -64), mg_pos + Vector2(-4, -52)
-	])
-	lobby_fx_canvas.draw_colored_polygon(hat_cone, Color(0.10, 0.30, 0.34, fade))
-	lobby_fx_canvas.draw_polyline(hat_cone + PackedVector2Array([hat_cone[0]]), ink, 2.4)
-	lobby_fx_canvas.draw_colored_polygon(hat_brim, Color(0.12, 0.36, 0.38, fade))
-	lobby_fx_canvas.draw_polyline(hat_brim + PackedVector2Array([hat_brim[0]]), ink, 2.4)
-	lobby_fx_canvas.draw_line(mg_pos + Vector2(-12, -32), mg_pos + Vector2(11, -31), gold, 3.0)
-	# Levitující otevřený grimoár před mágem
-	var book_p := mg_pos + Vector2(-18.0, 2.0 + sin(phase_t * 6.5) * 4.0)
-	var book_poly := PackedVector2Array([
-		book_p + Vector2(-12, -6), book_p + Vector2(0, -3),
-		book_p + Vector2(12, -7), book_p + Vector2(10, 6),
-		book_p + Vector2(0, 9), book_p + Vector2(-12, 5)
-	])
-	lobby_fx_canvas.draw_colored_polygon(book_poly, Color(0.95, 0.90, 0.76, fade))
-	lobby_fx_canvas.draw_polyline(book_poly + PackedVector2Array([book_poly[0]]), ink, 2.0)
-	# Magická hůl s rotujícím astrolábem v přední ruce
-	var staff_base := mg_pos + Vector2(-26.0, 36.0)
-	var staff_tip := mg_pos + Vector2(-38.0, -34.0 + sin(phase_t * 8.0) * 4.0)
-	lobby_fx_canvas.draw_line(mg_pos + Vector2(-12, -8), mg_pos + Vector2(-32, -8), ink, 8.5)
-	lobby_fx_canvas.draw_line(mg_pos + Vector2(-12, -8), mg_pos + Vector2(-32, -8), Color(0.18, 0.56, 0.48, fade), 5.5)
-	lobby_fx_canvas.draw_line(staff_base, staff_tip, ink, 6.0)
-	lobby_fx_canvas.draw_line(staff_base, staff_tip, gold, 3.2)
-	lobby_fx_canvas.draw_circle(staff_tip, 9.5, Color(0.32, 0.95, 1.0, 0.88 * fade))
-	lobby_fx_canvas.draw_arc(staff_tip, 14.5, phase_t * 5.0, phase_t * 5.0 + PI * 1.4, 16, gold, 2.4)
-
-	# 3. Střet dračího ohně a arkánových blesků uprostřed mezi kartami!
-	if phase_t > 0.45:
-		var clash_x := cen.x + sin(phase_t * 6.2) * 38.0
-		var clash_y := cen.y - 12.0 + cos(phase_t * 5.1) * 18.0
-		var clash_pt := Vector2(clash_x, clash_y)
-
-		# Proud dračích ohnivých koulí zleva do střetu
-		for fb_i in range(6):
-			var fu := fmod(phase_t * 1.45 + float(fb_i) * 0.16, 1.0)
-			var fp := maw_pos.lerp(clash_pt, fu) + Vector2(0.0, sin(fu * PI * 2.0 + phase_t * 8.0) * 18.0)
-			var fr := lerpf(8.0, 18.0, sin(fu * PI))
-			lobby_fx_canvas.draw_circle(fp, fr * 1.45, Color(1.0, 0.34, 0.08, 0.42 * fade))
-			lobby_fx_canvas.draw_circle(fp, fr, Color(1.0, 0.72, 0.18, 0.92 * fade))
-			lobby_fx_canvas.draw_circle(fp, fr * 0.5, Color(1.0, 0.96, 0.78, 0.95 * fade))
-
-		# Klikaté blesky z hole mága zprava do střetu
-		for b_branch in range(2):
-			var bolt_pts := PackedVector2Array([staff_tip])
-			var segs := 8
-			for s_k in range(1, segs):
-				var su := float(s_k) / float(segs)
-				var bp := staff_tip.lerp(clash_pt, su)
-				var jitter := sin(phase_t * 28.0 + float(s_k) * 3.7 + float(b_branch) * 2.1) * (18.0 if b_branch == 0 else 28.0)
-				bolt_pts.append(bp + Vector2(0.0, jitter))
-			bolt_pts.append(clash_pt)
-			lobby_fx_canvas.draw_polyline(bolt_pts, Color(0.24, 0.88, 1.0, (0.85 if b_branch == 0 else 0.45) * fade), 4.8 if b_branch == 0 else 2.6)
-			lobby_fx_canvas.draw_polyline(bolt_pts, Color(0.92, 1.0, 1.0, 0.95 * fade), 2.0 if b_branch == 0 else 1.2)
-
-		# Středový vír kolize magie & vyletující karetní symboly (♥ ♠ ♣ ●)
-		var vortex_r := 32.0 + sin(phase_t * 14.0) * 8.0
-		lobby_fx_canvas.draw_circle(clash_pt, vortex_r * 1.35, Color(1.0, 0.64, 0.20, 0.26 * fade))
-		lobby_fx_canvas.draw_arc(clash_pt, vortex_r, phase_t * 6.0, phase_t * 6.0 + TAU * 0.75, 32, Color(1.0, 0.86, 0.32, 0.92 * fade), 3.6)
-		lobby_fx_canvas.draw_arc(clash_pt, vortex_r * 0.68, -phase_t * 8.0, -phase_t * 8.0 + TAU * 0.75, 24, Color(0.36, 0.94, 1.0, 0.92 * fade), 3.0)
-
-		var df := _get_font(true)
-		for pip_i in range(8):
-			var p_ang := float(pip_i) * (TAU / 8.0) + phase_t * 2.4
-			var p_dist := 36.0 + fmod(phase_t * 85.0 + float(pip_i) * 19.0, 92.0)
-			var pip_pos := clash_pt + Vector2(cos(p_ang), sin(p_ang)) * p_dist
-			var suit_d: Dictionary = LOBBY_SUITS[pip_i % 4]
-			var pip_a := (1.0 - clampf((p_dist - 36.0) / 92.0, 0.0, 1.0)) * fade
-			var sc_col: Color = suit_d["col"]
-			lobby_fx_canvas.draw_string(df, pip_pos + Vector2(-10, 8), str(suit_d["sym"]), HORIZONTAL_ALIGNMENT_CENTER, -1, 24, Color(sc_col.r, sc_col.g, sc_col.b, pip_a))
+	_draw_lobby_card_jump_duel(
+		w, h, phase_t, fade, card_sz,
+		LOBBY_SUITS[3], "SPEC_JESTER", "SPEC_JESTER",
+		LOBBY_SUITS[0], "SPEC_PHOENIX", "SPEC_PHOENIX",
+		lobby_jester_sheet_tex,
+		lobby_phoenix_sheet_tex,
+		Color(0.32, 0.88, 1.0),
+		Color(1.0, 0.45, 0.14),
+		Color(1.0, 0.62, 0.26)
+	)
 
 # ============================================================================
 # 3. 3D MAPA KAMPANE (Hory s prírodným snehom, hladké stromy, érové stavby)
@@ -5617,17 +5563,21 @@ func _build_roguelite_modals() -> void:
 	sc_vb.add_child(sculpt_suit_bar)
 
 	var suit_opts := [
-		{"id": "CERVEN", "en": "♥ Hearts", "cs": "♥ Srdce",  "col": Color(0.96, 0.34, 0.38)},
-		{"id": "ZALUD",  "en": "♣ Acorns", "cs": "♣ Žaludy", "col": Color(0.90, 0.72, 0.38)},
-		{"id": "ZELEN",  "en": "♠ Leaves", "cs": "♠ Listy",  "col": Color(0.32, 0.84, 0.62)},
-		{"id": "GULA",   "en": "♦ Bells",  "cs": "♦ Kule",   "col": Color(1.0, 0.66, 0.28)},
+		{"id": "CERVEN", "en": "Hearts", "cs": "Srdce",  "col": Color(0.96, 0.34, 0.38)},
+		{"id": "ZALUD",  "en": "Acorns", "cs": "Žaludy", "col": Color(0.90, 0.72, 0.38)},
+		{"id": "ZELEN",  "en": "Leaves", "cs": "Listy",  "col": Color(0.32, 0.84, 0.62)},
+		{"id": "GULA",   "en": "Bells",  "cs": "Kule",   "col": Color(1.0, 0.66, 0.28)},
 	]
 	for so in suit_opts:
 		var sbtn := Button.new()
 		sbtn.text = _tr(str(so["en"]), str(so["cs"]))
 		sbtn.set_meta("en_label", str(so["en"]))
 		sbtn.set_meta("cs_label", str(so["cs"]))
-		sbtn.custom_minimum_size = Vector2(180, 36)
+		var crest_ic := suit_crest_cache.get(str(so["id"]), null) as Texture2D
+		if crest_ic != null:
+			sbtn.icon = crest_ic
+			sbtn.expand_icon = true
+		sbtn.custom_minimum_size = Vector2(180, 38)
 		sbtn.add_theme_font_size_override("font_size", 16)
 		sbtn.add_theme_color_override("font_color", so["col"])
 		var target_sid: String = str(so["id"])
@@ -5694,8 +5644,10 @@ func _build_roguelite_modals() -> void:
 	ahdr.add_child(a_title)
 	almanac_title_lbl = a_title
 
-	var t_names_en := ["16 Power Cards", "24 Relics", "5 Classes", "⚒ 6 Runeforge", "⚔ 5 Swords"]
-	var t_names_cs := ["16 Mocných", "24 Relikvií", "5 Tříd", "⚒ 6 Kovárna", "⚔ 5 Čepelí"]
+	var vis_rel_cnt := Catalog.get_visible_relics().size()
+	var pwr_cnt := Catalog.POWER_CARDS.size()
+	var t_names_en := ["%d Power Cards" % pwr_cnt, "%d Relics" % vis_rel_cnt, "5 Classes", "⚒ 6 Runeforge", "⚔ 5 Swords"]
+	var t_names_cs := ["%d Mocných" % pwr_cnt, "%d Relikvií" % vis_rel_cnt, "5 Tříd", "⚒ 6 Kovárna", "⚔ 5 Čepelí"]
 	almanac_tab_btns.clear()
 	for ti in range(t_names_en.size()):
 		var tbtn := Button.new()
@@ -5761,7 +5713,7 @@ func _rebuild_shop_ui(after_win: bool = false) -> void:
 	elif after_win and not last_victory_info.is_empty():
 		shop_title_lbl.text = _tr("★ VICTORY (+%d 🪙)  •  CHOOSE CARD UPGRADES ★" % int(last_victory_info.get("gold_earned", 40)), "★ VÍTĚZSTVÍ (+%d 🪙)  •  VYBER VYLEPŠENÍ KARET ★" % int(last_victory_info.get("gold_earned", 40)))
 	else:
-		shop_title_lbl.text = _tr("✦ CARD UPGRADE FORGE (3 OFFERS) ✦", "✦ KOVÁRNA VYLEPŠENÍ KARET (3 NABÍDKY) ✦")
+		shop_title_lbl.text = _tr("✦ CARD UPGRADE FORGE (%d OFFERS) ✦" % shop_offers.size(), "✦ KOVÁRNA VYLEPŠENÍ KARET (%d NABÍDEK) ✦" % shop_offers.size())
 
 	for c in shop_items_box.get_children():
 		c.queue_free()
@@ -5781,20 +5733,38 @@ func _rebuild_shop_ui(after_win: bool = false) -> void:
 		hb.add_theme_constant_override("separation", 16)
 		card_row.add_child(hb)
 
-		if str(off.get("kind", "")) == "power_card":
-			var pc_info := Catalog.get_power_card(str(off.get("id", "")))
-			var art_p := "res://assets/cards/" + str(pc_info.get("art_file", ""))
-			if ResourceLoader.exists(art_p):
+		var off_kind := str(off.get("kind", ""))
+		if off_kind == "power_card" or off_kind == "relic":
+			var art_p := ""
+			if off_kind == "power_card":
+				var pc_info := Catalog.get_power_card(str(off.get("id", "")))
+				art_p = "res://assets/cards/" + str(pc_info.get("art_file", ""))
+			else:
+				art_p = Catalog.get_relic_art_path(str(off.get("id", "")))
+			if art_p != "" and ResourceLoader.exists(art_p):
 				var thumb_frame := PanelContainer.new()
-				thumb_frame.custom_minimum_size = Vector2(64, 92)
+				thumb_frame.custom_minimum_size = Vector2(72, 92) if off_kind == "power_card" else Vector2(76, 76)
 				thumb_frame.add_theme_stylebox_override("panel", _make_modal_card_style(Color(0.08, 0.06, 0.05), ocol))
 				var tex_r := TextureRect.new()
-				tex_r.texture = load(art_p)
+				tex_r.texture = Toon.tex(art_p) if off_kind == "relic" else load(art_p)
 				tex_r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 				tex_r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-				tex_r.custom_minimum_size = Vector2(56, 84)
+				tex_r.custom_minimum_size = Vector2(58, 84) if off_kind == "power_card" else Vector2(64, 64)
 				thumb_frame.add_child(tex_r)
 				hb.add_child(thumb_frame)
+		elif off_kind == "table_relic":
+			var tr_thumb := PanelContainer.new()
+			tr_thumb.custom_minimum_size = Vector2(76, 76)
+			tr_thumb.add_theme_stylebox_override("panel", _make_modal_card_style(Color(0.06, 0.05, 0.08), ocol))
+			var tr_badge := Label.new()
+			tr_badge.text = "✦\n3D"
+			tr_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			tr_badge.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			tr_badge.add_theme_font_override("font", _get_font(true))
+			tr_badge.add_theme_font_size_override("font_size", 20)
+			tr_badge.add_theme_color_override("font_color", ocol.lightened(0.32))
+			tr_thumb.add_child(tr_badge)
+			hb.add_child(tr_thumb)
 
 		var info_vb := VBoxContainer.new()
 		info_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -6062,6 +6032,8 @@ func _buy_shop_offer(idx: int) -> void:
 		cc.append(str(off["id"]))
 		run_profile["custom_cards"] = cc
 		Catalog.unlock_card(run_profile, str(off["id"]))
+	elif kind == "table_relic":
+		Catalog.grant_table_relic(run_profile, str(off["id"]))
 	elif kind == "relic":
 		var ar: Array = run_profile.get("active_relics", [])
 		if not (str(off["id"]) in ar):
@@ -6155,14 +6127,59 @@ func _rebuild_almanac_ui() -> void:
 			row_hb.add_child(lbl)
 			almanac_list_box.add_child(row)
 	elif almanac_tab_idx == 1:
+		var owned_tr_alm: Array = run_profile.get("table_relics", [])
+		var tr_hdr := Label.new()
+		tr_hdr.text = _tr("✦ ACTIVE 3D TABLETOP RELICS (Click on Table in Duel — 10 Total)", "✦ AKTIVNÍ 3D RELIKVIE NA STŮL (Klikni na stole v duelu — 10 celkem)")
+		tr_hdr.add_theme_font_override("font", _get_font(true))
+		tr_hdr.add_theme_font_size_override("font_size", 16)
+		tr_hdr.add_theme_color_override("font_color", Color(0.54, 0.92, 1.0))
+		almanac_list_box.add_child(tr_hdr)
+		for tr_raw in Catalog.TABLE_RELICS:
+			var tid := str(tr_raw["id"])
+			var tr_l := Catalog.get_table_relic_loc(tid, lang_code)
+			var eq_tr := tid in owned_tr_alm
+			var trow := PanelContainer.new()
+			trow.add_theme_stylebox_override("panel", _make_modal_card_style(Color(0.10, 0.09, 0.14, 0.94), tr_l["col"]))
+			var tlbl := Label.new()
+			tlbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			tlbl.text = "✦ %s [3D TABLE • %s] — %d 🪙 %s\n%s" % [
+				str(tr_l["name"]), str(tr_l.get("short", "USE")), int(tr_l["cost"]),
+				(_tr("(ON TABLE!)", "(NA STOLE!)") if eq_tr else _tr("(Shop / Peddler)", "(Obchod / Kramář)")),
+				str(tr_l["desc"])
+			]
+			tlbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			tlbl.add_theme_font_size_override("font_size", 15)
+			tlbl.add_theme_color_override("font_color", Color(0.95, 0.93, 0.88))
+			trow.add_child(tlbl)
+			almanac_list_box.add_child(trow)
+		var pr_hdr := Label.new()
+		pr_hdr.text = _tr("✦ PASSIVE RELICS (Automatic Scoring & Economy)", "✦ PASIVNÍ RELIKVIE (Automatické skórování a ekonomika)")
+		pr_hdr.add_theme_font_override("font", _get_font(true))
+		pr_hdr.add_theme_font_size_override("font_size", 16)
+		pr_hdr.add_theme_color_override("font_color", Color(1.0, 0.84, 0.36))
+		almanac_list_box.add_child(pr_hdr)
 		var r_scales: Dictionary = run_profile.get("relic_scales", {})
 		for r_raw in Catalog.RELICS:
 			var rid := str(r_raw["id"])
+			if Catalog.is_relic_hidden(rid):
+				continue
 			var r := Catalog.get_relic_loc(rid, lang_code)
 			var eq := rid in owned_rel
 			var row := PanelContainer.new()
 			row.add_theme_stylebox_override("panel", _make_modal_card_style(Color(0.11, 0.10, 0.15, 0.92), r["col"]))
+			var row_hb := HBoxContainer.new()
+			row_hb.add_theme_constant_override("separation", 12)
+			row.add_child(row_hb)
+			var r_art_p := Catalog.get_relic_art_path(rid)
+			if ResourceLoader.exists(r_art_p):
+				var r_tr := TextureRect.new()
+				r_tr.texture = Toon.tex(r_art_p)
+				r_tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				r_tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				r_tr.custom_minimum_size = Vector2(54, 54)
+				row_hb.add_child(r_tr)
 			var lbl := Label.new()
+			lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			var scale_note := ""
 			if rid == "REL_SEVEN_GRIMOIRE":
 				scale_note = "  [%s: ×%.2f]" % [_tr("Now", "Teď"), 1.0 + float(r_scales.get("REL_SEVEN_GRIMOIRE", 0.0))]
@@ -6175,7 +6192,7 @@ func _rebuild_almanac_ui() -> void:
 			lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			lbl.add_theme_font_size_override("font_size", 15)
 			lbl.add_theme_color_override("font_color", Color(0.95, 0.92, 0.86))
-			row.add_child(lbl)
+			row_hb.add_child(lbl)
 			almanac_list_box.add_child(row)
 	elif almanac_tab_idx == 2:
 		for ck in ["NORMAL", "MAGE", "KNIGHT", "MERCHANT", "THIEF"]:
@@ -6256,6 +6273,8 @@ func _refresh_map_roguelite_hud() -> void:
 		for c in map_relics_row.get_children():
 			c.queue_free()
 		for rel_id in run_profile.get("active_relics", []):
+			if Catalog.is_relic_hidden(str(rel_id)):
+				continue
 			var r_info := Catalog.get_relic(str(rel_id))
 			if r_info.is_empty():
 				continue
@@ -6693,8 +6712,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if collection_detail_modal and collection_detail_modal.visible:
 			_close_animated_modal(collection_detail_modal)
 			return
-		if options_modal and options_modal.visible:
-			_close_animated_modal(options_modal)
+		if options_3d and options_3d.is_open():
+			options_3d.close_3d()
 			return
 		if deck_modal and deck_modal.visible:
 			_close_animated_modal(deck_modal)
@@ -6818,8 +6837,7 @@ func _process(delta: float) -> void:
 
 	if current_screen == ScreenState.SPLASH:
 		splash_time += delta
-		if splash_canvas:
-			splash_canvas.queue_redraw()
+		_update_splash_3d()
 		if splash_time >= 5.3 and not splash_skipped:
 			splash_skipped = true
 			_switch_to(ScreenState.MAIN_MENU)

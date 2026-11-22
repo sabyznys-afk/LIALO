@@ -21,6 +21,8 @@ var leave_btn: Button
 
 var status_lbl: Label
 var arch_buttons: Dictionary = {}
+var char_buttons: Dictionary = {}
+var selected_char_id: String = "CHAR_GUILLOTINE"
 var extra_aces_val: int = 4
 var aces_lbl: Label
 var deck_desc_lbl: Label
@@ -165,6 +167,30 @@ func _build_ui() -> void:
 	left_vb.add_theme_constant_override("separation", 10)
 	body_hb.add_child(left_vb)
 
+	var c_title := Label.new()
+	c_title.text = "CHOOSE YOUR 3D CHARACTER (Visible around the Tavern Table)"
+	c_title.add_theme_font_size_override("font_size", 15)
+	c_title.add_theme_color_override("font_color", Color(0.58, 0.92, 1.0))
+	left_vb.add_child(c_title)
+
+	var char_hb := HBoxContainer.new()
+	char_hb.add_theme_constant_override("separation", 8)
+	left_vb.add_child(char_hb)
+	for ch in Config.CHARACTERS:
+		var cid := str(ch["id"])
+		var cb := Button.new()
+		cb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cb.custom_minimum_size = Vector2(0, 38)
+		cb.text = str(ch["name"])
+		cb.tooltip_text = str(ch["desc"])
+		cb.toggle_mode = true
+		cb.pressed.connect(func():
+			play_click_sfx.emit()
+			_select_character(cid)
+		)
+		char_buttons[cid] = cb
+		char_hb.add_child(cb)
+
 	var d_title := Label.new()
 	d_title.text = "YOUR OWN PERSONAL DECK (Every player brings their own!)"
 	d_title.add_theme_font_size_override("font_size", 16)
@@ -276,13 +302,24 @@ func _build_ui() -> void:
 	_select_archetype("GUILLOTINE_ACES")
 
 
+func _select_character(char_id: String) -> void:
+	selected_char_id = char_id
+	for k in char_buttons.keys():
+		char_buttons[k].set_pressed_no_signal(k == char_id)
+	_push_deck_update()
+
+
 func _select_archetype(arch_id: String) -> void:
 	for k in arch_buttons.keys():
 		arch_buttons[k].set_pressed_no_signal(k == arch_id)
 	var arch := Config.get_archetype(arch_id)
+	var def_char := Config.get_character_for_archetype(arch_id)
+	selected_char_id = str(def_char.get("id", "CHAR_GUILLOTINE"))
+	for k in char_buttons.keys():
+		char_buttons[k].set_pressed_no_signal(k == selected_char_id)
 	extra_aces_val = int(arch.get("extra_aces", 2))
 	if mp_net != null:
-		mp_net.local_deck_cfg = {"archetype_id": arch_id, "extra_aces": extra_aces_val}
+		mp_net.local_deck_cfg = {"archetype_id": arch_id, "extra_aces": extra_aces_val, "character_id": selected_char_id}
 		mp_net.update_local_deck(mp_net.local_deck_cfg)
 	_update_deck_summary(arch)
 
@@ -294,7 +331,7 @@ func _push_deck_update() -> void:
 			arch_id = str(k)
 			break
 	if mp_net != null:
-		mp_net.local_deck_cfg = {"archetype_id": arch_id, "extra_aces": extra_aces_val}
+		mp_net.local_deck_cfg = {"archetype_id": arch_id, "extra_aces": extra_aces_val, "character_id": selected_char_id}
 		mp_net.update_local_deck(mp_net.local_deck_cfg)
 	_update_deck_summary(Config.get_archetype(arch_id))
 

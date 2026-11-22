@@ -10,6 +10,8 @@ const Catalog = preload("res://scripts/lialo_catalog.gd")
 const CamSpring = preload("res://scripts/camera_recoil_spring.gd")
 const Fx = preload("res://scripts/fx_lib.gd")
 const SwordCardAnim = preload("res://scripts/sword_card_animator.gd")
+const BlenderVfx = preload("res://scripts/blender_vfx_animator.gd")
+const RelicMesh = preload("res://scripts/relic_mesh_factory.gd")
 const Config = preload("res://scripts/mp/mp_config.gd")
 
 const CARD_FX_SHADER := preload("res://shaders/card_fx.gdshader")
@@ -60,9 +62,10 @@ var selected_indices: Array[int] = []
 var selected_target: int = 1
 var chosen_wild_suit: String = "CERVEN"
 var local_parry_left: float = 0.0
-var rmb_down: bool = false
 var look_yaw: float = 0.0
 var look_pitch: float = 0.0
+var _mp_cursor_pos: Vector2 = Vector2(-1.0, -1.0)
+var _mp_anim_t: float = 0.0
 
 var seat_nodes: Dictionary = {} # seat_idx -> {root, avatar, hand_grp, deck_mesh, sword, turn_ring, lbl, hit_area}
 var _built_seat_count: int = -1
@@ -106,11 +109,40 @@ func _process(delta: float) -> void:
 	if cam_kick_shake > 0.0:
 		cam_kick_shake = maxf(0.0, cam_kick_shake - delta * 2.2)
 	cam_spring.step(delta)
+	_mp_anim_t += delta
+	# Smooth natural mouse-look without requiring RMB hold (UP=UP, DOWN=DOWN, L/R persistent)
+	var vp := get_viewport()
+	if vp != null:
+		var vpsz := vp.get_visible_rect().size
+		if vpsz.x > 10.0 and vpsz.y > 10.0:
+			var mp_p := _mp_cursor_pos if _mp_cursor_pos.x >= 0.0 else (vpsz * 0.5)
+			var nx := clampf((mp_p.x / vpsz.x) * 2.0 - 1.0, -1.0, 1.0)
+			var ny := clampf((mp_p.y / vpsz.y) * 2.0 - 1.0, -1.0, 1.0)
+			var tgt_yaw := -nx * 24.0
+			var tgt_pitch := -ny * 13.0 # cursor UP (ny<0) -> +pitch (look UP)
+			look_yaw = lerpf(look_yaw, tgt_yaw, clampf(delta * 7.5, 0.0, 1.0))
+			look_pitch = lerpf(look_pitch, tgt_pitch, clampf(delta * 7.5, 0.0, 1.0))
+
+	# Subtle idle breathing & turn highlight animation on sculpted MP characters
+	var active_turn_seat := int(public_state.get("turn_seat", 0))
+	for si_k in seat_nodes.keys():
+		var sn: Dictionary = seat_nodes[si_k]
+		var tp: Node3D = sn.get("torso_pivot")
+		var hp: Node3D = sn.get("head_pivot")
+		var is_t := (int(si_k) == active_turn_seat)
+		var ph := float(int(si_k)) * 1.45
+		if is_instance_valid(tp):
+			var base_p: Vector3 = sn.get("torso_base_pos", tp.position)
+			tp.position.y = base_p.y + sin(_mp_anim_t * (2.4 if is_t else 1.5) + ph) * 0.008
+			tp.rotation_degrees.x = lerpf(tp.rotation_degrees.x, 4.5 if is_t else 0.0, clampf(delta * 5.0, 0.0, 1.0))
+		if is_instance_valid(hp):
+			hp.rotation_degrees.y = sin(_mp_anim_t * 0.85 + ph) * (6.0 if is_t else 3.5)
+
 	if is_instance_valid(cam):
 		var sh := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0.0) * cam_kick_shake * 0.025
-		cam.position = Vector3(0.0, 1.78, 1.58) + cam_spring.pos_offset + sh
-		cam.rotation_degrees = Vector3(-27.0 + look_pitch + cam_spring.get_pitch_kick(), look_yaw, cam_spring.rot_offset_deg.z)
-		cam.fov = 50.0 + cam_spring.get_fov_kick()
+		cam.position = Vector3(0.0, 1.92, 1.78) + cam_spring.pos_offset + sh
+		cam.rotation_degrees = Vector3(-25.0 + look_pitch + cam_spring.get_pitch_kick(), look_yaw, cam_spring.rot_offset_deg.z)
+		cam.fov = 52.0 + cam_spring.get_fov_kick()
 		cam_spring.apply_to_camera(cam)
 
 	if local_parry_left > 0.0:
@@ -136,19 +168,20 @@ func _process(delta: float) -> void:
 				sw.rotation.y = lerp_angle(sw.rotation.y, desired_local_yaw, delta * 9.0)
 
 
+func _input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if event is InputEventMouseMotion:
+		_mp_cursor_pos = (event as InputEventMouseMotion).position
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible:
 		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_RIGHT:
-			rmb_down = mb.pressed
-		elif mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed and is_instance_valid(cam):
+		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed and is_instance_valid(cam):
 			_try_click_3d_seat(mb.position)
-	elif event is InputEventMouseMotion and rmb_down:
-		var mm := event as InputEventMouseMotion
-		look_yaw = clampf(look_yaw - mm.relative.x * 0.16, -34.0, 34.0)
-		look_pitch = clampf(look_pitch - mm.relative.y * 0.14, -18.0, 14.0)
 
 
 func _try_click_3d_seat(screen_pos: Vector2) -> void:
@@ -320,64 +353,90 @@ func _rebuild_seats_if_needed(seats_arr: Array) -> void:
 		ring.visible = false
 		sroot.add_child(ring)
 
-		# Personal Draw Deck stack to the right of the player
+		var char_id := str(s.get("character_id", ""))
+		if char_id == "":
+			char_id = str(Config.CHARACTERS[si % Config.CHARACTERS.size()]["id"])
+		var deck_back_map := {
+			"CHAR_GUILLOTINE": "res://assets/table/deck_back_reaper.png",
+			"CHAR_MONARCH": "res://assets/table/deck_back_stredovek.png",
+			"CHAR_JESTER": "res://assets/table/deck_back_prohibicia.png",
+			"CHAR_MISTBLADE": "res://assets/table/deck_back_quincy.png",
+		}
+		var seat_back_p := str(deck_back_map.get(char_id, "res://assets/table/card_back.png"))
+
+		# Personal Draw Deck stack to the right of the player (with character's signature card back!)
 		var deck_m := MeshInstance3D.new()
 		var dbox := BoxMesh.new(); dbox.size = Vector3(0.14, 0.055, 0.20)
 		deck_m.mesh = dbox
 		deck_m.position = Vector3(0.28, 0.028, 0.06)
-		deck_m.material_override = Toon.mat(scol.darkened(0.25), "res://assets/table/card_back.png")
+		deck_m.material_override = Toon.mat(Color(0.94, 0.92, 0.88), seat_back_p)
 		sroot.add_child(deck_m)
 
-		# Seat's Forged 3D Sword on the left (or tucked neatly on felt to the right for local player!)
-		var sword_p := Node3D.new()
-		sword_p.position = Vector3(0.46, 0.032, -0.34) if si == my_seat else Vector3(-0.27, 0.035, 0.02)
-		var sw_skin := Catalog.get_sword_skin(str(s.get("sword_skin", "SWORD_RUNE")))
-		var sw_col: Color = sw_skin.get("col", Color(0.75, 0.82, 0.90))
-		var blade_m := MeshInstance3D.new()
-		var bm := BoxMesh.new(); bm.size = Vector3(0.034, 0.012, 0.44)
-		blade_m.mesh = bm; blade_m.position = Vector3(0.0, 0.0, -0.22)
-		blade_m.material_override = Toon.mat(sw_col, "", 0.02, Vector2.ONE, sw_skin.get("trail_col", scol) * 0.45)
-		sword_p.add_child(blade_m)
-		var guard_m := MeshInstance3D.new()
-		var gm := BoxMesh.new(); gm.size = Vector3(0.13, 0.016, 0.026)
-		guard_m.mesh = gm; guard_m.position = Vector3(0.0, 0.0, -0.02)
-		guard_m.material_override = Toon.mat(Color(0.84, 0.64, 0.24))
-		sword_p.add_child(guard_m)
+		# Seat's Sculpted Blender PBR 3D Sword on the left (or tucked neatly on felt to the right for local player!)
+		var sw_skin_id := str(s.get("sword_skin", "SWORD_RUNE"))
+		var sw_skin := Catalog.get_sword_skin(sw_skin_id)
+		var sword_p := RelicMesh.build_sword_3d_mesh(sw_skin_id, sw_skin)
+		if sword_p == null:
+			sword_p = Node3D.new()
+			var blade_m := MeshInstance3D.new()
+			var bm := BoxMesh.new(); bm.size = Vector3(0.034, 0.012, 0.44)
+			blade_m.mesh = bm; blade_m.position = Vector3(0.0, 0.0, -0.22)
+			blade_m.material_override = Toon.mat(sw_skin.get("col", Color(0.75, 0.82, 0.90)))
+			sword_p.add_child(blade_m)
+		else:
+			sword_p.scale = Vector3(0.64, 0.64, 0.64)
+		sword_p.position = Vector3(0.46, 0.022, -0.34) if si == my_seat else Vector3(-0.27, 0.024, 0.02)
+		sword_p.rotation_degrees = Vector3(0.0, 18.0 if si == my_seat else -8.0, 0.0)
 		sroot.add_child(sword_p)
 
-		# Opponent Hand + Character Avatar (hidden for local seat 0 so camera never clips)
-		var hand_grp := Node3D.new()
-		hand_grp.position = Vector3(0.0, 0.20, 0.04)
-		sroot.add_child(hand_grp)
-
+		# Sculpted Blender 5.3 Multiplayer Character Avatar + Dedicated Card-Hold Grip Anchor
 		var avatar := Node3D.new()
-		avatar.position = Vector3(0.0, 0.04, 0.34)
-		avatar.scale = Vector3(0.84, 0.84, 0.84)
-		var torso := MeshInstance3D.new()
-		var tm := CylinderMesh.new(); tm.top_radius = 0.14; tm.bottom_radius = 0.22; tm.height = 0.38
-		torso.mesh = tm; torso.position = Vector3(0.0, 0.16, 0.0)
-		torso.material_override = Toon.mat(scol.darkened(0.40))
-		avatar.add_child(torso)
-		var head := MeshInstance3D.new()
-		var hm := SphereMesh.new(); hm.radius = 0.115
-		head.mesh = hm; head.position = Vector3(0.0, 0.44, 0.0)
-		head.material_override = Toon.mat(Color(0.18, 0.15, 0.16))
-		avatar.add_child(head)
+		avatar.name = "MpAvatar_%d" % si
+		avatar.position = Vector3(0.0, 0.0, 0.34)
+		avatar.rotation_degrees = Vector3(0.0, 180.0, 0.0) # Face inward toward center of tavern table (-Z in seat local)
+		var char_rig := _load_mp_character_glb(char_id, scol)
+		avatar.add_child(char_rig)
 		avatar.visible = (si != my_seat)
 		sroot.add_child(avatar)
 
+		var torso_piv := avatar.find_child("TorsoPivot", true, false) as Node3D
+		var head_piv := avatar.find_child("HeadPivot", true, false) as Node3D
+		var arm_l_piv := avatar.find_child("ArmLPivot", true, false) as Node3D
+		var arm_r_piv := avatar.find_child("ArmRPivot", true, false) as Node3D
+		var hand_l_hold := avatar.find_child("HandLHold", true, false) as Node3D
+		var hand_r_hold := avatar.find_child("HandRHold", true, false) as Node3D
+
+		var hand_grp := Node3D.new()
+		hand_grp.name = "MpHandGrip_%d" % si
+		if is_instance_valid(hand_l_hold) and is_instance_valid(hand_r_hold):
+			var mid_local := (avatar.to_local(hand_l_hold.global_position) + avatar.to_local(hand_r_hold.global_position)) * 0.5
+			# Convert from avatar local (rotated 180° Y at z=0.34) into sroot local cleanly
+			hand_grp.position = Vector3(-mid_local.x, mid_local.y + 0.04, 0.34 - mid_local.z)
+		else:
+			hand_grp.position = Vector3(0.0, 0.27, 0.08)
+		sroot.add_child(hand_grp)
+
 		var lbl := Label3D.new()
-		lbl.position = Vector3(0.0, 0.34, -0.04)
+		lbl.position = Vector3(0.0, 0.08, 0.38)
 		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		lbl.font_size = 22
+		lbl.no_depth_test = true
+		lbl.font_size = 20
 		lbl.outline_size = 5
-		lbl.pixel_size = 0.0020
+		lbl.pixel_size = 0.0018
 		lbl.visible = (si != my_seat)
 		sroot.add_child(lbl)
 
 		seat_nodes[si] = {
 			"root": sroot,
 			"avatar": avatar,
+			"char_id": char_id,
+			"torso_pivot": torso_piv,
+			"torso_base_pos": torso_piv.position if is_instance_valid(torso_piv) else Vector3.ZERO,
+			"head_pivot": head_piv,
+			"arm_l_pivot": arm_l_piv,
+			"arm_r_pivot": arm_r_piv,
+			"hand_l_hold": hand_l_hold,
+			"hand_r_hold": hand_r_hold,
 			"hand_grp": hand_grp,
 			"deck_mesh": deck_m,
 			"sword": sword_p,
@@ -467,10 +526,14 @@ func _build_hud() -> void:
 	suit_pick_bar.add_theme_constant_override("separation", 10)
 	suit_pick_bar.visible = false
 	for s in Config.SUITS:
-		var sb := Button.new()
-		sb.text = "Next Suit: %s %s" % [s["sym"], s["name"]]
 		var sid := str(s["id"])
+		var sb := Button.new()
+		sb.text = "Next: %s" % s["name"]
+		sb.icon = Toon.tex("res://assets/ui/suits/suit_%s.png" % sid.to_lower())
+		sb.expand_icon = true
+		sb.custom_minimum_size = Vector2(148, 42)
 		sb.pressed.connect(func():
+			play_sfx_requested.emit("btn_card_tick")
 			chosen_wild_suit = sid
 			_refresh_target_and_actions()
 		)
@@ -503,6 +566,7 @@ func _build_hud() -> void:
 	draw_btn.custom_minimum_size = Vector2(200, 40)
 	draw_btn.text = "🃏 DRAW CARD"
 	draw_btn.pressed.connect(func():
+		play_sfx_requested.emit("btn_wooden_slam")
 		if mp_net:
 			mp_net.send_draw_card()
 	)
@@ -550,6 +614,7 @@ func _build_hud() -> void:
 		gb.text = ga[1]
 		var gid: String = ga[0]
 		gb.pressed.connect(func():
+			play_sfx_requested.emit("btn_ghost_curse")
 			if mp_net:
 				mp_net.send_ghost_action(gid, selected_target)
 		)
@@ -679,10 +744,24 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			var ts := int(evt.get("to_seat", 1))
 			var from_p := _seat_world_pos(fs, 1.02)
 			var to_p := _seat_world_pos(ts, 1.02)
+			var cards_arr: Array = evt.get("cards", [])
 			play_sfx_requested.emit("card_slam")
+			if cards_arr.size() >= 2:
+				play_sfx_requested.emit("anim_combo_slam")
+			if not cards_arr.is_empty():
+				var lead_card: Dictionary = cards_arr[0]
+				var lr := str(lead_card.get("rank", ""))
+				var lpid := str(lead_card.get("power_id", ""))
+				if lpid == "SPEC_SHIELD" or (lpid == "" and lr == "D"):
+					play_sfx_requested.emit("card_shield_guard")
+				elif lpid == "" and lr == "E":
+					play_sfx_requested.emit("card_ace_strike")
+				elif lpid == "" and lr == "7":
+					play_sfx_requested.emit("card_seven_curse")
+				elif lpid == "" and lr == "H":
+					play_sfx_requested.emit("card_suit_shift")
 			cam_kick_shake = maxf(cam_kick_shake, 0.35)
-			if bool(evt.get("has_sword", false)):
-				var cards_arr: Array = evt.get("cards", [])
+			if bool(evt.get("has_sword", true)) or not cards_arr.is_empty():
 				var lead_c: Dictionary = cards_arr[0] if not cards_arr.is_empty() else {}
 				SwordCardAnim.play_sword_card_mp_strike(
 					self,
@@ -690,16 +769,17 @@ func _on_vfx_event(evt: Dictionary) -> void:
 					from_p,
 					to_p,
 					center,
-					int(evt.get("dmg", 35)),
-					1.6,
-					bool(evt.get("is_knight", true))
+					maxi(20, int(evt.get("dmg", 35))),
+					clampf(1.0 + float(maxi(0, cards_arr.size() - 1)) * 0.4, 1.0, 2.5),
+					bool(evt.get("is_knight", false))
 				)
 				cam_spring.trigger_score_recoil(int(evt.get("dmg", 35)) * 3, 2.2, 0.58)
 		"PARRY_WINDUP":
-			play_sfx_requested.emit("puf")
+			play_sfx_requested.emit("anim_sword_unsheathe")
 			cam_kick_shake = 0.55
 			Fx.ring(self, center + Vector3(0.0, 0.04, 0.0), Color(1.0, 0.25, 0.22), 1.35, 0.8, 0.08, 2.5, 8.0)
 		"PARRY_DEFLECT":
+			play_sfx_requested.emit("anim_parry_clang")
 			var fs2 := int(evt.get("from_seat", 0))
 			var ts2 := int(evt.get("to_seat", 1))
 			SwordCardAnim.play_sword_card_mp_strike(
@@ -715,9 +795,11 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			cam_kick_shake = 0.95
 			Fx.float_number(self, center + Vector3(0.0, 0.38, 0.0), "🪞 MIRROR PARRY!", Color(1.0, 0.84, 0.28), 64, 0.26, 1.1, 1.7)
 		"EXECUTION_KILL":
+			play_sfx_requested.emit("card_ace_strike")
 			var fs3 := int(evt.get("from_seat", 0))
 			var ts3 := int(evt.get("to_seat", 1))
 			var vpos := _seat_world_pos(ts3, 1.15)
+			BlenderVfx.play_defeat_execution_anim(self, ts3 == my_seat, center, vpos)
 			SwordCardAnim.play_sword_card_mp_strike(
 				self,
 				{"suit": "CERVEN", "rank": "E", "edition": "KNIGHT"},
@@ -739,7 +821,6 @@ func _on_vfx_event(evt: Dictionary) -> void:
 func _on_match_ended(winner_seat: int, summary: Dictionary) -> void:
 	parry_panel.visible = false
 	ghost_panel.visible = false
-	victory_panel.visible = true
 	var wname := str(summary.get("winner_name", "Champion"))
 	var you_won := (winner_seat == my_seat)
 	victory_lbl.text = "%s\nChampion: %s (%d Turns)" % [
@@ -747,6 +828,29 @@ func _on_match_ended(winner_seat: int, summary: Dictionary) -> void:
 		wname,
 		int(summary.get("rounds", 1)),
 	]
+	var focus_seat := my_seat
+	if you_won:
+		focus_seat = (my_seat + 1) % 2
+		for s in seat_nodes.keys():
+			if int(s) != my_seat:
+				focus_seat = int(s)
+				break
+	BlenderVfx.play_defeat_execution_anim(
+		self,
+		not you_won,
+		global_position + Vector3(0.0, 0.85, 0.0),
+		_seat_world_pos(focus_seat, 1.0)
+	)
+	if is_instance_valid(victory_panel):
+		victory_panel.visible = false
+		victory_panel.modulate.a = 0.0
+		var tw := victory_panel.create_tween()
+		tw.tween_interval(3.60)
+		tw.tween_callback(func():
+			if is_instance_valid(victory_panel):
+				victory_panel.visible = true
+		)
+		tw.tween_property(victory_panel, "modulate:a", 1.0, 0.40)
 
 
 # ---------------------------------------------------------------------------
@@ -765,9 +869,22 @@ func _rebuild_local_hand_ui() -> void:
 		var ed_info := Catalog.get_card_class(ed)
 
 		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(92, 126)
+		btn.custom_minimum_size = Vector2(96, 130)
 		btn.toggle_mode = true
 		btn.button_pressed = (i in selected_indices)
+		var card_border_c: Color = card.get("accent", ed_info.get("col", Color(0.76, 0.64, 0.38))) if (pid != "" or ed != "NORMAL") else Color(0.56, 0.46, 0.32)
+		var sb_n := StyleBoxFlat.new()
+		sb_n.bg_color = Color(0.09, 0.08, 0.11, 0.94) if (ed != "NORMAL" or pid != "") else Color(0.12, 0.10, 0.09, 0.92)
+		sb_n.border_color = card_border_c
+		sb_n.set_border_width_all(3 if (ed == "KNIGHT" or ed == "MAGE" or pid != "") else 2)
+		sb_n.set_corner_radius_all(8)
+		var sb_p := sb_n.duplicate() as StyleBoxFlat
+		sb_p.bg_color = card_border_c.darkened(0.62)
+		sb_p.border_color = card_border_c.lightened(0.35)
+		sb_p.set_border_width_all(4)
+		btn.add_theme_stylebox_override("normal", sb_n)
+		btn.add_theme_stylebox_override("hover", sb_p)
+		btn.add_theme_stylebox_override("pressed", sb_p)
 
 		var vb := VBoxContainer.new()
 		vb.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -804,7 +921,7 @@ func _rebuild_local_hand_ui() -> void:
 				selected_indices.erase(c_idx)
 			else:
 				selected_indices.append(c_idx)
-			play_sfx_requested.emit("card_hover")
+			play_sfx_requested.emit("btn_card_tick")
 			_refresh_target_and_actions()
 		)
 		hand_bar.add_child(btn)
@@ -935,6 +1052,7 @@ func _update_parry_ui(parry_pub: Dictionary) -> void:
 func _on_slam_pressed() -> void:
 	if mp_net == null or selected_indices.is_empty():
 		return
+	play_sfx_requested.emit("btn_wooden_slam")
 	var send_arr: Array = []
 	for idx in selected_indices:
 		send_arr.append(idx)
@@ -971,32 +1089,105 @@ func _spawn_center_discard_mesh(card: Dictionary) -> void:
 	discard_pile_root.add_child(card_m)
 
 
+func _load_mp_character_glb(char_id: String, fallback_col: Color) -> Node3D:
+	var c_info := Config.get_character(char_id)
+	var path := str(c_info.get("glb", "res://assets/models/mp/mp_char_guillotine.glb"))
+	if ResourceLoader.exists(path):
+		var ps := ResourceLoader.load(path) as PackedScene
+		if ps != null:
+			var inst := ps.instantiate()
+			if inst is Node3D:
+				return inst as Node3D
+	var abs_p := ProjectSettings.globalize_path(path)
+	if FileAccess.file_exists(abs_p):
+		var doc := GLTFDocument.new()
+		var state := GLTFState.new()
+		if doc.append_from_file(abs_p, state) == OK:
+			var gen := doc.generate_scene(state)
+			if gen is Node3D:
+				return gen as Node3D
+	# Fallback procedural bust if Blender GLB not yet imported
+	var fb := Node3D.new()
+	var torso := MeshInstance3D.new()
+	var tm := CylinderMesh.new(); tm.top_radius = 0.15; tm.bottom_radius = 0.22; tm.height = 0.42
+	torso.mesh = tm; torso.position = Vector3(0.0, 0.21, 0.0)
+	torso.material_override = Toon.mat(fallback_col.darkened(0.35))
+	fb.add_child(torso)
+	var head := MeshInstance3D.new()
+	var hm := SphereMesh.new(); hm.radius = 0.115
+	head.mesh = hm; head.position = Vector3(0.0, 0.50, 0.0)
+	head.material_override = Toon.mat(Color(0.20, 0.16, 0.17))
+	fb.add_child(head)
+	return fb
+
+
 func _rebuild_seat_hand_3d(si: int, seat_pub: Dictionary) -> void:
 	if not seat_nodes.has(si) or si == my_seat:
 		return
-	var hgrp: Node3D = seat_nodes[si]["hand_grp"]
+	var sn: Dictionary = seat_nodes[si]
+	var hgrp: Node3D = sn["hand_grp"]
 	for c in hgrp.get_children():
 		c.queue_free()
 	if not bool(seat_pub["alive"]):
 		return
 
+	# Sync card-grip anchor cleanly to the sculpted character's left/right palms so cards sit visibly IN their hands!
+	var hl: Node3D = sn.get("hand_l_hold")
+	var hr: Node3D = sn.get("hand_r_hold")
+	var sroot: Node3D = sn.get("root")
+	var grip_span := 0.22
+	if is_instance_valid(hl) and is_instance_valid(hr) and is_instance_valid(sroot):
+		var lp := sroot.to_local(hl.global_position)
+		var rp := sroot.to_local(hr.global_position)
+		hgrp.position = (lp + rp) * 0.5 + Vector3(0.0, 0.065, -0.020)
+		grip_span = clampf(lp.distance_to(rp), 0.16, 0.34)
+	# Orient card backs outward toward the center of the table (-Z in seat local) so every opponent's cards are 100% visible!
+	hgrp.rotation_degrees = Vector3(0.0, 180.0, 0.0)
+
 	var revealed: Array = seat_pub.get("revealed_cards", [])
 	var count := revealed.size() if not revealed.is_empty() else clampi(int(seat_pub.get("hand_count", 4)), 0, 8)
 	if int(seat_pub.get("hand_count", 0)) == -1:
 		count = 4
+	if count <= 0:
+		return
+	var step_x := clampf(grip_span / float(maxi(2, count)), 0.038, 0.066)
+	var back_map := {
+		"CHAR_GUILLOTINE": "res://assets/table/deck_back_reaper.png",
+		"CHAR_MONARCH": "res://assets/table/deck_back_stredovek.png",
+		"CHAR_JESTER": "res://assets/table/deck_back_prohibicia.png",
+		"CHAR_MISTBLADE": "res://assets/table/deck_back_quincy.png",
+	}
+	var cid := str(sn.get("char_id", "CHAR_GUILLOTINE"))
+	var back_tex_p := str(back_map.get(cid, "res://assets/table/card_back.png"))
 	for i in range(count):
 		var croot := MeshInstance3D.new()
-		var qm := QuadMesh.new(); qm.size = Vector2(0.13, 0.19)
-		croot.mesh = qm
+		var cbox := BoxMesh.new(); cbox.size = Vector3(0.128, 0.190, 0.004)
+		croot.mesh = cbox
 		var fan := (float(i) - float(count - 1) * 0.5)
-		croot.position = Vector3(fan * 0.068, absf(fan) * -0.008, 0.0)
-		croot.rotation_degrees = Vector3(-12.0, 0.0, -fan * 7.5)
+		croot.position = Vector3(fan * step_x, -absf(fan) * 0.008, float(i) * 0.004 - absf(fan) * 0.004)
+		croot.rotation_degrees = Vector3(14.0, -fan * 5.0, -fan * 6.5)
+		var cmat := StandardMaterial3D.new()
+		cmat.roughness = 0.52
+		cmat.metallic = 0.14
+		cmat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		if not revealed.is_empty() and i < revealed.size():
 			var rc: Dictionary = revealed[i]
 			var rpath := "res://assets/cards/%s.png" % str(rc.get("power_id", "")) if str(rc.get("power_id", "")) != "" else "res://assets/cards/%s_%s.png" % [rc["suit"], rc["rank"]]
-			croot.material_override = Toon.mat(Color.WHITE, rpath)
+			cmat.albedo_color = Color.WHITE
+			var rtex := Toon.tex(rpath)
+			if rtex != null:
+				cmat.albedo_texture = rtex
 		else:
-			croot.material_override = Toon.mat(Color(0.78, 0.82, 0.92) if not bool(seat_pub["mist_cloaked"]) else Color(0.55, 0.92, 1.0), "res://assets/table/card_back.png", 0.0, Vector2.ONE, Color(0.16, 0.18, 0.24) if not bool(seat_pub["mist_cloaked"]) else Color(0.18, 0.42, 0.52))
+			var cloaked := bool(seat_pub["mist_cloaked"])
+			cmat.albedo_color = Color(0.96, 0.94, 0.90) if not cloaked else Color(0.55, 0.92, 1.0)
+			var btex := Toon.tex(back_tex_p)
+			if btex != null:
+				cmat.albedo_texture = btex
+			if cloaked:
+				cmat.emission_enabled = true
+				cmat.emission = Color(0.18, 0.48, 0.62)
+				cmat.emission_energy_multiplier = 0.65
+		croot.material_override = cmat
 		hgrp.add_child(croot)
 
 

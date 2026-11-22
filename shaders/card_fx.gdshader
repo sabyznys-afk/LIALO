@@ -1,7 +1,13 @@
 shader_type spatial;
-// LIALO Dark-Fantasy Card Material Shader (gl_compatibility):
-// painted textures + 5 Card Classes (Normal, Mage, Knight, Merchant, Thief),
-// Knight Mist-Shroud veil, Mage Charge sigil bloom, Boss debuff fracture overlay.
+// LIALO Overhauled Dark-Fantasy + Bleach TYBW-Inspired Card Material Shader (gl_compatibility):
+// - Distinct archetype identities:
+//     0 = NORMAL (illuminated aged medieval parchment & gold-leaf hairline)
+//     1 = MAGE (Runecaster: animated dual counter-rotating arcane circles, floating Kidō glyphs, reiatsu flame rim)
+//     2 = KNIGHT (Mistblade: heavy forged Damascus steel armor plate, corner iron rivets, anisotropic metallic sheen)
+//     3 = MERCHANT (Guildsman: embossed burnished 24k gold-leaf bullion filigree & coin glints)
+//     4 = THIEF (Cutpurse: dark smoked obsidian shadow-cloak & Shunpo twin razor glints)
+// - Power Cards: stark TYBW ink-contrast frame + flaring spiritual pressure rim
+// - Card Backs (`is_back > 0.5`): embossed metallic foil + velvet/leather sheen tailored per deck set!
 
 uniform vec4 albedo : source_color = vec4(0.95, 0.92, 0.85, 1.0);
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_disable;
@@ -11,16 +17,11 @@ uniform float hover_glow = 0.0;
 uniform vec2 tilt_vec = vec2(0.0, 0.0);
 uniform vec4 accent_color : source_color = vec4(1.0, 0.84, 0.32, 1.0);
 uniform float is_power_card = 0.0;
-uniform float debuffed = 0.0; // 1.0 when Boss Modifier taxes/debuffs this card in hand
-uniform float playable = 1.0; // 0.0 = unplayable in hand (subtle desaturation)
-uniform float mage_charge = 0.0; // 0.0..1.0 hand charge ratio for Mage cards
-uniform float mist_shroud = 0.0; // 1.0 = Knight Battle Mist fog shrouding top discard card
-
-vec3 hsv2rgb(vec3 c) {
-	vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-	vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-	return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-}
+uniform float is_back = 0.0;
+uniform float debuffed = 0.0;
+uniform float playable = 1.0;
+uniform float mage_charge = 0.0;
+uniform float mist_shroud = 0.0;
 
 float hash2(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -34,120 +35,188 @@ float vnoise(vec2 p) {
 }
 
 void fragment() {
+	vec2 uv = UV;
+	// Subtle live magical UV ripple along outer edges of Mage cards
+	if (edition_id == 1 && is_back < 0.5) {
+		float edge_w = smoothstep(0.28, 0.48, length(uv - vec2(0.5)));
+		float mag_wave = sin(uv.y * 24.0 - TIME * 4.2 + uv.x * 10.0) * 0.0028 * (0.4 + mage_charge * 0.8) * edge_w;
+		uv = clamp(uv + vec2(mag_wave, mag_wave * 0.6), vec2(0.002), vec2(0.998));
+	}
+
 	vec4 tex_c = albedo;
 	if (use_texture) {
-		tex_c = texture(albedo_tex, UV) * vec4(mix(vec3(1.0), albedo.rgb, 0.14), 1.0);
-		tex_c.rgb *= 0.80;
+		float tint_mix = (is_back > 0.5) ? 0.04 : 0.14;
+		tex_c = texture(albedo_tex, uv) * vec4(mix(vec3(1.0), albedo.rgb, tint_mix), 1.0);
+		tex_c.rgb *= (is_back > 0.5) ? 0.90 : 0.82;
 		tex_c.a = 1.0;
 	}
 
 	vec3 base = tex_c.rgb;
 	vec3 fx_emit = vec3(0.0);
+	float out_metallic = 0.08;
+	float out_roughness = 0.68;
 
-	float edge_x = min(UV.x, 1.0 - UV.x);
-	float edge_y = min(UV.y, 1.0 - UV.y);
+	float edge_x = min(uv.x, 1.0 - uv.x);
+	float edge_y = min(uv.y, 1.0 - uv.y);
 	float border_dist = min(edge_x, edge_y);
-	float rim_mask = smoothstep(0.085, 0.015, border_dist);
+	float rim_mask = smoothstep(0.095, 0.012, border_dist);
 
-	if (is_power_card > 0.5 && !use_texture) {
-		float grad = sin(UV.y * 3.14159) * 0.12;
-		base = mix(base * 0.88, accent_color.rgb * 0.34 + vec3(0.14, 0.11, 0.09), 0.55 + grad);
-		base = mix(base, accent_color.rgb * 0.92, rim_mask * 0.52);
-		fx_emit += accent_color.rgb * (0.14 + hover_glow * 0.18) * rim_mask;
-	}
-
-	float fresnel = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 2.1);
+	float fresnel = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 2.0);
 	float view_dot = dot(VIEW.xy, vec2(0.85, 0.65));
-	float tilt_shift = dot(UV - 0.5, tilt_vec * 2.4) + view_dot * 0.65;
+	float tilt_shift = dot(uv - 0.5, tilt_vec * 2.5) + view_dot * 0.68;
 
-	// --- Faux-embossed border relief: light from upper-left, offset by tilt ---
-	vec2 light_dir = normalize(vec2(-0.6, -0.8) + tilt_vec * 0.6);
-	float bevel_in = smoothstep(0.050, 0.030, border_dist) - smoothstep(0.030, 0.012, border_dist);
-	vec2 edge_n = vec2(UV.x < 0.5 ? -1.0 : 1.0, UV.y < 0.5 ? -1.0 : 1.0) * vec2(step(edge_x, edge_y), step(edge_y, edge_x));
+	// Embossed border relief
+	vec2 light_dir = normalize(vec2(-0.6, -0.8) + tilt_vec * 0.65);
+	float bevel_in = smoothstep(0.056, 0.032, border_dist) - smoothstep(0.032, 0.012, border_dist);
+	vec2 edge_n = vec2(uv.x < 0.5 ? -1.0 : 1.0, uv.y < 0.5 ? -1.0 : 1.0) * vec2(step(edge_x, edge_y), step(edge_y, edge_x));
 	float relief = dot(edge_n, -light_dir) * bevel_in;
-	base += vec3(0.10, 0.08, 0.05) * relief;
-	// stamped gold-leaf inner hairline
-	float hairline = smoothstep(0.0035, 0.0, abs(border_dist - 0.040));
-	vec3 gold_leaf = mix(vec3(0.78, 0.58, 0.22), accent_color.rgb, is_power_card * 0.6);
+	base += vec3(0.11, 0.09, 0.06) * relief;
 
-	// --- Gilded parchment specular sheen sweeping with tilt ---
-	float sheen_coord = (UV.x * 0.62 - UV.y * 0.78) + tilt_shift * 0.9 + sin(TIME * 0.35) * 0.08;
-	float sheen = smoothstep(0.10, 0.0, abs(fract(sheen_coord) - 0.5));
-	float paper_grain = vnoise(UV * 120.0) * 0.5 + vnoise(UV * 37.0) * 0.5;
-	float gild = sheen * (0.35 + paper_grain * 0.65) * (0.28 + hover_glow * 0.55 + length(tilt_vec) * 0.35);
-	fx_emit += vec3(1.0, 0.86, 0.55) * gild * 0.30;
-	base = mix(base, gold_leaf, hairline * 0.75);
-	fx_emit += gold_leaf * hairline * (0.10 + sheen * 0.6);
+	float hairline = smoothstep(0.0040, 0.0, abs(border_dist - 0.042));
+	vec3 gold_leaf = mix(vec3(0.82, 0.62, 0.24), accent_color.rgb, is_power_card * 0.65);
 
-	if (edition_id == 1) {
-		// 1: MAGE (Runecaster) — pulsing violet-cyan rune sigils intensifying with mage_charge
-		float d_c = length(UV - vec2(0.5, 0.5));
-		float rune_ring = smoothstep(0.018, 0.0, abs(d_c - 0.33)) + smoothstep(0.012, 0.0, abs(d_c - 0.19));
-		float pulse = 0.45 + 0.55 * sin(TIME * (2.6 + mage_charge * 4.5));
-		vec3 mage_c = mix(vec3(0.46, 0.28, 0.96), vec3(0.42, 0.94, 1.0), mage_charge);
-		float glow_lvl = 0.12 + mage_charge * 0.52;
-		base = mix(base, mage_c * 0.35 + base * 0.65, 0.14 + mage_charge * 0.16);
-		fx_emit += mage_c * (glow_lvl * (rune_ring * 1.1 + rim_mask * 0.85 + fresnel * 0.4) * (0.7 + pulse * 0.5));
-	} else if (edition_id == 2) {
-		// 2: KNIGHT (Mistblade) — forged silver-steel rim & subtle mist wisps
-		float wisp = vnoise(UV * vec2(4.5, 6.0) + vec2(TIME * 0.35, -TIME * 0.22));
-		float sweep = UV.x * 0.78 + UV.y * 0.48 - TIME * 0.16 + tilt_shift * 0.8;
-		float band = smoothstep(0.08, 0.0, abs(fract(sweep) - 0.5));
-		vec3 steel_c = mix(vec3(0.68, 0.84, 0.96), vec3(0.84, 0.92, 0.98), wisp);
-		base = mix(base, steel_c * 0.35 + base * 0.70, 0.16 + wisp * 0.10);
-		fx_emit += steel_c * (0.10 + band * 0.40 + rim_mask * 0.28 + fresnel * 0.20);
-	} else if (edition_id == 3) {
-		// 3: MERCHANT (Guildsman) — burnished liquid-gold leaf & coin glint
-		float liquid = vnoise(UV * 5.0 + vec2(TIME * 0.22, -TIME * 0.16) + tilt_vec);
-		vec3 gold_c = vec3(1.0, 0.80, 0.24);
-		float shimmer = smoothstep(0.55, 0.88, liquid + tilt_shift * 0.25);
-		base = mix(base, gold_c * 0.45 + base * 0.60, 0.18 + rim_mask * 0.20);
-		fx_emit += gold_c * (0.14 + shimmer * 0.38 + rim_mask * 0.36 + fresnel * 0.20);
-	} else if (edition_id == 4) {
-		// 4: THIEF (Cutpurse) — dark emerald-obsidian stealth gleam & blade glint
-		float slash = smoothstep(0.025, 0.0, abs((UV.x * 0.9 - UV.y * 0.7) - 0.08 + sin(TIME * 1.4) * 0.04));
-		vec3 thief_c = mix(vec3(0.18, 0.78, 0.48), vec3(0.92, 0.26, 0.36), rim_mask * 0.5);
-		base = mix(base, vec3(0.10, 0.18, 0.15), 0.22);
-		fx_emit += thief_c * (0.12 + slash * 0.45 + rim_mask * 0.32 + fresnel * 0.22);
-	}
+	// Sweeping parchment / foil specular sheen
+	float sheen_coord = (uv.x * 0.62 - uv.y * 0.78) + tilt_shift * 0.92 + sin(TIME * 0.42) * 0.08;
+	float sheen = smoothstep(0.11, 0.0, abs(fract(sheen_coord) - 0.5));
+	float paper_grain = vnoise(uv * 115.0) * 0.55 + vnoise(uv * 34.0) * 0.45;
+	float gild = sheen * (0.35 + paper_grain * 0.65) * (0.28 + hover_glow * 0.58 + length(tilt_vec) * 0.40);
 
-	// Hover + Playable crisp rim-light
-	fx_emit += accent_color.rgb * (rim_mask * hover_glow * 0.58 + fresnel * hover_glow * 0.18);
-	fx_emit += vec3(1.0, 0.86, 0.48) * smoothstep(0.016, 0.004, border_dist) * playable * 0.10;
-	base = clamp(base + hover_glow * 0.05, 0.0, 1.0);
+	if (is_back > 0.5) {
+		// CARD BACK MODE: Rich embossed metallic foil lines + velvety tactile depth
+		float luma_b = dot(base, vec3(0.299, 0.587, 0.114));
+		float foil_mask = smoothstep(0.46, 0.74, luma_b);
+		out_metallic = mix(0.14, 0.78, foil_mask);
+		out_roughness = mix(0.74, 0.24, foil_mask);
+		fx_emit += base * foil_mask * (0.12 + sheen * 0.62 + fresnel * 0.25);
+		fx_emit += gold_leaf * hairline * (0.18 + sheen * 0.45);
+	} else {
+		// CARD FRONT MODE
+		fx_emit += vec3(1.0, 0.86, 0.55) * gild * 0.26;
+		base = mix(base, gold_leaf, hairline * 0.75);
+		fx_emit += gold_leaf * hairline * (0.10 + sheen * 0.55);
+		out_roughness = mix(0.82, 0.48, hairline);
+		out_metallic = hairline * 0.42;
 
-	// Unplayable: subtle desaturation & dim
-	if (playable < 0.5) {
-		float l = dot(base, vec3(0.299, 0.587, 0.114));
-		base = mix(base, vec3(l) * 0.82, 0.38);
-		fx_emit *= 0.55;
-	}
+		// POWER CARDS: Stark Bleach TYBW high-contrast obsidian inner frame + flaring spiritual pressure aura
+		if (is_power_card > 0.5) {
+			float ink_frame = smoothstep(0.052, 0.036, border_dist) * (1.0 - smoothstep(0.022, 0.010, border_dist));
+			float aura_n = vnoise(vec2(uv.x * 9.0, uv.y * 14.0 - TIME * 2.2));
+			float aura_n2 = vnoise(vec2(uv.x * 16.0 + TIME * 1.1, uv.y * 22.0 - TIME * 3.4));
+			float reiatsu = smoothstep(0.32, 0.82, aura_n * 0.6 + aura_n2 * 0.4);
+			if (!use_texture) {
+				base = mix(base * 0.78, accent_color.rgb * 0.30 + vec3(0.05, 0.04, 0.06), 0.58);
+			}
+			base = mix(base, vec3(0.02, 0.015, 0.025), ink_frame * 0.82);
+			fx_emit += accent_color.rgb * (rim_mask * (0.38 + reiatsu * 0.72 + hover_glow * 0.45) + fresnel * 0.35);
+			out_metallic = max(out_metallic, 0.32 + ink_frame * 0.45);
+			out_roughness = min(out_roughness, 0.32);
+		}
 
-	// Boss Modifier Debuff Overlay
-	if (debuffed > 0.5) {
-		float luma = dot(base, vec3(0.299, 0.587, 0.114));
-		base = mix(base, vec3(luma * 0.52, luma * 0.44, luma * 0.46), 0.62);
-		float crack1 = smoothstep(0.016, 0.0, abs((UV.x - UV.y * 0.72) - 0.14 + sin(UV.y * 22.0) * 0.025));
-		float crack2 = smoothstep(0.014, 0.0, abs((UV.x + UV.y * 0.68) - 0.82 + cos(UV.x * 19.0) * 0.022));
-		float x_bar1 = smoothstep(0.022, 0.006, abs((UV.x - 0.5) * 1.15 - (UV.y - 0.5))) * step(abs(UV.x - 0.5), 0.34) * step(abs(UV.y - 0.5), 0.34);
-		float x_bar2 = smoothstep(0.022, 0.006, abs((UV.x - 0.5) * 1.15 + (UV.y - 0.5))) * step(abs(UV.x - 0.5), 0.34) * step(abs(UV.y - 0.5), 0.34);
-		float scar = clamp(crack1 + crack2 + (x_bar1 + x_bar2) * 0.75, 0.0, 1.0);
-		base = mix(base, vec3(0.32, 0.06, 0.08), scar * 0.85);
-		fx_emit = mix(fx_emit * 0.25, vec3(0.68, 0.12, 0.14), scar * 0.48 + rim_mask * 0.32);
-	}
+		// ARCHETYPE 1: MAGE (Runecaster) — Live Animated Arcane Spell Circles, Drifting Kidō Glyphs & Spirit Flame
+		if (edition_id == 1) {
+			vec2 p = (uv - vec2(0.5, 0.48)) * vec2(1.0, 1.45);
+			float r = length(p);
+			float a = atan(p.y, p.x);
+			float spin1 = a + TIME * (1.1 + mage_charge * 1.6);
+			float spin2 = a - TIME * (0.85 + mage_charge * 1.2);
+			float outer_ring = smoothstep(0.014, 0.002, abs(r - 0.39));
+			float inner_ring = smoothstep(0.011, 0.002, abs(r - 0.27));
+			float glyphs = smoothstep(0.45, 0.82, sin(spin1 * 12.0) * sin(r * 42.0)) * smoothstep(0.055, 0.0, abs(r - 0.33));
+			// Sacred hexagram / Quincy-arcane geometric star spokes
+			float star = smoothstep(0.015, 0.002, abs(r - (0.24 + 0.07 * cos(spin2 * 6.0))));
+			float spirit_flow = vnoise(vec2(uv.x * 7.0 + sin(TIME * 0.8), uv.y * 11.0 - TIME * 2.4));
+			float pulse = 0.55 + 0.45 * sin(TIME * (3.0 + mage_charge * 5.0));
+			vec3 mage_c = mix(vec3(0.46, 0.24, 1.0), vec3(0.24, 0.94, 1.0), clamp(mage_charge * 0.85 + spirit_flow * 0.35, 0.0, 1.0));
+			float magic_mask = clamp(outer_ring + inner_ring * 0.85 + glyphs * 1.15 + star * 0.75, 0.0, 1.4);
+			base = mix(base, mage_c * 0.26 + base * 0.78, 0.22 + mage_charge * 0.14);
+			fx_emit += mage_c * ((0.22 + mage_charge * 0.58) * (magic_mask * 0.85 + rim_mask * (0.70 + spirit_flow * 0.75) + fresnel * 0.55) * (0.72 + pulse * 0.42));
+			out_metallic = 0.24;
+			out_roughness = 0.28;
+		}
+		// ARCHETYPE 2: KNIGHT (Mistblade) — Heavy Forged Metallic Damascus Steel Armor Plate & Corner Rivets
+		else if (edition_id == 2) {
+			// Damascus steel swirling forged grain + cold brushed anisotropic sheen
+			float damascus_w = sin(uv.x * 38.0 + vnoise(uv * 11.0) * 7.5) * 0.5 + 0.5;
+			float brushed = vnoise(vec2(uv.x * 160.0, uv.y * 14.0));
+			float plate_frame = smoothstep(0.095, 0.052, border_dist);
+			float inner_groove = smoothstep(0.008, 0.001, abs(border_dist - 0.078));
+			// 4 hammered iron corner rivets
+			vec2 corner_uv = abs(uv - vec2(0.5)) - vec2(0.415, 0.442);
+			float rivet = smoothstep(0.022, 0.011, length(corner_uv * vec2(1.0, 1.45)));
+			float rivet_hi = smoothstep(0.014, 0.004, length((corner_uv + vec2(0.004, 0.004)) * vec2(1.0, 1.45)));
+			// Sharp steel diagonal glint sweeping with tilt
+			float steel_sweep = (uv.x * 0.85 + uv.y * 0.46) - TIME * 0.22 + tilt_shift * 1.15;
+			float razor_band = smoothstep(0.065, 0.0, abs(fract(steel_sweep) - 0.5));
+			vec3 steel_plate = mix(vec3(0.42, 0.48, 0.56), vec3(0.76, 0.84, 0.92), damascus_w * 0.55 + brushed * 0.45);
+			// Blend heavy forged steel frame around artwork + subtle cold metallic glaze across art
+			base = mix(base * vec3(0.88, 0.94, 1.00), steel_plate, clamp(plate_frame * 0.88 + 0.08, 0.0, 0.94));
+			base = mix(base, vec3(0.10, 0.13, 0.18), inner_groove * 0.90);
+			base = mix(base, vec3(0.76, 0.82, 0.90), rivet * 0.92);
+			base += vec3(0.32, 0.38, 0.46) * rivet_hi;
+			fx_emit += mix(vec3(0.56, 0.82, 1.0), vec3(0.95, 0.98, 1.0), razor_band) * (razor_band * 0.54 + plate_frame * 0.18 + rim_mask * 0.24 + fresnel * 0.34 + rivet_hi * 0.26);
+			out_metallic = mix(0.38, 0.90, clamp(plate_frame + rivet, 0.0, 1.0));
+			out_roughness = mix(0.32, 0.16, clamp(razor_band + plate_frame * 0.65, 0.0, 1.0));
+		}
+		// ARCHETYPE 3: MERCHANT (Guildsman) — Burnished 24k Embossed Gold Bullion & Coin Medallions
+		else if (edition_id == 3) {
+			float liquid = vnoise(uv * 6.5 + vec2(TIME * 0.26, -TIME * 0.18) + tilt_vec);
+			vec3 gold_c = vec3(1.0, 0.82, 0.24);
+			float shimmer = smoothstep(0.50, 0.86, liquid + tilt_shift * 0.32);
+			float coin_trim = smoothstep(0.007, 0.001, abs(border_dist - 0.068));
+			base = mix(base, gold_c * 0.50 + base * 0.55, 0.22 + rim_mask * 0.38);
+			fx_emit += gold_c * (0.16 + shimmer * 0.48 + rim_mask * 0.40 + coin_trim * 0.45 + fresnel * 0.26);
+			out_metallic = 0.84;
+			out_roughness = 0.20;
+		}
+		// ARCHETYPE 4: THIEF (Cutpurse) — Obsidian Shadow-Cloak & TYBW Shunpo Twin Razor Glints
+		else if (edition_id == 4) {
+			float slash1 = smoothstep(0.020, 0.0, abs((uv.x * 0.92 - uv.y * 0.72) - 0.06 + sin(TIME * 2.1) * 0.06));
+			float slash2 = smoothstep(0.014, 0.0, abs((uv.x * 0.88 - uv.y * 0.76) + 0.12 - cos(TIME * 1.8) * 0.05));
+			vec3 thief_c = mix(vec3(0.14, 0.92, 0.56), vec3(0.96, 0.18, 0.32), clamp(rim_mask * 0.65 + slash2, 0.0, 1.0));
+			base = mix(base, vec3(0.05, 0.08, 0.09), 0.32 + rim_mask * 0.32);
+			fx_emit += thief_c * (0.14 + slash1 * 0.65 + slash2 * 0.52 + rim_mask * 0.42 + fresnel * 0.30);
+			out_metallic = 0.46;
+			out_roughness = 0.24;
+		}
 
-	// Knight Battle Mist Shroud Veil (obscures card in swirling silver-blue fog)
-	if (mist_shroud > 0.05) {
-		float f1 = vnoise(UV * 4.5 + vec2(TIME * 0.45, -TIME * 0.28));
-		float f2 = vnoise(UV * 9.0 + vec2(-TIME * 0.32, TIME * 0.52));
-		float swirl = clamp(f1 * 0.6 + f2 * 0.4, 0.0, 1.0);
-		vec3 fog_c = mix(vec3(0.24, 0.30, 0.38), vec3(0.68, 0.78, 0.86), swirl);
-		base = mix(base, fog_c, clamp(mist_shroud * (0.86 + swirl * 0.14), 0.0, 0.96));
-		fx_emit = mix(fx_emit, fog_c * (0.35 + swirl * 0.35), clamp(mist_shroud, 0.0, 1.0));
+		// Hover + Playable crisp rim-light
+		fx_emit += accent_color.rgb * (rim_mask * hover_glow * 0.68 + fresnel * hover_glow * 0.25);
+		fx_emit += vec3(1.0, 0.88, 0.50) * smoothstep(0.018, 0.004, border_dist) * playable * 0.12;
+		base = clamp(base + hover_glow * 0.05, 0.0, 1.0);
+
+		// Unplayable: subtle desaturation & dim
+		if (playable < 0.5) {
+			float l = dot(base, vec3(0.299, 0.587, 0.114));
+			base = mix(base, vec3(l) * 0.80, 0.42);
+			fx_emit *= 0.50;
+		}
+
+		// Boss Modifier Debuff Overlay
+		if (debuffed > 0.5) {
+			float luma = dot(base, vec3(0.299, 0.587, 0.114));
+			base = mix(base, vec3(luma * 0.52, luma * 0.44, luma * 0.46), 0.62);
+			float crack1 = smoothstep(0.016, 0.0, abs((uv.x - uv.y * 0.72) - 0.14 + sin(uv.y * 22.0) * 0.025));
+			float crack2 = smoothstep(0.014, 0.0, abs((uv.x + uv.y * 0.68) - 0.82 + cos(uv.x * 19.0) * 0.022));
+			float x_bar1 = smoothstep(0.022, 0.006, abs((uv.x - 0.5) * 1.15 - (uv.y - 0.5))) * step(abs(uv.x - 0.5), 0.34) * step(abs(uv.y - 0.5), 0.34);
+			float x_bar2 = smoothstep(0.022, 0.006, abs((uv.x - 0.5) * 1.15 + (uv.y - 0.5))) * step(abs(uv.x - 0.5), 0.34) * step(abs(uv.y - 0.5), 0.34);
+			float scar = clamp(crack1 + crack2 + (x_bar1 + x_bar2) * 0.75, 0.0, 1.0);
+			base = mix(base, vec3(0.32, 0.06, 0.08), scar * 0.85);
+			fx_emit = mix(fx_emit * 0.25, vec3(0.68, 0.12, 0.14), scar * 0.48 + rim_mask * 0.32);
+		}
+
+		// Knight Battle Mist Shroud Veil
+		if (mist_shroud > 0.05) {
+			float f1 = vnoise(uv * 4.5 + vec2(TIME * 0.45, -TIME * 0.28));
+			float f2 = vnoise(uv * 9.0 + vec2(-TIME * 0.32, TIME * 0.52));
+			float swirl = clamp(f1 * 0.6 + f2 * 0.4, 0.0, 1.0);
+			vec3 fog_c = mix(vec3(0.24, 0.30, 0.38), vec3(0.68, 0.78, 0.86), swirl);
+			base = mix(base, fog_c, clamp(mist_shroud * (0.86 + swirl * 0.14), 0.0, 0.96));
+			fx_emit = mix(fx_emit, fog_c * (0.35 + swirl * 0.35), clamp(mist_shroud, 0.0, 1.0));
+		}
 	}
 
 	ALBEDO = base;
-	ROUGHNESS = (edition_id > 0) ? 0.26 : mix(0.85, 0.55, hairline);
-	METALLIC = (edition_id == 3) ? 0.52 : (edition_id == 2 ? 0.35 : hairline * 0.4);
+	ROUGHNESS = out_roughness;
+	METALLIC = out_metallic;
 	EMISSION = fx_emit;
 }

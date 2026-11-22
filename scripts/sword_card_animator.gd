@@ -17,11 +17,14 @@ const TEX_MIST_SHEET := "res://assets/vfx/sword_card/mist_veil_sheet.png"
 const TEX_IMPACT_SHEET := "res://assets/vfx/sword_card/impact_sigil_sheet.png"
 const TEX_SPARKS_SHEET := "res://assets/vfx/sword_card/ink_sparks_sheet.png"
 
+const TEX_SFX_UNSHEATHE := "res://assets/audio/sfx_anim_sword_unsheathe.mp3"
+const TEX_SFX_SLASH := "res://assets/audio/sfx_anim_sword_slash.mp3"
+
 static var _shader_cel: Shader = null
 static var _shader_blade: Shader = null
-static var _sfx_unsheathe: AudioStreamWAV = null
-static var _sfx_cleave_mist: AudioStreamWAV = null
-static var _sfx_cleave_royal: AudioStreamWAV = null
+static var _sfx_unsheathe: AudioStream = null
+static var _sfx_cleave_mist: AudioStream = null
+static var _sfx_cleave_royal: AudioStream = null
 
 
 static func play_sword_card_score_anim(
@@ -32,11 +35,14 @@ static func play_sword_card_score_anim(
 	impact_pos: Vector3,
 	score_pts: int = 20,
 	eff_mult: float = 1.0,
-	is_knight_mist: bool = true
-) -> void:
+	is_knight_mist: bool = false
+) -> Node3D:
 	if not is_instance_valid(table_node) or not table_node.is_inside_tree():
-		return
+		return null
 	_ensure_assets()
+
+	var cls := str(card_data.get("edition", card_data.get("card_class", "NORMAL"))).to_upper()
+	var use_mist := is_knight_mist or (cls == "KNIGHT")
 
 	var rig := _SwordVfxRig.new()
 	rig.name = "SwordCardVfxRig"
@@ -50,12 +56,13 @@ static func play_sword_card_score_anim(
 		local_impact,
 		score_pts,
 		eff_mult,
-		is_knight_mist,
+		use_mist,
 		_shader_cel,
 		_shader_blade,
 		_sfx_unsheathe,
-		_sfx_cleave_mist if is_knight_mist else _sfx_cleave_royal
+		_sfx_cleave_mist if use_mist else _sfx_cleave_royal
 	)
+	return rig
 
 
 static func play_sword_card_mp_strike(
@@ -66,11 +73,14 @@ static func play_sword_card_mp_strike(
 	center_pos: Vector3,
 	score_pts: int = 35,
 	eff_mult: float = 1.5,
-	is_knight_mist: bool = true
-) -> void:
+	is_knight_mist: bool = false
+) -> Node3D:
 	if not is_instance_valid(table_node) or not table_node.is_inside_tree():
-		return
+		return null
 	_ensure_assets()
+
+	var cls := str(card_data.get("edition", card_data.get("card_class", "NORMAL"))).to_upper()
+	var use_mist := is_knight_mist or (cls == "KNIGHT")
 
 	var l_from := table_node.to_local(from_pos)
 	var l_to := table_node.to_local(to_pos)
@@ -96,13 +106,31 @@ static func play_sword_card_mp_strike(
 		Vector3(0.0, l_center.y, 0.0),
 		score_pts,
 		eff_mult,
-		is_knight_mist,
+		use_mist,
 		_shader_cel,
 		_shader_blade,
 		_sfx_unsheathe,
-		_sfx_cleave_mist if is_knight_mist else _sfx_cleave_royal,
+		_sfx_cleave_mist if use_mist else _sfx_cleave_royal,
 		tray_local
 	)
+	return rig
+
+
+static func _load_sfx_mp3(path: String) -> AudioStream:
+	if ResourceLoader.exists(path):
+		var st := load(path)
+		if st is AudioStream:
+			if st is AudioStreamMP3:
+				(st as AudioStreamMP3).loop = false
+			return st
+	if FileAccess.file_exists(path):
+		var raw := FileAccess.get_file_as_bytes(path)
+		if not raw.is_empty():
+			var mp3 := AudioStreamMP3.load_from_buffer(raw)
+			if mp3:
+				mp3.loop = false
+				return mp3
+	return null
 
 
 static func _ensure_assets() -> void:
@@ -111,11 +139,17 @@ static func _ensure_assets() -> void:
 	if _shader_blade == null:
 		_shader_blade = load(SHADER_BLADE_PATH) as Shader
 	if _sfx_unsheathe == null:
-		_sfx_unsheathe = _synth_unsheathe_wav()
+		_sfx_unsheathe = _load_sfx_mp3(TEX_SFX_UNSHEATHE)
+		if _sfx_unsheathe == null:
+			_sfx_unsheathe = _synth_unsheathe_wav()
 	if _sfx_cleave_mist == null:
-		_sfx_cleave_mist = _synth_cleave_wav(true)
+		_sfx_cleave_mist = _load_sfx_mp3(TEX_SFX_SLASH)
+		if _sfx_cleave_mist == null:
+			_sfx_cleave_mist = _synth_cleave_wav(true)
 	if _sfx_cleave_royal == null:
-		_sfx_cleave_royal = _synth_cleave_wav(false)
+		_sfx_cleave_royal = _load_sfx_mp3(TEX_SFX_SLASH)
+		if _sfx_cleave_royal == null:
+			_sfx_cleave_royal = _synth_cleave_wav(false)
 
 
 static func _synth_unsheathe_wav() -> AudioStreamWAV:
@@ -269,7 +303,7 @@ class _SwordVfxRig extends Node3D:
 	var _flash_light: OmniLight3D
 	var _audio_draw: AudioStreamPlayer
 	var _audio_cleave: AudioStreamPlayer
-	var _sfx_cleave_stream: AudioStreamWAV
+	var _sfx_cleave_stream: AudioStream
 
 	var _sparks: Array[_InkSparkParticle] = []
 	var _orbs: Array[_EnergyOrbParticle] = []
@@ -289,8 +323,8 @@ class _SwordVfxRig extends Node3D:
 		is_knight_mist: bool,
 		cel_shader: Shader,
 		blade_shader: Shader,
-		sfx_draw: AudioStreamWAV,
-		sfx_cleave: AudioStreamWAV,
+		sfx_draw: AudioStream,
+		sfx_cleave: AudioStream,
 		custom_tray_local: Vector3 = Vector3(NAN, NAN, NAN)
 	) -> void:
 		_rng.randomize()
@@ -307,18 +341,37 @@ class _SwordVfxRig extends Node3D:
 		_sfx_cleave_stream = sfx_cleave
 		_custom_tray_local = custom_tray_local
 
-		var suit := str(card_data.get("suit", ""))
-		if is_knight_mist:
+		var cls := str(card_data.get("edition", card_data.get("card_class", "NORMAL"))).to_upper()
+		var pid := str(card_data.get("power_id", ""))
+		var suit := str(card_data.get("suit", "CERVEN"))
+		var use_mist := is_knight_mist or (cls == "KNIGHT")
+		_is_knight_mist = use_mist
+		if use_mist:
 			_glow_col = Color(0.28, 0.92, 1.0, 1.0)
 			_tint_col = Color(0.96, 0.99, 1.0, 1.0)
 			_mist_col = Color(0.74, 0.93, 1.0, 0.94)
 			_royal_shift = 0.0
 		else:
-			var is_crimson := (suit == "CERVEN" or suit == "HEARTS")
-			_glow_col = Color(1.0, 0.38, 0.24, 1.0) if is_crimson else Color(1.0, 0.76, 0.26, 1.0)
-			_tint_col = Color(1.0, 0.94, 0.86, 1.0)
+			_tint_col = Color(1.0, 0.95, 0.88, 1.0)
 			_mist_col = Color(0.98, 0.76, 0.44, 0.72)
 			_royal_shift = 1.0
+			var accent_v = card_data.get("accent", null)
+			if accent_v is Color and pid != "":
+				_glow_col = (accent_v as Color).lightened(0.14)
+				_mist_col = Color(_glow_col.r, _glow_col.g, _glow_col.b, 0.68)
+			elif cls == "MAGE":
+				_glow_col = Color(0.72, 0.42, 1.0, 1.0)
+				_mist_col = Color(0.76, 0.54, 1.0, 0.70)
+			elif cls == "THIEF":
+				_glow_col = Color(0.30, 0.96, 0.58, 1.0)
+				_mist_col = Color(0.42, 0.96, 0.66, 0.68)
+			elif suit == "CERVEN" or suit == "HEARTS":
+				_glow_col = Color(1.0, 0.38, 0.24, 1.0)
+			elif suit == "ZELEN":
+				_glow_col = Color(0.32, 0.92, 0.48, 1.0)
+				_mist_col = Color(0.44, 0.92, 0.56, 0.68)
+			else:
+				_glow_col = Color(1.0, 0.76, 0.26, 1.0)
 
 		_build_visual_layers()
 		_setup_audio(table_node, sfx_draw)
@@ -553,7 +606,7 @@ class _SwordVfxRig extends Node3D:
 		mi.sorting_offset = float(sort_idx) * 0.04
 		return mi
 
-	func _setup_audio(table_node: Node3D, sfx_draw: AudioStreamWAV) -> void:
+	func _setup_audio(table_node: Node3D, sfx_draw: AudioStream) -> void:
 		var vol_db := _get_audio_db(table_node, -6.5)
 		if vol_db <= -79.0:
 			return
@@ -566,12 +619,14 @@ class _SwordVfxRig extends Node3D:
 		_audio_cleave = AudioStreamPlayer.new()
 		_audio_cleave.stream = _sfx_cleave_stream
 		_audio_cleave.volume_db = vol_db + 1.5
+		_audio_cleave.pitch_scale = 1.04 if _is_knight_mist else 0.90
 		add_child(_audio_cleave)
 
 	func _get_audio_db(table_node: Node3D, base_db: float) -> float:
 		if not is_instance_valid(table_node):
 			return base_db
-		if bool(table_node.get("battle_audio_muted")):
+		var muted_v = table_node.get("battle_audio_muted")
+		if muted_v != null and bool(muted_v):
 			return -80.0
 		var pct_v = table_node.get("battle_audio_pct")
 		var pct := float(pct_v) if pct_v != null else 100.0

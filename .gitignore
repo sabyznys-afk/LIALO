@@ -1,6 +1,14 @@
 # Godot 4+ specific ignores
 .godot/
 
-# Exported builds (too large for GitHub's 100 MB limit)
+# Exported builds & large review packs (keep repo clean under GitHub limits)
 build/
 *.zip
+*.pdf
+
+# Temporary asset backups & Python cache
+tools/__pycache__/
+tools/backup_audio_orig/
+tools/backup_spec_orig/
+tools/backup_table_orig/
+tools/blender_ui/*.blend1

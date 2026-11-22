@@ -39,6 +39,45 @@ const RANKS := [
 	{"id": "E", "name": "Eso", "pts": 20},
 ]
 
+const CHARACTERS := [
+	{
+		"id": "CHAR_GUILLOTINE",
+		"name": "⚔ Executioner",
+		"name_cs": "⚔ Kat",
+		"desc": "Hooded iron duelist with cyan visor & heavy steel pauldrons.",
+		"glb": "res://assets/models/mp/mp_char_guillotine.glb",
+		"default_arch": "GUILLOTINE_ACES",
+		"col": Color(0.32, 0.88, 1.0),
+	},
+	{
+		"id": "CHAR_MONARCH",
+		"name": "👑 Parry Monarch",
+		"name_cs": "👑 Panovník",
+		"desc": "Crowned gilded noble wearing a Venetian porcelain half-mask.",
+		"glb": "res://assets/models/mp/mp_char_monarch.glb",
+		"default_arch": "MIRROR_MONARCH",
+		"col": Color(1.0, 0.78, 0.28),
+	},
+	{
+		"id": "CHAR_JESTER",
+		"name": "🃏 Chaos Jester",
+		"name_cs": "🃏 Šašek chaosu",
+		"desc": "Horned harlequin trickster with brass bells & grinning mask.",
+		"glb": "res://assets/models/mp/mp_char_jester.glb",
+		"default_arch": "CHAOS_JESTER",
+		"col": Color(0.95, 0.42, 0.78),
+	},
+	{
+		"id": "CHAR_MISTBLADE",
+		"name": "🌫 Mistblade Shadow",
+		"name_cs": "🌫 Rytíř mlhy",
+		"desc": "High-collared dark shinigami war-cloak & cracked silver visor.",
+		"glb": "res://assets/models/mp/mp_char_mistblade.glb",
+		"default_arch": "MISTBLADE_DUELIST",
+		"col": Color(0.45, 0.94, 0.80),
+	},
+]
+
 const DECK_ARCHETYPES := [
 	{
 		"id": "GUILLOTINE_ACES",
@@ -112,6 +151,20 @@ static func is_test_mp_available() -> bool:
 	if not REQUIRE_NON_RELEASE_BUILD:
 		return true
 	return OS.is_debug_build() or OS.has_feature("editor") or ("--mp-test" in OS.get_cmdline_args())
+
+
+static func get_character(char_id: String) -> Dictionary:
+	for c in CHARACTERS:
+		if str(c.get("id", "")) == char_id:
+			return c
+	return CHARACTERS[0]
+
+
+static func get_character_for_archetype(arch_id: String) -> Dictionary:
+	for c in CHARACTERS:
+		if str(c.get("default_arch", "")) == arch_id:
+			return c
+	return CHARACTERS[0]
 
 
 static func get_archetype(arch_id: String) -> Dictionary:
