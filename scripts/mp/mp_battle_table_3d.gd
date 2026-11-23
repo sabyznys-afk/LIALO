@@ -17,6 +17,8 @@ const Config = preload("res://scripts/mp/mp_config.gd")
 const CARD_FX_SHADER := preload("res://shaders/card_fx.gdshader")
 const TABLE_INLAY_SHADER := preload("res://shaders/table_cloth.gdshader")
 const WOODCUT_POST_SHADER := preload("res://shaders/woodcut_post.gdshader")
+const FONT_DISPLAY_PATH := "res://assets/fonts/LialoDisplay.ttf"
+const FONT_BODY_PATH := "res://assets/fonts/LialoBody.ttf"
 
 signal exit_mp_requested
 signal play_sfx_requested(sname: String)
@@ -66,6 +68,11 @@ var look_yaw: float = 0.0
 var look_pitch: float = 0.0
 var _mp_cursor_pos: Vector2 = Vector2(-1.0, -1.0)
 var _mp_anim_t: float = 0.0
+var _font_display: Font = null
+var _font_body: Font = null
+var top_down_manual: bool = false
+var _top_down_auto_timer: float = 0.0
+var _cam_blend: float = 0.0
 
 var seat_nodes: Dictionary = {} # seat_idx -> {root, avatar, hand_grp, deck_mesh, sword, turn_ring, lbl, hit_area}
 var _built_seat_count: int = -1
@@ -82,6 +89,7 @@ func configure(network_node: Node, muted: bool = false, vol_pct: int = 85) -> vo
 
 func _ready() -> void:
 	cam_spring = CamSpring.new()
+	_ensure_fonts()
 	_build_3d_tavern()
 	_build_hud()
 	if mp_net != null:
@@ -139,10 +147,18 @@ func _process(delta: float) -> void:
 			hp.rotation_degrees.y = sin(_mp_anim_t * 0.85 + ph) * (6.0 if is_t else 3.5)
 
 	if is_instance_valid(cam):
+		if _top_down_auto_timer > 0.0:
+			_top_down_auto_timer = maxf(0.0, _top_down_auto_timer - delta)
+		var use_top_down := top_down_manual or (_top_down_auto_timer > 0.0)
+		_cam_blend = lerpf(_cam_blend, 1.0 if use_top_down else 0.0, clampf(delta * 6.5, 0.0, 1.0))
+		var base_pos := Vector3(0.0, 2.08, 1.98).lerp(Vector3(0.0, 2.85, 0.65), _cam_blend)
+		var base_pitch := lerpf(-25.0, -74.0, _cam_blend)
+		var base_yaw := lerpf(look_yaw, 0.0, _cam_blend)
+		var base_fov := lerpf(60.0, 66.0, _cam_blend)
 		var sh := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0.0) * cam_kick_shake * 0.025
-		cam.position = Vector3(0.0, 1.92, 1.78) + cam_spring.pos_offset + sh
-		cam.rotation_degrees = Vector3(-25.0 + look_pitch + cam_spring.get_pitch_kick(), look_yaw, cam_spring.rot_offset_deg.z)
-		cam.fov = 52.0 + cam_spring.get_fov_kick()
+		cam.position = base_pos + cam_spring.pos_offset + sh
+		cam.rotation_degrees = Vector3(base_pitch + look_pitch * (1.0 - _cam_blend * 0.75) + cam_spring.get_pitch_kick(), base_yaw, cam_spring.rot_offset_deg.z)
+		cam.fov = base_fov + cam_spring.get_fov_kick()
 		cam_spring.apply_to_camera(cam)
 
 	if local_parry_left > 0.0:
@@ -173,6 +189,14 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion:
 		_mp_cursor_pos = (event as InputEventMouseMotion).position
+	elif event is InputEventKey:
+		var k := event as InputEventKey
+		if k.pressed and not k.echo and (k.keycode == KEY_TAB or k.keycode == KEY_SPACE):
+			top_down_manual = not top_down_manual
+			play_sfx_requested.emit("card_hover")
+			var vp := get_viewport()
+			if vp != null:
+				vp.set_input_as_handled()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -214,27 +238,27 @@ func _build_3d_tavern() -> void:
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
 	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color(0.05, 0.04, 0.04)
+	e.background_color = Color(0.08, 0.055, 0.04)
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.32, 0.28, 0.24)
-	e.ambient_light_energy = 0.85
+	e.ambient_light_color = Color(0.42, 0.33, 0.25)
+	e.ambient_light_energy = 1.05
 	e.glow_enabled = true
 	e.glow_intensity = 0.72
 	env.environment = e
 	add_child(env)
 
 	var key_light := OmniLight3D.new()
-	key_light.position = Vector3(0.0, 2.55, 0.15)
-	key_light.light_color = Color(1.0, 0.84, 0.62)
-	key_light.light_energy = 2.8
-	key_light.omni_range = 6.5
+	key_light.position = Vector3(0.0, 2.75, 0.10)
+	key_light.light_color = Color(1.0, 0.84, 0.58)
+	key_light.light_energy = 3.1
+	key_light.omni_range = 8.0
 	add_child(key_light)
 
 	var rim_light := OmniLight3D.new()
-	rim_light.position = Vector3(0.0, 1.9, -2.4)
-	rim_light.light_color = Color(0.38, 0.54, 0.78)
-	rim_light.light_energy = 1.6
-	rim_light.omni_range = 6.0
+	rim_light.position = Vector3(0.0, 2.2, -3.2)
+	rim_light.light_color = Color(0.95, 0.68, 0.38)
+	rim_light.light_energy = 1.9
+	rim_light.omni_range = 7.5
 	add_child(rim_light)
 
 	# Oak Round Tavern Table (wider r = 1.56m for comfortable 2-4 player circle)
@@ -258,12 +282,96 @@ func _build_3d_tavern() -> void:
 	felt.material_override = f_mat
 	add_child(felt)
 
-	# Tavern Floor + Backdrop
+	# Tavern Floor + Warm Stone/Timber Medieval Room Enclosure
 	var floor_m := MeshInstance3D.new()
 	var fl_p := PlaneMesh.new(); fl_p.size = Vector2(14.0, 14.0)
 	floor_m.mesh = fl_p
-	floor_m.material_override = Toon.mat(Color(0.16, 0.14, 0.14), "res://assets/table/stone_floor.png", 0.0, Vector2(5.0, 5.0))
+	floor_m.material_override = Toon.mat(Color(0.18, 0.15, 0.14), "res://assets/table/stone_floor.png", 0.0, Vector2(5.0, 5.0))
 	add_child(floor_m)
+
+	var stone_wall_mat := Toon.mat(Color(0.24, 0.21, 0.19), "res://assets/table/stone_floor.png", 0.0, Vector2(3.5, 2.0))
+	var beam_mat := Toon.mat(Color(0.22, 0.14, 0.08), "res://assets/table/wood.png", 0.0, Vector2(2.5, 1.5))
+	var wainscot_mat := Toon.mat(Color(0.17, 0.10, 0.06), "res://assets/table/wood.png", 0.0, Vector2(3.5, 1.0))
+
+	# 4 enclosing stone walls + oak wainscoting + ceiling
+	for wspec in [
+		{"pos": Vector3(0.0, 2.5, -5.2), "sz": Vector3(11.0, 5.0, 0.35)},
+		{"pos": Vector3(0.0, 2.5, 5.2), "sz": Vector3(11.0, 5.0, 0.35)},
+		{"pos": Vector3(-5.2, 2.5, 0.0), "sz": Vector3(0.35, 5.0, 10.6)},
+		{"pos": Vector3(5.2, 2.5, 0.0), "sz": Vector3(0.35, 5.0, 10.6)},
+	]:
+		var wm := MeshInstance3D.new()
+		var wb := BoxMesh.new(); wb.size = wspec["sz"]
+		wm.mesh = wb; wm.position = wspec["pos"]; wm.material_override = stone_wall_mat
+		add_child(wm)
+
+	for wainscoting_spec in [
+		{"pos": Vector3(0.0, 0.58, -4.96), "sz": Vector3(10.2, 1.16, 0.12)},
+		{"pos": Vector3(-4.96, 0.58, 0.0), "sz": Vector3(0.12, 1.16, 10.0)},
+		{"pos": Vector3(4.96, 0.58, 0.0), "sz": Vector3(0.12, 1.16, 10.0)},
+	]:
+		var wsm := MeshInstance3D.new()
+		var wsb := BoxMesh.new(); wsb.size = wainscoting_spec["sz"]
+		wsm.mesh = wsb; wsm.position = wainscoting_spec["pos"]; wsm.material_override = wainscot_mat
+		add_child(wsm)
+
+	# Timber pillars & overhead ceiling crossbeams
+	for px in [-3.8, 3.8]:
+		for pz in [-4.8, 0.0, 4.8]:
+			var pil := MeshInstance3D.new()
+			var pb := BoxMesh.new(); pb.size = Vector3(0.34, 4.8, 0.34)
+			pil.mesh = pb; pil.position = Vector3(px, 2.4, pz); pil.material_override = beam_mat
+			add_child(pil)
+
+	for bz in [-3.6, -1.2, 1.2, 3.6]:
+		var cbeam := MeshInstance3D.new()
+		var cb := BoxMesh.new(); cb.size = Vector3(10.6, 0.28, 0.30)
+		cbeam.mesh = cb; cbeam.position = Vector3(0.0, 4.45, bz); cbeam.material_override = beam_mat
+		add_child(cbeam)
+
+	var ceiling := MeshInstance3D.new()
+	var cplane := BoxMesh.new(); cplane.size = Vector3(11.2, 0.2, 11.2)
+	ceiling.mesh = cplane; ceiling.position = Vector3(0.0, 4.75, 0.0); ceiling.material_override = beam_mat
+	add_child(ceiling)
+
+	# Tavern Banners along the walls behind opponents
+	var banner_colors := [Color(0.54, 0.12, 0.14), Color(0.14, 0.30, 0.22), Color(0.46, 0.32, 0.10)]
+	var banner_positions := [
+		{"pos": Vector3(-2.1, 2.75, -4.92), "rot": 0.0, "col": banner_colors[0]},
+		{"pos": Vector3(0.0, 2.85, -4.92), "rot": 0.0, "col": banner_colors[2]},
+		{"pos": Vector3(2.1, 2.75, -4.92), "rot": 0.0, "col": banner_colors[1]},
+		{"pos": Vector3(-4.92, 2.75, -1.8), "rot": 90.0, "col": banner_colors[0]},
+		{"pos": Vector3(4.92, 2.75, -1.8), "rot": -90.0, "col": banner_colors[1]},
+	]
+	for bspec in banner_positions:
+		var ban_root := Node3D.new()
+		ban_root.position = bspec["pos"]
+		ban_root.rotation_degrees.y = float(bspec["rot"])
+		var cloth := MeshInstance3D.new()
+		var cm := BoxMesh.new(); cm.size = Vector3(0.76, 1.45, 0.03)
+		cloth.mesh = cm
+		cloth.material_override = Toon.mat(bspec["col"])
+		ban_root.add_child(cloth)
+		var rod := MeshInstance3D.new()
+		var rm := CylinderMesh.new(); rm.top_radius = 0.03; rm.bottom_radius = 0.03; rm.height = 0.92
+		rod.mesh = rm; rod.position = Vector3(0.0, 0.74, 0.02); rod.rotation_degrees.z = 90.0
+		rod.material_override = Toon.mat(Color(0.78, 0.58, 0.22))
+		ban_root.add_child(rod)
+		add_child(ban_root)
+
+	# Warm Tavern Wall Lanterns (glowing sconces + warm OmniLight3D fill behind opponents)
+	for lpos in [Vector3(-3.2, 2.25, -4.65), Vector3(3.2, 2.25, -4.65), Vector3(-4.65, 2.25, 0.2), Vector3(4.65, 2.25, 0.2)]:
+		var lan_bulb := MeshInstance3D.new()
+		var lm := SphereMesh.new(); lm.radius = 0.09
+		lan_bulb.mesh = lm; lan_bulb.position = lpos
+		lan_bulb.material_override = Toon.mat(Color(1.0, 0.80, 0.42), "", 0.0, Vector2.ONE, Color(1.0, 0.65, 0.22) * 2.2)
+		add_child(lan_bulb)
+		var l_omni := OmniLight3D.new()
+		l_omni.position = lpos
+		l_omni.light_color = Color(1.0, 0.72, 0.36)
+		l_omni.light_energy = 1.65
+		l_omni.omni_range = 6.2
+		add_child(l_omni)
 
 	# Center Discard Anchor & Suit Indicator
 	discard_pile_root = Node3D.new()
@@ -280,9 +388,9 @@ func _build_3d_tavern() -> void:
 	add_child(suit_beacon_lbl)
 
 	cam = Camera3D.new()
-	cam.fov = 50.0
-	cam.position = Vector3(0.0, 1.78, 1.58)
-	cam.rotation_degrees = Vector3(-27.0, 0.0, 0.0)
+	cam.fov = 60.0
+	cam.position = Vector3(0.0, 2.08, 1.98)
+	cam.rotation_degrees = Vector3(-25.0, 0.0, 0.0)
 	add_child(cam)
 	cam.current = true
 
@@ -449,6 +557,63 @@ func _rebuild_seats_if_needed(seats_arr: Array) -> void:
 # HUD & Controls (MP Test Strip, Cards, Items, Parry, Ghost, Victory)
 # ---------------------------------------------------------------------------
 
+func _ensure_fonts() -> void:
+	if _font_display == null and ResourceLoader.exists(FONT_DISPLAY_PATH):
+		_font_display = ResourceLoader.load(FONT_DISPLAY_PATH) as Font
+	if _font_body == null and ResourceLoader.exists(FONT_BODY_PATH):
+		_font_body = ResourceLoader.load(FONT_BODY_PATH) as Font
+
+
+func _apply_font(ctrl: Control, is_display: bool = false) -> void:
+	var f := _font_display if is_display else _font_body
+	if f != null:
+		ctrl.add_theme_font_override("font", f)
+
+
+func _make_tavern_panel_sb(bg: Color, border: Color, border_w: int = 2, radius: int = 12, pad: int = 12) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.border_color = border
+	sb.set_border_width_all(border_w)
+	sb.border_width_bottom = border_w + 2
+	sb.set_corner_radius_all(radius)
+	sb.content_margin_left = pad
+	sb.content_margin_right = pad
+	sb.content_margin_top = maxi(6, pad - 4)
+	sb.content_margin_bottom = maxi(6, pad - 4)
+	sb.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
+	sb.shadow_size = 10
+	sb.shadow_offset = Vector2(0, 4)
+	return sb
+
+
+func _style_tavern_btn(btn: Button, bg: Color, border: Color, is_display: bool = false, radius: int = 9) -> void:
+	_apply_font(btn, is_display)
+	var sb_n := _make_tavern_panel_sb(bg, border, 2, radius, 12)
+	sb_n.content_margin_top = 6
+	sb_n.content_margin_bottom = 7
+	var sb_h := _make_tavern_panel_sb(bg.lightened(0.16), border.lightened(0.24), 2, radius, 12)
+	sb_h.content_margin_top = 6
+	sb_h.content_margin_bottom = 7
+	var sb_p := _make_tavern_panel_sb(bg.darkened(0.20), border, 2, radius, 12)
+	sb_p.border_width_top = 1
+	sb_p.border_width_bottom = 2
+	sb_p.content_margin_top = 8
+	sb_p.content_margin_bottom = 5
+	var sb_d := _make_tavern_panel_sb(Color(0.08, 0.07, 0.06, 0.72), Color(0.32, 0.26, 0.18, 0.45), 1, radius, 12)
+	sb_d.content_margin_top = 6
+	sb_d.content_margin_bottom = 7
+	btn.add_theme_stylebox_override("normal", sb_n)
+	btn.add_theme_stylebox_override("hover", sb_h)
+	btn.add_theme_stylebox_override("pressed", sb_p)
+	btn.add_theme_stylebox_override("disabled", sb_d)
+	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	btn.add_theme_color_override("font_color", Color(0.96, 0.90, 0.76))
+	btn.add_theme_color_override("font_hover_color", Color(1.0, 0.95, 0.80))
+	btn.add_theme_color_override("font_pressed_color", Color(1.0, 0.92, 0.56))
+	btn.add_theme_color_override("font_disabled_color", Color(0.52, 0.48, 0.42, 0.7))
+
+
 func _build_hud() -> void:
 	hud_layer = CanvasLayer.new()
 	hud_layer.layer = 5
@@ -460,6 +625,7 @@ func _build_hud() -> void:
 	var top_panel := PanelContainer.new()
 	top_panel.anchor_left = 0.0; top_panel.anchor_right = 1.0
 	top_panel.offset_left = 12; top_panel.offset_right = -12; top_panel.offset_top = 10; top_panel.offset_bottom = 66
+	top_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.08, 0.06, 0.045, 0.93), Color(0.72, 0.54, 0.24, 0.86), 2, 12, 12))
 	hud_root.add_child(top_panel)
 
 	var top_hb := HBoxContainer.new()
@@ -468,7 +634,8 @@ func _build_hud() -> void:
 
 	var dev_tag := Label.new()
 	dev_tag.text = " ⚗ EXPERIMENTAL MP (2–4P) "
-	dev_tag.add_theme_color_override("font_color", Color(1.0, 0.78, 0.25))
+	_apply_font(dev_tag, true)
+	dev_tag.add_theme_color_override("font_color", Color(1.0, 0.82, 0.34))
 	dev_tag.add_theme_font_size_override("font_size", 14)
 	top_hb.add_child(dev_tag)
 
@@ -479,24 +646,30 @@ func _build_hud() -> void:
 
 	status_info_lbl = Label.new()
 	status_info_lbl.text = "Suit: ♥  •  R1"
+	_apply_font(status_info_lbl, false)
+	status_info_lbl.add_theme_color_override("font_color", Color(0.95, 0.88, 0.72))
 	status_info_lbl.add_theme_font_size_override("font_size", 15)
 	top_hb.add_child(status_info_lbl)
 
 	var exit_btn := Button.new()
 	exit_btn.text = "← Leave"
-	exit_btn.custom_minimum_size = Vector2(96, 0)
+	exit_btn.custom_minimum_size = Vector2(104, 0)
+	_style_tavern_btn(exit_btn, Color(0.24, 0.11, 0.09, 0.95), Color(0.78, 0.40, 0.26, 0.88), true, 8)
 	exit_btn.pressed.connect(func(): exit_mp_requested.emit())
 	top_hb.add_child(exit_btn)
 
 	# Center Action Banner
 	center_banner_lbl = Label.new()
 	center_banner_lbl.anchor_left = 0.15; center_banner_lbl.anchor_right = 0.85
-	center_banner_lbl.offset_top = 74; center_banner_lbl.offset_bottom = 110
+	center_banner_lbl.offset_top = 74; center_banner_lbl.offset_bottom = 114
 	center_banner_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	center_banner_lbl.add_theme_font_size_override("font_size", 19)
-	center_banner_lbl.add_theme_color_override("font_color", Color(1.0, 0.92, 0.68))
+	center_banner_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_apply_font(center_banner_lbl, true)
+	center_banner_lbl.add_theme_font_size_override("font_size", 18)
+	center_banner_lbl.add_theme_color_override("font_color", Color(1.0, 0.92, 0.64))
 	center_banner_lbl.add_theme_color_override("font_outline_color", Color(0.04, 0.03, 0.03, 0.95))
 	center_banner_lbl.add_theme_constant_override("outline_size", 5)
+	center_banner_lbl.add_theme_stylebox_override("normal", _make_tavern_panel_sb(Color(0.07, 0.05, 0.04, 0.76), Color(0.66, 0.50, 0.24, 0.52), 1, 10, 10))
 	center_banner_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud_root.add_child(center_banner_lbl)
 
@@ -532,6 +705,7 @@ func _build_hud() -> void:
 		sb.icon = Toon.tex("res://assets/ui/suits/suit_%s.png" % sid.to_lower())
 		sb.expand_icon = true
 		sb.custom_minimum_size = Vector2(148, 42)
+		_style_tavern_btn(sb, Color(0.14, 0.11, 0.08, 0.94), s.get("col", Color(0.76, 0.58, 0.24)), false, 9)
 		sb.pressed.connect(func():
 			play_sfx_requested.emit("btn_card_tick")
 			chosen_wild_suit = sid
@@ -557,14 +731,18 @@ func _build_hud() -> void:
 	bot_vb.add_child(action_bar)
 
 	slam_btn = Button.new()
-	slam_btn.custom_minimum_size = Vector2(240, 40)
+	slam_btn.custom_minimum_size = Vector2(240, 42)
 	slam_btn.text = "⚔ SLAM CARDS"
+	slam_btn.add_theme_font_size_override("font_size", 15)
+	_style_tavern_btn(slam_btn, Color(0.32, 0.14, 0.08, 0.96), Color(0.94, 0.72, 0.24, 0.94), true, 10)
 	slam_btn.pressed.connect(_on_slam_pressed)
 	action_bar.add_child(slam_btn)
 
 	draw_btn = Button.new()
-	draw_btn.custom_minimum_size = Vector2(200, 40)
+	draw_btn.custom_minimum_size = Vector2(200, 42)
 	draw_btn.text = "🃏 DRAW CARD"
+	draw_btn.add_theme_font_size_override("font_size", 15)
+	_style_tavern_btn(draw_btn, Color(0.15, 0.13, 0.10, 0.95), Color(0.68, 0.54, 0.28, 0.88), true, 10)
 	draw_btn.pressed.connect(func():
 		play_sfx_requested.emit("btn_wooden_slam")
 		if mp_net:
@@ -576,6 +754,7 @@ func _build_hud() -> void:
 	parry_panel = PanelContainer.new()
 	parry_panel.anchor_left = 0.25; parry_panel.anchor_right = 0.75
 	parry_panel.anchor_top = 0.28; parry_panel.anchor_bottom = 0.56
+	parry_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.14, 0.06, 0.06, 0.96), Color(0.95, 0.36, 0.24, 0.95), 3, 14, 18))
 	parry_panel.visible = false
 	hud_root.add_child(parry_panel)
 	var pvb := VBoxContainer.new()
@@ -584,11 +763,14 @@ func _build_hud() -> void:
 	parry_panel.add_child(pvb)
 	parry_title_lbl = Label.new()
 	parry_title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_apply_font(parry_title_lbl, true)
 	parry_title_lbl.add_theme_font_size_override("font_size", 24)
 	parry_title_lbl.add_theme_color_override("font_color", Color(1.0, 0.34, 0.28))
 	pvb.add_child(parry_title_lbl)
 	parry_timer_lbl = Label.new()
 	parry_timer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_apply_font(parry_timer_lbl, false)
+	parry_timer_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.62))
 	parry_timer_lbl.add_theme_font_size_override("font_size", 18)
 	pvb.add_child(parry_timer_lbl)
 	parry_btns_box = HBoxContainer.new()
@@ -600,6 +782,7 @@ func _build_hud() -> void:
 	ghost_panel = PanelContainer.new()
 	ghost_panel.anchor_left = 0.22; ghost_panel.anchor_right = 0.78
 	ghost_panel.anchor_top = 0.84; ghost_panel.anchor_bottom = 0.96
+	ghost_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.06, 0.08, 0.10, 0.94), Color(0.45, 0.82, 0.88, 0.82), 2, 12, 12))
 	ghost_panel.visible = false
 	hud_root.add_child(ghost_panel)
 	var ghb := HBoxContainer.new()
@@ -608,10 +791,13 @@ func _build_hud() -> void:
 	ghost_panel.add_child(ghb)
 	ghost_cd_lbl = Label.new()
 	ghost_cd_lbl.text = "👻 TAVERN GHOST — Ready!"
+	_apply_font(ghost_cd_lbl, true)
+	ghost_cd_lbl.add_theme_color_override("font_color", Color(0.68, 0.92, 1.0))
 	ghb.add_child(ghost_cd_lbl)
 	for ga in [["GHOST_HEX", "💀 Curse Target (-8 HP)"], ["GHOST_BLESS", "✨ Shield Target (+10)"], ["GHOST_SUIT", "🌬 Shift Suit"]]:
 		var gb := Button.new()
 		gb.text = ga[1]
+		_style_tavern_btn(gb, Color(0.10, 0.14, 0.18, 0.95), Color(0.46, 0.78, 0.88, 0.85), false, 8)
 		var gid: String = ga[0]
 		gb.pressed.connect(func():
 			play_sfx_requested.emit("btn_ghost_curse")
@@ -624,6 +810,7 @@ func _build_hud() -> void:
 	victory_panel = PanelContainer.new()
 	victory_panel.anchor_left = 0.28; victory_panel.anchor_right = 0.72
 	victory_panel.anchor_top = 0.25; victory_panel.anchor_bottom = 0.65
+	victory_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.09, 0.065, 0.045, 0.96), Color(0.92, 0.72, 0.26, 0.95), 3, 14, 20))
 	victory_panel.visible = false
 	hud_root.add_child(victory_panel)
 	var vvb := VBoxContainer.new()
@@ -632,11 +819,14 @@ func _build_hud() -> void:
 	victory_panel.add_child(vvb)
 	victory_lbl = Label.new()
 	victory_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_apply_font(victory_lbl, true)
+	victory_lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.56))
 	victory_lbl.add_theme_font_size_override("font_size", 24)
 	vvb.add_child(victory_lbl)
 	var vbtn := Button.new()
 	vbtn.text = "Return to MP Lobby"
 	vbtn.custom_minimum_size = Vector2(220, 44)
+	_style_tavern_btn(vbtn, Color(0.28, 0.15, 0.08, 0.96), Color(0.92, 0.72, 0.26, 0.92), true, 10)
 	vbtn.pressed.connect(func(): exit_mp_requested.emit())
 	vvb.add_child(vbtn)
 
@@ -682,6 +872,7 @@ func _on_public_state(state: Dictionary) -> void:
 		var pill := Label.new()
 		var mark := "▶ " if is_turn else ("" if is_alive else "👻 ")
 		pill.text = "%s%s [%d♥|%d🛡|%dg]" % [mark, str(s["name"]), int(s["hp"]), int(s["shields"]), int(s["gold"])]
+		_apply_font(pill, false)
 		pill.add_theme_font_size_override("font_size", 12)
 		pill.add_theme_color_override("font_color", Color(1.0, 0.86, 0.30) if is_turn else (Color(0.86, 0.90, 0.88) if is_alive else Color(0.55, 0.58, 0.62)))
 		turn_strip_box.add_child(pill)
@@ -760,8 +951,23 @@ func _on_vfx_event(evt: Dictionary) -> void:
 					play_sfx_requested.emit("card_seven_curse")
 				elif lpid == "" and lr == "H":
 					play_sfx_requested.emit("card_suit_shift")
-			cam_kick_shake = maxf(cam_kick_shake, 0.35)
-			if bool(evt.get("has_sword", true)) or not cards_arr.is_empty():
+			_top_down_auto_timer = maxf(_top_down_auto_timer, 1.35)
+			var is_special_vfx := false
+			var ace_count_vfx := 0
+			for c_item in cards_arr:
+				if typeof(c_item) == TYPE_DICTIONARY:
+					var c_dict: Dictionary = c_item
+					var c_pid := str(c_dict.get("power_id", ""))
+					var c_ed := Catalog.normalize_card_class(str(c_dict.get("edition", "NORMAL")))
+					if c_pid != "" or c_ed in ["KNIGHT", "MAGE"]:
+						is_special_vfx = true
+					if str(c_dict.get("rank", "")) == "E":
+						ace_count_vfx += 1
+			if ace_count_vfx >= 3:
+				is_special_vfx = true
+
+			if is_special_vfx and (bool(evt.get("has_sword", true)) or not cards_arr.is_empty()):
+				cam_kick_shake = maxf(cam_kick_shake, 0.35)
 				var lead_c: Dictionary = cards_arr[0] if not cards_arr.is_empty() else {}
 				SwordCardAnim.play_sword_card_mp_strike(
 					self,
@@ -774,6 +980,9 @@ func _on_vfx_event(evt: Dictionary) -> void:
 					bool(evt.get("is_knight", false))
 				)
 				cam_spring.trigger_score_recoil(int(evt.get("dmg", 35)) * 3, 2.2, 0.58)
+			else:
+				cam_kick_shake = maxf(cam_kick_shake, 0.16)
+				_play_lightweight_card_slam(cards_arr, from_p, to_p, center, int(evt.get("dmg", 20)))
 		"PARRY_WINDUP":
 			play_sfx_requested.emit("anim_sword_unsheathe")
 			cam_kick_shake = 0.55
@@ -885,6 +1094,7 @@ func _rebuild_local_hand_ui() -> void:
 		btn.add_theme_stylebox_override("normal", sb_n)
 		btn.add_theme_stylebox_override("hover", sb_p)
 		btn.add_theme_stylebox_override("pressed", sb_p)
+		btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 
 		var vb := VBoxContainer.new()
 		vb.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -910,6 +1120,7 @@ func _rebuild_local_hand_ui() -> void:
 		elif ed == "THIEF": badge = " 🗡"
 		lbl.text = (str(card["rname"]) if pid != "" else "%s %s%s" % [s_obj["sym"], card["rank"], badge])
 		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_apply_font(lbl, false)
 		lbl.add_theme_font_size_override("font_size", 12)
 		lbl.add_theme_color_override("font_color", ed_info.get("col", s_obj["col"]) if ed != "NORMAL" else s_obj["col"])
 		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -932,6 +1143,8 @@ func _rebuild_local_items_ui() -> void:
 		c.queue_free()
 	var lbl := Label.new()
 	lbl.text = "OP Items:"
+	_apply_font(lbl, true)
+	lbl.add_theme_color_override("font_color", Color(0.95, 0.84, 0.54))
 	lbl.add_theme_font_size_override("font_size", 13)
 	items_bar.add_child(lbl)
 	for raw_it in my_items:
@@ -940,6 +1153,7 @@ func _rebuild_local_items_ui() -> void:
 		var ib := Button.new()
 		ib.text = "%s (%s)" % [info["name"], info["short"]]
 		ib.add_theme_font_size_override("font_size", 12)
+		_style_tavern_btn(ib, Color(0.15, 0.12, 0.09, 0.94), info.get("col", Color(0.76, 0.58, 0.24)), false, 8)
 		ib.pressed.connect(func():
 			if mp_net:
 				mp_net.send_use_item(it_id, selected_target)
@@ -952,6 +1166,8 @@ func _refresh_target_and_actions() -> void:
 		c.queue_free()
 	var tlbl := Label.new()
 	tlbl.text = "🎯 Target:"
+	_apply_font(tlbl, true)
+	tlbl.add_theme_color_override("font_color", Color(0.95, 0.84, 0.54))
 	tlbl.add_theme_font_size_override("font_size", 13)
 	target_bar.add_child(tlbl)
 
@@ -964,7 +1180,10 @@ func _refresh_target_and_actions() -> void:
 		tb.text = "%s%s (%d♥)" % ["► " if is_sel else "", str(s["name"]), int(s["hp"])]
 		tb.add_theme_font_size_override("font_size", 12)
 		if is_sel:
-			tb.modulate = Color(1.0, 0.85, 0.42)
+			_style_tavern_btn(tb, Color(0.26, 0.17, 0.08, 0.96), Color(0.98, 0.80, 0.28, 0.98), false, 8)
+			tb.add_theme_color_override("font_color", Color(1.0, 0.92, 0.56))
+		else:
+			_style_tavern_btn(tb, Color(0.10, 0.08, 0.07, 0.90), Color(0.48, 0.38, 0.24, 0.65), false, 8)
 		tb.pressed.connect(func():
 			selected_target = si
 			play_sfx_requested.emit("card_hover")
@@ -988,9 +1207,9 @@ func _refresh_target_and_actions() -> void:
 	slam_btn.disabled = (not my_turn) or selected_indices.is_empty()
 	draw_btn.disabled = not my_turn
 	if ace_sel >= 4:
-		slam_btn.text = "💀 4× ESO SWORD EXECUTION!"
+		slam_btn.text = "💀 4× ESO INSTANT KILL!"
 	elif ace_sel == 3:
-		slam_btn.text = "⚔ 3× ESO TRIPLE GUILLOTINE!"
+		slam_btn.text = "💀 3× ESO INSTANT KILL!"
 	else:
 		slam_btn.text = "⚔ SLAM (%d)" % selected_indices.size() if not selected_indices.is_empty() else "⚔ SLAM CARDS"
 
@@ -1027,6 +1246,7 @@ func _update_parry_ui(parry_pub: Dictionary) -> void:
 		var mb := Button.new()
 		mb.text = "🪞 DEFLECT WITH MIRROR! (KILL ATTACKER)"
 		mb.custom_minimum_size = Vector2(260, 46)
+		_style_tavern_btn(mb, Color(0.24, 0.14, 0.34, 0.96), Color(0.86, 0.62, 1.0, 0.95), true, 10)
 		mb.pressed.connect(func():
 			if mp_net: mp_net.send_parry("MIRROR")
 		)
@@ -1035,6 +1255,7 @@ func _update_parry_ui(parry_pub: Dictionary) -> void:
 		var cb := Button.new()
 		cb.text = "⏳ TIME REWIND (CHRONOS +25 HP)"
 		cb.custom_minimum_size = Vector2(240, 46)
+		_style_tavern_btn(cb, Color(0.12, 0.22, 0.30, 0.96), Color(0.45, 0.88, 1.0, 0.95), true, 10)
 		cb.pressed.connect(func():
 			if mp_net: mp_net.send_parry("CHRONOS")
 		)
@@ -1043,6 +1264,7 @@ func _update_parry_ui(parry_pub: Dictionary) -> void:
 	var brace_btn := Button.new()
 	brace_btn.text = "💀 Brace / No Counter"
 	brace_btn.custom_minimum_size = Vector2(160, 46)
+	_style_tavern_btn(brace_btn, Color(0.24, 0.10, 0.09, 0.95), Color(0.72, 0.34, 0.28, 0.88), false, 10)
 	brace_btn.pressed.connect(func():
 		if mp_net: mp_net.send_parry("BRACE")
 	)
@@ -1057,6 +1279,51 @@ func _on_slam_pressed() -> void:
 	for idx in selected_indices:
 		send_arr.append(idx)
 	mp_net.send_play_cards(send_arr, selected_target, chosen_wild_suit)
+
+
+func _play_lightweight_card_slam(cards_arr: Array, from_p: Vector3, to_p: Vector3, center: Vector3, dmg: int) -> void:
+	var n_vis := mini(4, maxi(1, cards_arr.size()))
+	var suit_col := Color(0.92, 0.74, 0.34)
+	if not cards_arr.is_empty() and typeof(cards_arr[0]) == TYPE_DICTIONARY:
+		var s_obj := Config.get_suit(str(cards_arr[0].get("suit", "CERVEN")))
+		suit_col = s_obj.get("col", suit_col)
+
+	for i in range(n_vis):
+		var c_dict: Dictionary = cards_arr[i] if i < cards_arr.size() and typeof(cards_arr[i]) == TYPE_DICTIONARY else {}
+		var cm := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.18, 0.26)
+		cm.mesh = qm
+		var tpath := "res://assets/cards/%s_%s.png" % [str(c_dict.get("suit", "CERVEN")), str(c_dict.get("rank", "8"))]
+		var tex := Toon.tex(tpath)
+		var mat := StandardMaterial3D.new()
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mat.roughness = 0.55
+		if tex != null:
+			mat.albedo_texture = tex
+		else:
+			mat.albedo_color = Color(0.92, 0.88, 0.78)
+		cm.material_override = mat
+		add_child(cm)
+
+		var start_p := to_local(from_p) + Vector3(0.0, 0.08 + float(i) * 0.012, 0.0)
+		var end_p := to_local(center) + Vector3(randf_range(-0.04, 0.04), 0.016 + float(i) * 0.004, randf_range(-0.04, 0.04))
+		var mid_p := start_p.lerp(end_p, 0.5) + Vector3(0.0, 0.24, 0.0)
+		cm.position = start_p
+		cm.rotation_degrees = Vector3(-90.0, randf_range(-20.0, 20.0), 0.0)
+
+		var tw := cm.create_tween()
+		tw.tween_interval(float(i) * 0.04)
+		tw.tween_property(cm, "position", mid_p, 0.13).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(cm, "position", end_p, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.tween_callback(func():
+			if is_instance_valid(cm):
+				cm.queue_free()
+		)
+
+	Fx.ring(self, center + Vector3(0.0, 0.025, 0.0), suit_col, 0.55, 0.38, 0.04, 1.4, 3.5)
+	if dmg > 0:
+		Fx.float_number(self, to_p + Vector3(0.0, 0.26, 0.0), "-%d" % dmg, suit_col.lightened(0.2), 38, 0.18, 0.75, 1.1)
 
 
 # ---------------------------------------------------------------------------

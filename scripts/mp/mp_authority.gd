@@ -103,7 +103,7 @@ func setup_match(lobby_seats: Array, settings: Dictionary) -> void:
 	active_suit = str(top["suit"])
 	turn_seat = 0
 	turn_timer = Config.TURN_TIMEOUT_SEC
-	banner_text = "Tavern Brawl Begun! Draw from your own Deck — 3×/4× Aces Execute!"
+	banner_text = "Tavern Brawl Begun! 3× Aces = Instant Kill on Chosen Target!"
 
 	_sync_all()
 	_queue_bot_if_needed()
@@ -262,22 +262,23 @@ func handle_play_cards(peer_id: int, seat_idx_hint: int, card_indices: Array, ta
 	for pid in power_ids:
 		_apply_power_card_effect(s, tgt_s, str(pid))
 
-	# CALAMITY SWORD EXECUTIONS: 3x / 4x Aces (or 2x Aces with Whetstone >= 2)!
+	# CALAMITY SWORD EXECUTIONS: 3x / 4x Aces = Instant Kill on Chosen Target (or 2x Aces with Whetstone >= 2)!
 	var whet_req := 2 if int(s["whetstone_stacks"]) >= 2 else 3
 	var trigger_four_ace_kill := (ace_cnt >= 4)
 	var trigger_triple_ace := (ace_cnt >= whet_req) and not trigger_four_ace_kill
 
 	if trigger_four_ace_kill or trigger_triple_ace:
-		var exec_dmg := 999 if trigger_four_ace_kill else (75 if rule_mode == "OP_CHAOS" else 55)
-		var auto_execute_if_unparried := trigger_four_ace_kill or (not tgt_s.is_empty() and float(tgt_s["hp"]) <= float(tgt_s["max_hp"]) * 0.55)
+		var is_ace_instant_kill := (ace_cnt >= 3)
+		var exec_dmg := 999 if is_ace_instant_kill else (75 if rule_mode == "OP_CHAOS" else 55)
+		var auto_execute_if_unparried := is_ace_instant_kill or (not tgt_s.is_empty() and float(tgt_s["hp"]) <= float(tgt_s["max_hp"]) * 0.55)
 		if trigger_triple_ace and not tgt_s.is_empty():
 			tgt_s["shields"] = 0
 			tgt_s["stunned"] = true
-		var kind_lbl := "4× ESO ROYAL GUILLOTINE" if trigger_four_ace_kill else "%d× ESO EXECUTION STRIKE" % ace_cnt
+		var kind_lbl := "4× ESO ROYAL GUILLOTINE" if trigger_four_ace_kill else ("3× ESO INSTANT KILL" if ace_cnt >= 3 else "%d× ESO EXECUTION STRIKE" % ace_cnt)
 
-		# Check if victim actually died or enters 2.6s PARRY INTERRUPT WINDOW!
+		# Check if victim enters 2.6s PARRY INTERRUPT WINDOW (instant kill on ONLY the chosen target seat)!
 		if auto_execute_if_unparried and not tgt_s.is_empty():
-			_open_parry_window(turn_seat, tgt, kind_lbl, 999, played, true)
+			_open_parry_window(turn_seat, tgt, kind_lbl, exec_dmg, played, true)
 			_check_shedding_refill(s)
 			if _check_match_winner():
 				return
