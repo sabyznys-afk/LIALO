@@ -128,6 +128,17 @@ func is_open() -> bool:
 	return _is_open_state and visible
 
 
+func _input(event: InputEvent) -> void:
+	if not is_open():
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		sfx_requested.emit("ui_click")
+		close_requested.emit()
+		var vp := get_viewport()
+		if vp != null:
+			vp.set_input_as_handled()
+
+
 func get_station_button(key: String) -> Button:
 	if _row_widgets.has(key):
 		return _row_widgets[key].get("btn", null) as Button

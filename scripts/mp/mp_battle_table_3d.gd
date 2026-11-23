@@ -22,6 +22,7 @@ const FONT_BODY_PATH := "res://assets/fonts/LialoBody.ttf"
 
 signal exit_mp_requested
 signal play_sfx_requested(sname: String)
+signal open_options_requested
 
 var mp_net: Node = null
 var cam: Camera3D
@@ -118,18 +119,9 @@ func _process(delta: float) -> void:
 		cam_kick_shake = maxf(0.0, cam_kick_shake - delta * 2.2)
 	cam_spring.step(delta)
 	_mp_anim_t += delta
-	# Smooth natural mouse-look without requiring RMB hold (UP=UP, DOWN=DOWN, L/R persistent)
-	var vp := get_viewport()
-	if vp != null:
-		var vpsz := vp.get_visible_rect().size
-		if vpsz.x > 10.0 and vpsz.y > 10.0:
-			var mp_p := _mp_cursor_pos if _mp_cursor_pos.x >= 0.0 else (vpsz * 0.5)
-			var nx := clampf((mp_p.x / vpsz.x) * 2.0 - 1.0, -1.0, 1.0)
-			var ny := clampf((mp_p.y / vpsz.y) * 2.0 - 1.0, -1.0, 1.0)
-			var tgt_yaw := -nx * 24.0
-			var tgt_pitch := -ny * 13.0 # cursor UP (ny<0) -> +pitch (look UP)
-			look_yaw = lerpf(look_yaw, tgt_yaw, clampf(delta * 7.5, 0.0, 1.0))
-			look_pitch = lerpf(look_pitch, tgt_pitch, clampf(delta * 7.5, 0.0, 1.0))
+	# Static top-down MP camera (no cursor-driven mouse sway)
+	look_yaw = 0.0
+	look_pitch = 0.0
 
 	# Subtle idle breathing & turn highlight animation on sculpted MP characters
 	var active_turn_seat := int(public_state.get("turn_seat", 0))
@@ -151,13 +143,12 @@ func _process(delta: float) -> void:
 			_top_down_auto_timer = maxf(0.0, _top_down_auto_timer - delta)
 		var use_top_down := top_down_manual or (_top_down_auto_timer > 0.0)
 		_cam_blend = lerpf(_cam_blend, 1.0 if use_top_down else 0.0, clampf(delta * 6.5, 0.0, 1.0))
-		var base_pos := Vector3(0.0, 2.08, 1.98).lerp(Vector3(0.0, 2.85, 0.65), _cam_blend)
-		var base_pitch := lerpf(-25.0, -74.0, _cam_blend)
-		var base_yaw := lerpf(look_yaw, 0.0, _cam_blend)
-		var base_fov := lerpf(60.0, 66.0, _cam_blend)
+		var base_pos := Vector3(0.0, 2.55, 1.12).lerp(Vector3(0.0, 2.95, 0.50), _cam_blend)
+		var base_pitch := lerpf(-56.0, -76.0, _cam_blend)
+		var base_fov := lerpf(52.0, 56.0, _cam_blend)
 		var sh := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0.0) * cam_kick_shake * 0.025
 		cam.position = base_pos + cam_spring.pos_offset + sh
-		cam.rotation_degrees = Vector3(base_pitch + look_pitch * (1.0 - _cam_blend * 0.75) + cam_spring.get_pitch_kick(), base_yaw, cam_spring.rot_offset_deg.z)
+		cam.rotation_degrees = Vector3(base_pitch + cam_spring.get_pitch_kick(), 0.0, cam_spring.rot_offset_deg.z)
 		cam.fov = base_fov + cam_spring.get_fov_kick()
 		cam_spring.apply_to_camera(cam)
 
@@ -202,6 +193,17 @@ func _input(event: InputEvent) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible:
 		return
+	if event is InputEventKey:
+		var k := event as InputEventKey
+		if k.pressed and not k.echo and k.keycode == KEY_ESCAPE:
+			var modal_open := (is_instance_valid(parry_panel) and parry_panel.visible) or (is_instance_valid(victory_panel) and victory_panel.visible)
+			if not modal_open:
+				play_sfx_requested.emit("ui_click")
+				open_options_requested.emit()
+				var vp := get_viewport()
+				if vp != null:
+					vp.set_input_as_handled()
+				return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed and is_instance_valid(cam):

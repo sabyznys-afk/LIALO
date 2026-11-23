@@ -230,10 +230,10 @@ var wager_showcase_boost: float = 0.0
 var key_hint_lbl: Label
 
 # Celé 3D karty v ruke jasne čitateľné nad stolom + [SPACE] náhľad (~12% horný okraj dole)
-const HAND_POS_UP := Vector3(0.0, 1.325, 0.89)
-const HAND_ROT_UP := Vector3(-15.0, 0.0, 0.0)
-const HAND_POS_TUCKED := Vector3(0.0, 0.64, 1.34)
-const HAND_ROT_TUCKED := Vector3(-34.0, 0.0, 0.0)
+const HAND_POS_UP := Vector3(0.0, 1.356, 0.818)
+const HAND_ROT_UP := Vector3(-42.0, 0.0, 0.0)
+const HAND_POS_TUCKED := Vector3(0.0, 0.85, 1.35)
+const HAND_ROT_TUCKED := Vector3(-56.0, 0.0, 0.0)
 
 var rmb_down: bool = false
 var rmb_drag_dist: float = 0.0
@@ -3914,7 +3914,7 @@ func _setup_player_camera_and_3d_hands() -> void:
 	cam = Camera3D.new()
 	cam.position = Vector3(0.0, 1.66, 1.52)
 	cam.rotation_degrees = base_cam_rot
-	cam.fov = 60.0
+	cam.fov = 56.0
 	add_child(cam)
 
 	# Viditeľné 3D Telo sediaceho hráča (umiestnené priamo POD kamerou: pri normálnom pohľade nevidno, viditeľné až pri sklopení pohľadu nadol!)
@@ -8981,7 +8981,7 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 	# Cinematic entrance: player steps into the storm-lit tavern & sits at the table
 	prev_hovered_idx = -1
 	cam_kick_shake = 0.0
-	cam.fov = 60.0
+	cam.fov = 56.0
 	cam.position = Vector3(-0.82, 2.38, 3.05)
 	cam.rotation_degrees = Vector3(-16.0, 22.0, 0.0)
 	player_hand_anchor.position = HAND_POS_TUCKED + Vector3(0.0, -0.32, 0.16)
@@ -10262,29 +10262,16 @@ func _process(delta: float) -> void:
 			var is_ghost_closeup := tutorial_mode and tutorial_step == 0
 			var is_top_down_view := (is_player_items_view or (turn_glance_timer > 0.0 and not is_rival_items_view)) and not is_ghost_closeup
 
-			# Natural persistent mouse-look (no RMB hold required):
-			# Mouse UP (ny < 0) pitches camera UP (+pitch); mouse DOWN (ny > 0) pitches DOWN (-pitch);
-			# mouse LEFT/RIGHT smoothly steers yaw left/right and persists wherever cursor rests.
-			var modal_or_drag_busy := suit_modal.visible or peddler_open or shop_gate_open or drag_active or (victory_summary_overlay and victory_summary_overlay.visible)
-			if not is_ghost_closeup and not modal_or_drag_busy:
-				var sens := clampf(opts_cam_sens, 0.35, 2.5)
-				var look_mult := 0.55 if is_rival_items_view else 1.0
-				var yaw_span := (38.0 if is_items_view else 34.0) * sens * look_mult
-				var pitch_span := (28.0 if is_items_view else 32.0) * sens * look_mult
-				var nx_curved := nx * (1.0 + absf(nx) * 0.35)
-				var ny_curved := ny * (1.0 + absf(ny) * 0.35)
-				var goal_look_yaw := clampf(-nx_curved * yaw_span, -48.0, 48.0)
-				var goal_look_pitch := clampf(-ny_curved * pitch_span, -26.0, 26.0)
-				cam_look_yaw = lerpf(cam_look_yaw, goal_look_yaw, minf(1.0, 10.5 * delta))
-				cam_look_pitch = lerpf(cam_look_pitch, goal_look_pitch, minf(1.0, 10.5 * delta))
-			freelook_yaw = cam_look_yaw
-			freelook_pitch = cam_look_pitch
+			# Static camera (no cursor-driven camera sway so HUD/Settings clicks stay rock-steady)
+			cam_look_yaw = 0.0
+			cam_look_pitch = 0.0
+			freelook_yaw = 0.0
+			freelook_pitch = 0.0
 
-			var pitch_offset := -5.5 if is_rival_items_view else 0.5
-			var target_pitch := 1.0 if is_ghost_closeup else (clampf(-74.0 + clampf(cam_look_pitch, -8.0, 8.0), -82.0, -66.0) if is_top_down_view else clampf(base_cam_rot.x + pitch_offset + cam_look_pitch, -76.0, 40.0))
-			var target_yaw := 44.0 if is_ghost_closeup else (clampf(cam_look_yaw * 0.25, -10.0, 10.0) if is_top_down_view else clampf(cam_look_yaw, -76.0, 76.0))
-			var target_cam_pos := Vector3(-0.32, 1.50, 0.76) if is_ghost_closeup else (Vector3(0.0, 1.54, 1.04) if is_rival_items_view else (Vector3(0.0, 2.52, 0.58) if is_top_down_view else Vector3(0.0, 1.68, 1.56)))
-			var target_fov := 58.0 if is_ghost_closeup else (60.0 if is_rival_items_view else (66.0 if is_top_down_view else 67.0))
+			var target_pitch := 1.0 if is_ghost_closeup else (-26.0 if is_rival_items_view else (-76.0 if is_top_down_view else -54.0))
+			var target_yaw := 44.0 if is_ghost_closeup else 0.0
+			var target_cam_pos := Vector3(-0.32, 1.50, 0.76) if is_ghost_closeup else (Vector3(0.0, 1.54, 1.04) if is_rival_items_view else (Vector3(0.0, 2.75, 0.45) if is_top_down_view else Vector3(0.0, 2.28, 1.18)))
+			var target_fov := 50.0 if is_ghost_closeup else (52.0 if is_rival_items_view else 56.0)
 			cam.position = cam.position.lerp(target_cam_pos, 9.0 * delta)
 			cam.fov = lerpf(base_fov, target_fov, 8.5 * delta) + next_fov_kick
 			cam.rotation_degrees.x = lerpf(base_pitch, target_pitch, 10.0 * delta) + next_pitch_kick
@@ -11375,6 +11362,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_ESCAPE:
+			if suit_modal and suit_modal.visible:
+				pass
+			else:
+				emit_signal("play_sfx_requested", "ui_click")
+				emit_signal("open_options_requested")
+			get_viewport().set_input_as_handled()
+			return
 		if event.keycode == KEY_TAB:
 			toggle_camera_view_mode(true)
 			get_viewport().set_input_as_handled()

@@ -110,6 +110,11 @@ func _on_match_started(_init: Dictionary) -> void:
 			_mp_net.leave_room(false)
 		_exit_arena_to_lobby()
 	)
+	if _arena.has_signal("open_options_requested"):
+		_arena.open_options_requested.connect(func():
+			if is_instance_valid(_root) and _root.has_method("_open_options_modal"):
+				_root.call("_open_options_modal")
+		)
 	_root.add_child(_arena)
 	if is_instance_valid(_arena.woodcut_mat) and _root:
 		_arena.woodcut_mat.set_shader_parameter("print_mode", int(_root.get("woodcut_mode")))

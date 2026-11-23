@@ -6794,15 +6794,19 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		if collection_detail_modal and collection_detail_modal.visible:
 			_close_animated_modal(collection_detail_modal)
+			get_viewport().set_input_as_handled()
 			return
 		if options_3d and options_3d.is_open():
 			options_3d.close_3d()
+			get_viewport().set_input_as_handled()
 			return
 		if deck_modal and deck_modal.visible:
 			_close_animated_modal(deck_modal)
+			get_viewport().set_input_as_handled()
 			return
 		if almanac_modal and almanac_modal.visible:
 			_close_animated_modal(almanac_modal)
+			get_viewport().set_input_as_handled()
 			return
 
 	if current_screen == ScreenState.WORLD_3D:
