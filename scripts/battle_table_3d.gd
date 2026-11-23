@@ -4061,8 +4061,8 @@ func _refresh_draw_deck_theme(chosen_deck: Dictionary) -> void:
 		var fbx := BoxMesh.new(); fbx.size = Vector3(0.11, 0.024, 0.014)
 		front_plaque.mesh = fbx; front_plaque.position = Vector3(0.0, 0.034, 0.144); front_plaque.material_override = deco_gold
 		trim_root.add_child(front_plaque)
-	elif style_id == "reaper":
-		# Pitch-black forged Soul-Reaper iron box + crimson hilt-wrap bands + glowing crimson seal
+	elif style_id == "obsidian" or style_id == "reaper":
+		# Pitch-black forged obsidian iron box + crimson hilt-wrap bands + glowing crimson seal
 		var obsi_m := Toon.pbr(Color(0.06, 0.06, 0.08), "", 0.34, 0.86)
 		var crim_m := Toon.pbr(Color(0.88, 0.10, 0.18), "", 0.36, 0.20, Vector2.ONE, Color(1.0, 0.14, 0.22), 0.72)
 		for sz in [-0.072, 0.072]:
@@ -4076,8 +4076,8 @@ func _refresh_draw_deck_theme(chosen_deck: Dictionary) -> void:
 				var cpb := BoxMesh.new(); cpb.size = Vector3(0.020, 0.068, 0.020)
 				cap.mesh = cpb; cap.position = Vector3(cx, 0.034, cz); cap.material_override = obsi_m
 				trim_root.add_child(cap)
-	elif style_id == "quincy":
-		# Pure ivory-silver Sternritter frame + glowing electric-cyan Quincy Cross front emblem
+	elif style_id == "astral" or style_id == "quincy":
+		# Pure ivory-silver astral frame + glowing electric-cyan compass emblem
 		var silver_m := Toon.pbr(Color(0.88, 0.93, 0.98), "", 0.18, 0.92)
 		var cyan_m := Toon.pbr(Color(0.22, 0.90, 1.0), "", 0.14, 0.35, Vector2.ONE, Color(0.24, 0.94, 1.0), 1.45)
 		for sx in [-0.105, 0.105]:
@@ -11250,7 +11250,7 @@ func _trigger_tavern_prop_click(prop_id: String) -> void:
 					tr_msg = _tr("🩸 NEXT PLAY ×2.0 & -10 RIVAL!", "🩸 PŘÍŠTÍ TAH ×2.0 & -10 SOUPEŘ!")
 				"TRELIC_STAR_BOW":
 					rival_cards_revealed_turns = maxi(rival_cards_revealed_turns, 2)
-					_apply_hp_damage(false, 1, _tr("★ QUINCY VOLLEY!", "★ HVĚZDNÁ SALVA!"))
+					_apply_hp_damage(false, 1, _tr("★ ASTRAL VOLLEY: -1 ♥ HP!", "★ HVĚZDNÁ SALVA: -1 ♥ HP!"))
 					tr_msg = _tr("★ REVEAL 2T & -1 ♥ RIVAL!", "★ ODHALENÍ 2T & -1 ♥ SOUPEŘ!")
 				"TRELIC_ASH_GLASS":
 					redraws_left += 2
@@ -11277,7 +11277,7 @@ func _trigger_tavern_prop_click(prop_id: String) -> void:
 					if is_instance_valid(player_hp_heart):
 						player_hp_heart.call("set_hp", player_hp, player_max_hp, true)
 					table_relic_hollow_mask_active = true
-					tr_msg = _tr("🎭 HOLLOW REIATSU: NEXT WILD ×2!", "🎭 PRÁZDNÁ MASKA: DIVOKÁ ×2!")
+					tr_msg = _tr("🎭 PHANTOM MASK: NEXT WILD ×2!", "🎭 MASKA PŘÍZRAKU: PŘÍŠTÍ DIVOKÁ ×2!")
 				"TRELIC_CENSER":
 					puf_charges += 1
 					for hc_c in player_hand:

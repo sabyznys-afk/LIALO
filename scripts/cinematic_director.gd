@@ -75,7 +75,7 @@ var _active_vfx_node: Node3D = null
 var _active_key_spot: SpotLight3D = null
 var _active_rim_omni: OmniLight3D = null
 
-# Letterbox & Banner UI Overlay Nodes + Bleach TYBW Fullscreen Impact Overlay
+# Letterbox & Banner UI Overlay Nodes + Fullscreen Impact Overlay
 var _overlay_root: Control = null
 var _tybw_rect: ColorRect = null
 var _tybw_mat: ShaderMaterial = null
@@ -254,14 +254,14 @@ func _process(delta: float) -> void:
 	_bar_anim_t = minf(enter_u, exit_u)
 	_update_letterbox_visuals()
 
-	# Act II Manifestation burst (~34% through cutscene: soaring Reiatsu Pillar / Quincy Volley)
+	# Act II Manifestation burst (~34% through cutscene: soaring Aura Pillar / Astral Volley)
 	if not _manifest_fired and _elapsed >= _duration * 0.34:
 		_manifest_fired = true
 		_shake_amp = maxf(_shake_amp, 0.022)
 		_fov_punch = -2.2
 		_trigger_tybw_manifest_fx()
 
-	# Check climax impact timestamp (Act III: TYBW Impact Frame + Diagonal Slash + Climax Strike!)
+	# Check climax impact timestamp (Act III: Impact Frame + Diagonal Slash + Climax Strike!)
 	if not _impact_fired and _elapsed >= _hitstop_at:
 		_impact_fired = true
 		_shake_amp = 0.056
@@ -274,7 +274,7 @@ func _process(delta: float) -> void:
 		if _on_impact_cb.is_valid():
 			_on_impact_cb.call()
 
-	# Decay TYBW impact frame, slash line, camera shake & FOV punch
+	# Decay impact frame, slash line, camera shake & FOV punch
 	_impact_flash_t = maxf(0.0, _impact_flash_t - dt * 4.6)
 	_slash_t = maxf(0.0, _slash_t - dt * 2.1)
 	_update_tybw_overlay_uniforms()
@@ -827,7 +827,7 @@ func _build_letterbox_overlay() -> void:
 	_tybw_mat = ShaderMaterial.new()
 	_tybw_mat.shader = TYBW_IMPACT_SHADER
 	_tybw_rect = ColorRect.new()
-	_tybw_rect.name = "TybwImpactOverlay"
+	_tybw_rect.name = "CinematicImpactOverlay"
 	_tybw_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_tybw_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tybw_rect.material = _tybw_mat
@@ -1020,7 +1020,7 @@ func _draw_banner_plaque(ctrl: Control) -> void:
 	var sz := ctrl.size
 	if sz.x < 16.0 or sz.y < 12.0:
 		return
-	# Stark Bleach TYBW-inspired angled ink-slash title card!
+	# Stark angled ink-slash title card!
 	var slant := 22.0
 	var poly := PackedVector2Array([
 		Vector2(slant, 0.0),
@@ -1034,7 +1034,7 @@ func _draw_banner_plaque(ctrl: Control) -> void:
 	# Blazing razor slash edge top & bottom
 	ctrl.draw_line(Vector2(slant, 2.0), Vector2(sz.x, 2.0), accent.lightened(0.18), 3.0)
 	ctrl.draw_line(Vector2(0.0, sz.y - 2.0), Vector2(sz.x - slant, sz.y - 2.0), accent, 2.5)
-	# Bold TYBW vertical crimson/accent ink accent bar on left
+	# Bold vertical crimson/accent ink accent bar on left
 	var bar := PackedVector2Array([
 		Vector2(slant + 6.0, 4.0),
 		Vector2(slant + 16.0, 4.0),

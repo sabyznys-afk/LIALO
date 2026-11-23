@@ -71,7 +71,7 @@ const CHARACTERS := [
 		"id": "CHAR_MISTBLADE",
 		"name": "🌫 Mistblade Shadow",
 		"name_cs": "🌫 Rytíř mlhy",
-		"desc": "High-collared dark shinigami war-cloak & cracked silver visor.",
+		"desc": "High-collared dark shadow-forged war-cloak & cracked silver visor.",
 		"glb": "res://assets/models/mp/mp_char_mistblade.glb",
 		"default_arch": "MISTBLADE_DUELIST",
 		"col": Color(0.45, 0.94, 0.80),

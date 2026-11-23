@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dwpbgd4n8jqas"
-path="res://.godot/imported/deck_back_quincy.png-861ec48680ac8cc9e4c44b218d28b955.ctex"
+uid="uid://bo3upo0u83get"
+path="res://.godot/imported/deck_back_astral.png-12f42b49ca5faa11a7b5f04115a7ddd8.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/table/deck_back_quincy.png"
-dest_files=["res://.godot/imported/deck_back_quincy.png-861ec48680ac8cc9e4c44b218d28b955.ctex"]
+source_file="res://assets/table/deck_back_astral.png"
+dest_files=["res://.godot/imported/deck_back_astral.png-12f42b49ca5faa11a7b5f04115a7ddd8.ctex"]
 
 [params]
 

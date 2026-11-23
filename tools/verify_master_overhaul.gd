@@ -5,8 +5,8 @@ extends SceneTree
 ## 3) Ringless Enlarged 2D Hearts (Player under Chalice, Rival Top-Right) + Complex Score Counter +
 ##    Fixed Player/Opponent Card Holding + Mage Animated / Knight Metallic Cards (verify_master_hud_hands.png)
 ## 4) 10 New Buyable & Usable Tabletop Relics in Catalog, Shop, 3D Table & Active Click Rituals (verify_master_10_relics.png)
-## 5) All 8 Museum-Grade Card Backs (including Prohibicia, Reaper, Quincy)
-## 6) Expanded Longer Multi-Act Bleach TYBW Cutscenes + Impact Shader (verify_master_tybw_cutscene.png)
+## 5) All 8 Museum-Grade Card Backs (including Prohibicia, Obsidian, Astral)
+## 6) Expanded Longer Multi-Act Dark-Fantasy Cutscenes + Impact Shader (verify_master_cutscene.png)
 
 const Catalog = preload("res://scripts/lialo_catalog.gd")
 const ScoreEng = preload("res://scripts/scoring_engine.gd")
@@ -15,7 +15,7 @@ const MpConfig = preload("res://scripts/mp/mp_config.gd")
 const MpTableScript = preload("res://scripts/mp/mp_battle_table_3d.gd")
 const CineProfiles = preload("res://scripts/cinematic_profiles.gd")
 
-const SHOT_DIR := "C:/Users/arnos/.gemini/antigravity/brain/a20e3f18-d942-46fa-80e3-721c54108b6d/scratch"
+var _shot_dir: String = OS.get_user_data_dir() + "/verify_shots"
 var _fails: Array[String] = []
 
 
@@ -35,7 +35,8 @@ func _save_shot(fname: String) -> void:
 	var img := root.get_viewport().get_texture().get_image()
 	_assert(img != null and not img.is_empty(), "Empty viewport capture for " + fname)
 	if img != null and not img.is_empty():
-		var full_p := SHOT_DIR + "/" + fname
+		DirAccess.make_dir_recursive_absolute(_shot_dir)
+		var full_p := _shot_dir + "/" + fname
 		var err := img.save_png(full_p)
 		_assert(err == OK, "Failed saving " + full_p)
 		print("  SHOT SAVED: %s (%dx%d)" % [full_p, img.get_width(), img.get_height()])
@@ -52,7 +53,7 @@ func _run_all() -> void:
 	# ------------------------------------------------------------------
 	# 1. All 8 Redesigned Card Backs & 10 New Buyable Tabletop Relics
 	# ------------------------------------------------------------------
-	var expected_backs := ["klasic", "antika", "rim", "stredovek", "objavy", "prohibicia", "reaper", "quincy"]
+	var expected_backs := ["klasic", "antika", "rim", "stredovek", "objavy", "prohibicia", "obsidian", "astral"]
 	for bid in expected_backs:
 		var bp := ProjectSettings.globalize_path("res://assets/table/deck_back_%s.png" % bid)
 		_assert(FileAccess.file_exists(bp), "Missing redesigned card back: " + bp)
@@ -83,14 +84,14 @@ func _run_all() -> void:
 
 	# ------------------------------------------------------------------
 	# 3. BattleTable3D: 10 Relics on Table, Ringless Bigger Hearts,
-	#    Complex Score Counter, Fixed Card Holding, Knight/Mage Cards & TYBW Cutscene
+	#    Complex Score Counter, Fixed Card Holding, Knight/Mage Cards & Grand Cutscene
 	# ------------------------------------------------------------------
 	var bt := BattleTableScript.new()
 	root.add_child(bt)
 	await _wait_frames(8)
 
 	var era := {"id": "stredovek", "name": "Medieval", "boss": "King Charles IV", "target": 90, "border_col": Color(0.58, 0.83, 0.69), "glove_col": Color(0.28, 0.33, 0.40)}
-	var deck := {"id": "reaper", "name": "Soul Reaper Seal", "back_tex": "res://assets/table/deck_back_reaper.png", "border_col": Color(0.96, 0.18, 0.26), "glove_col": Color(0.12, 0.08, 0.10), "use_iron": true}
+	var deck := {"id": "obsidian", "name": "Obsidian Seal", "back_tex": "res://assets/table/deck_back_obsidian.png", "border_col": Color(0.96, 0.18, 0.26), "glove_col": Color(0.12, 0.08, 0.10), "use_iron": true}
 	var all_10_trel := []
 	for tr in Catalog.TABLE_RELICS:
 		all_10_trel.append(str(tr["id"]))
@@ -120,7 +121,7 @@ func _run_all() -> void:
 	_assert(spawned_trelics == 10, "All 10 Tabletop Relics must spawn on table, got %d" % spawned_trelics)
 	await _save_shot("verify_master_10_relics.png")
 
-	# Click-activate Blood-Ink Seal & Quincy Astrolabe & War-Horn & Soul Bell!
+	# Click-activate Blood-Ink Seal & Astral Astrolabe & War-Horn & Soul Bell!
 	bt.call("_trigger_tavern_prop_click", "trelic:TRELIC_BLOOD_SEAL")
 	await _wait_frames(6)
 	_assert(bool(bt.get("table_relic_blood_seal_active")), "TRELIC_BLOOD_SEAL must set table_relic_blood_seal_active=true")
@@ -179,21 +180,21 @@ func _run_all() -> void:
 	print("  OK Group 4: Enlarged Ringless Hearts + Complex Score Counter + Fixed Card Holding + Mage/Knight Cards verified")
 
 	# ------------------------------------------------------------------
-	# 4. Longer Multi-Act Bleach TYBW Cutscene Capture
+	# 4. Longer Multi-Act Dark-Fantasy Cutscene Capture
 	# ------------------------------------------------------------------
 	var cd: Node = bt.get("cinematic_director") as Node
 	_assert(is_instance_valid(cd), "CinematicDirector missing")
 	var vampire_prof := CineProfiles.get_special_card_profile("SPEC_VAMPIRE")
-	_assert(float(vampire_prof["duration"]) >= 5.2, "TYBW Special cutscene must be >= 5.2s, got %.2f" % float(vampire_prof["duration"]))
+	_assert(float(vampire_prof["duration"]) >= 5.2, "Special cutscene must be >= 5.2s, got %.2f" % float(vampire_prof["duration"]))
 	cd.call("play_special_card_cinematic", "SPEC_VAMPIRE", bt.global_position + Vector3(0.0, 0.85, 0.0), bt.global_position + Vector3(0.0, 1.05, -1.35), true, Callable(), Callable())
 	# Step to climax impact frame (~3.45s)!
 	for _cs in range(55):
 		cd.call("_process", 0.065)
 	await _wait_frames(3)
-	await _save_shot("verify_master_tybw_cutscene.png")
+	await _save_shot("verify_master_cutscene.png")
 	cd.call("skip_current")
 	await _wait_frames(6)
-	print("  OK Group 5: Expanded 5.65s Bleach TYBW Cutscene + Impact Shader verified")
+	print("  OK Group 5: Expanded 5.65s Multi-Act Cutscene + Impact Shader verified")
 
 	# ------------------------------------------------------------------
 	# 5. Upgraded Blender Ghost v2 In-Engine Verification
