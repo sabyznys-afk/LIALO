@@ -31,11 +31,19 @@ All played cards in **LIALO** — across **Single-Player (Player & AI Rival/Boss
 
 ---
 
+## Core Gameplay, Tutorial & Visual Systems
+
+- **8-Step Interactive Tutorial (`0–7` + Completion):** Step-by-step learning-by-doing guided by 3D Tavern Ghost **Spirko** (`Veto [V]`, `[Tab]`/`[Space]` 3D Table view & Blood Oath Sword wager, Basic Prší & Chalice pair scoring, Seven `+2` & `3×` trap, Eight `∞` combos, 3D/2D Hearts HP & Aces, `SPEC_VAMPIRE` cutscene + Hellfire Phial `IGNIS`, and Shedding Finisher + Sword Execution), complete with animated 2D/3D pointing arrows and first-time unlock tips (`seen_unlock_tips`).
+- **Simplified Deterministic Scoring & Capsule HUD (`ScoringEngine`):** Round, predictable point bonuses and multipliers (`×1.5`, `×2`, `×3` — no random dice multipliers), paired with high-contrast metallic equation capsules in the Score Board and Live Scoring Theatre, and concise hover tooltips during normal play.
+- **Original Dark-Fantasy Decks & Relics:** Includes *Obsidian Seal* (`obsidian`, `deck_back_obsidian.png`) and *Astral Compass* (`astral`, `deck_back_astral.png`), plus tabletop relics *Astral Astrolabe* (`TRELIC_STAR_BOW`) and *Phantom Mask Shard* (`TRELIC_HOLLOW_MASK`).
+
+---
+
 ## Setup & Running Instructions (English)
 
 ### Prerequisites
 - **Godot Engine 4.7+** (verified on **Godot Engine v4.7.2.stable**, `gl_compatibility` renderer, `1366×768` viewport, main scene `res://scenes/main.tscn`).
-- Windows (or Linux/macOS with Godot 4.7+ installed on your `PATH`).
+- Windows (install via `winget install GodotEngine.GodotEngine`, or place `Godot.exe` on `PATH` / `C:\Godot\Godot.exe` / `%GODOT_EXE%`), or Linux/macOS with Godot 4.7+ on `PATH`.
 
 ### 1. Clone the Repository
 ```bash
@@ -44,30 +52,35 @@ cd LIALO
 ```
 
 ### 2. Run the Game
-- **Quick Launch (Windows):** Double-click `Spusti_Hru.bat` (adjust the `Godot.exe` path inside the `.bat` if your Godot binary is not at `C:\Users\arnos\Godot\Godot.exe`).
+- **Quick Launch (Windows):** Double-click or run `Spusti_Hru.bat` (auto-detects `%GODOT_EXE%`, `PATH`, WinGet, `C:\Godot\Godot.exe`, and `%USERPROFILE%\Godot\Godot.exe`).
 - **Command Line:**
+  ```cmd
+  Spusti_Hru.bat
+  ```
+  Or directly with Godot on `PATH`:
   ```bash
-  "C:\Users\arnos\Godot\Godot.exe" --path .
+  godot --path .
   ```
 
 ### 3. Open in Godot Editor
-- **Quick Open (Windows):** Double-click `Otvor_Godot_Editor.bat`.
+- **Quick Open (Windows):** Double-click or run `Otvor_Godot_Editor.bat`.
 - **Command Line:**
   ```bash
-  "C:\Users\arnos\Godot\Godot.exe" -e --path .
+  godot -e --path .
   ```
 
 ### 4. Export a Release Build (Windows Desktop)
-- **Quick Export:** Double-click `Exportuj_Hru.bat` (outputs to `build/windows/LIALO.exe`, using `export_presets.cfg`).
+- **Quick Export:** Run `Exportuj_Hru.bat` (outputs to `build/windows/LIALO.exe`, using `export_presets.cfg`).
 - **Command Line:**
   ```bash
-  "C:\Users\arnos\Godot\Godot.exe" --headless --export-release "Windows Desktop" "build/windows/LIALO.exe" --path .
+  godot --headless --export-release "Windows Desktop" "build/windows/LIALO.exe" --path .
   ```
 
 ### 5. Run Headless Verification Suites
 ```bash
-"C:\Users\arnos\Godot\Godot.exe" --headless --path . -s "res://tools/verify_blender_vfx.gd"
-"C:\Users\arnos\Godot\Godot.exe" --headless --path . -s "res://tools/verify_cinematic_system.gd"
+godot --headless --path . -s "res://tools/verify_blender_vfx.gd"
+godot --headless --path . -s "res://tools/verify_cinematic_system.gd"
+godot --headless --path . -s "res://tools/verify_catalog_cleanup.gd"
 ```
 
 ### 6. Customizing the 2D Sword Card Animation
@@ -80,6 +93,7 @@ cd LIALO
 
 ### Požiadavky
 - **Godot Engine 4.7+** (overené na **Godot Engine v4.7.2.stable**, `gl_compatibility` renderer).
+- Na Windows stačí nainštalovať cez `winget install GodotEngine.GodotEngine` (prípadne mať `godot` v `PATH`, `C:\Godot\Godot.exe` alebo premennú `%GODOT_EXE%`).
 
 ### Klonovanie, spustenie a export
 1. Naklonujte repozitár:
@@ -87,7 +101,7 @@ cd LIALO
    git clone https://github.com/sabyznys-afk/LIALO.git
    cd LIALO
    ```
-2. **Spustenie hry:** Spustite `Spusti_Hru.bat` (prípadne upravte cestu k `Godot.exe` v `.bat` súbore, ak máte Godot inde než v `C:\Users\arnos\Godot\Godot.exe`).
+2. **Spustenie hry:** Spustite `Spusti_Hru.bat` — skript automaticky vyhľadá nainštalovaný Godot 4.7+ (vrátane WinGet balíčka) a spustí projekt z aktuálneho priečinka.
 3. **Otvorenie v editore:** Spustite `Otvor_Godot_Editor.bat`.
 4. **Export pre Windows:** Spustite `Exportuj_Hru.bat` (výstup sa vytvorí v `build/windows/LIALO.exe`).
 5. **Úprava 2D kreslenej animácie meča:**
