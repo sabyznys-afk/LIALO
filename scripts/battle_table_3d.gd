@@ -4871,23 +4871,29 @@ func _update_stagger_equation_theatre(cur_chips: int, cur_flat: float, _cur_x: f
 	if stagger_eq_chips_lbl:
 		stagger_eq_chips_lbl.text = "%s" % _format_pts_ui(cur_chips)
 		if punch_what == "chips":
-			_punch_hud_label(stagger_eq_chips_lbl, 1.38)
+			_punch_hud_label(stagger_eq_chips_lbl.get_parent() as Control if stagger_eq_chips_lbl.get_parent() is PanelContainer else stagger_eq_chips_lbl, 1.24)
 	if stagger_eq_mult_lbl:
 		var mult_is_int := absf(cur_flat - roundf(cur_flat)) < 0.01
 		stagger_eq_mult_lbl.text = ("%d" % maxi(1, int(round(cur_flat)))) if mult_is_int else ("%.1f" % cur_flat)
 		if punch_what == "mult":
-			_punch_hud_label(stagger_eq_mult_lbl, 1.40)
+			_punch_hud_label(stagger_eq_mult_lbl.get_parent() as Control if stagger_eq_mult_lbl.get_parent() is PanelContainer else stagger_eq_mult_lbl, 1.26)
 	if stagger_eq_xmult_lbl:
+		var xm_cap := stagger_eq_xmult_lbl.get_parent() as Control if stagger_eq_xmult_lbl.get_parent() is PanelContainer else stagger_eq_xmult_lbl
 		if _cur_x > 1.005:
-			stagger_eq_xmult_lbl.text = "×%.2f" % _cur_x
+			stagger_eq_xmult_lbl.text = "×%s" % ScoreEng._fmt_num(_cur_x)
 			stagger_eq_xmult_lbl.visible = true
+			if xm_cap != stagger_eq_xmult_lbl:
+				xm_cap.visible = true
 			if punch_what == "xmult":
-				_punch_hud_label(stagger_eq_xmult_lbl, 1.42)
+				_punch_hud_label(xm_cap, 1.28)
 		else:
 			stagger_eq_xmult_lbl.visible = false
+			if xm_cap != stagger_eq_xmult_lbl:
+				xm_cap.visible = false
 	if stagger_eq_total_lbl:
 		stagger_eq_total_lbl.text = "+%s" % _format_pts_ui(sub_tot)
-		_punch_hud_label(stagger_eq_total_lbl, 1.42 if punch_what == "total" else 1.24)
+		var tot_cap := stagger_eq_total_lbl.get_parent() as Control if stagger_eq_total_lbl.get_parent() is PanelContainer else stagger_eq_total_lbl
+		_punch_hud_label(tot_cap, 1.28 if punch_what == "total" else 1.16)
 
 func _punch_hud_label(lbl: Control, peak: float = 1.30) -> void:
 	if not lbl or not lbl.visible:
@@ -4896,6 +4902,24 @@ func _punch_hud_label(lbl: Control, peak: float = 1.30) -> void:
 	lbl.scale = Vector2(peak, peak)
 	var tw := lbl.create_tween()
 	tw.tween_property(lbl, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+func _wrap_eq_capsule(lbl: Label, bg_col: Color, border_col: Color, pad_x: int = 9, pad_y: int = 3, radius: int = 8) -> PanelContainer:
+	var cap := PanelContainer.new()
+	cap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg_col
+	sb.border_color = border_col
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(radius)
+	sb.content_margin_left = pad_x
+	sb.content_margin_right = pad_x
+	sb.content_margin_top = pad_y
+	sb.content_margin_bottom = pad_y
+	cap.add_theme_stylebox_override("panel", sb)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	cap.add_child(lbl)
+	return cap
 
 func _spawn_edition_burst_3d(world_pos: Vector3, col: Color) -> void:
 	Fx.ring(self, world_pos + Vector3(0.0, 0.03, 0.0), col.lightened(0.2), 0.34, 0.34, 0.11, 1.7, 8.0)
@@ -4931,15 +4955,17 @@ func _update_combo_hud(title_txt: String, chips_val: int, flat_mult_val: float, 
 	if chips_lbl:
 		chips_lbl.text = _format_pts_ui(chips_val)
 	if flat_mult_lbl:
-		flat_mult_lbl.text = "× %d" % maxi(1, int(round(card_cnt_mult)))
+		flat_mult_lbl.text = "%d" % maxi(1, int(round(card_cnt_mult)))
 	if xmult_lbl:
 		var xm_show := x_mult_val > 1.01
 		xmult_lbl.visible = xm_show
+		if xmult_lbl.get_parent() is PanelContainer:
+			xmult_lbl.get_parent().visible = xm_show
 		if xm_show:
-			xmult_lbl.text = "×%.2f" % x_mult_val
+			xmult_lbl.text = "×%s" % ScoreEng._fmt_num(x_mult_val)
 	if mult_lbl:
 		var disp_eff := card_cnt_mult * maxf(1.0, x_mult_val)
-		mult_lbl.text = ("×%.1f" % disp_eff) if x_mult_val > 1.01 else ("×%d" % maxi(1, int(round(card_cnt_mult))))
+		mult_lbl.text = ("×%s" % ScoreEng._fmt_num(disp_eff)) if x_mult_val > 1.01 else ("×%d" % maxi(1, int(round(card_cnt_mult))))
 	if total_calc_lbl:
 		total_calc_lbl.text = "+" + _format_pts_ui(total_pts)
 	combo_hud_grp.queue_redraw()
@@ -5052,7 +5078,7 @@ func _set_score_breakdown_chips(chips: Array) -> void:
 	var df := _get_font(true)
 	var shown := 0
 	for item in chips:
-		if shown >= 4:
+		if shown >= 3:
 			break
 		var c_dict: Dictionary = item
 		var tag_s := str(c_dict.get("tag", ""))
@@ -5113,20 +5139,14 @@ func _refresh_score_ledger_ui() -> void:
 		return
 	var st_cnt := staged_card_indices.size()
 	if st_cnt >= 1 and is_player_turn and not busy_animating and combo_tot_val > 0:
-		score_ledger_state_lbl.text = _tr("⚡ PREVIEW: %d × %d" % [combo_raw_val, maxi(1, int(round(combo_mult_val)))], "⚡ NÁHLED: %d × %d" % [combo_raw_val, maxi(1, int(round(combo_mult_val)))])
+		score_ledger_state_lbl.text = _tr("⚡ PREVIEW", "⚡ NÁHLED")
 		score_ledger_state_lbl.add_theme_color_override("font_color", Color(0.56, 0.94, 1.0))
-		score_ledger_eq_lbl.text = _tr("%s + %s → %s PTS", "%s + %s → %s B.") % [_format_pts_ui(player_score), _format_pts_ui(combo_tot_val), _format_pts_ui(player_score + combo_tot_val)]
-		score_ledger_eq_lbl.add_theme_color_override("font_color", Color(0.72, 0.96, 1.0))
 	elif last_settled_eq_str != "":
-		score_ledger_state_lbl.text = _tr("✓ LAST PLAY SCORED", "✓ POSLEDNÍ TAH PŘIPSÁN")
+		score_ledger_state_lbl.text = _tr("✓ LAST PLAY", "✓ POSLEDNÍ TAH")
 		score_ledger_state_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.44))
-		score_ledger_eq_lbl.text = last_settled_eq_str
-		score_ledger_eq_lbl.add_theme_color_override("font_color", Color(1.0, 0.94, 0.64))
 	else:
-		score_ledger_state_lbl.text = _tr("✦ COMPLEX SCORE LEDGER", "✦ ROZPIS BODOVÁNÍ")
+		score_ledger_state_lbl.text = _tr("CARD × COUNT", "KARTA × POČET")
 		score_ledger_state_lbl.add_theme_color_override("font_color", Color(0.92, 0.82, 0.56))
-		score_ledger_eq_lbl.text = "%s  →  %s PTS" % [_format_pts_ui(player_score), _format_pts_ui(target_score)]
-		score_ledger_eq_lbl.add_theme_color_override("font_color", Color(0.96, 0.92, 0.78))
 
 func _award_player_score_immediately(pts: int, note: String, col: Color, best_slam_pts: int = 0, best_move_txt: String = "", card_val: int = 0, card_cnt: int = 1) -> void:
 	if pts > 0:
@@ -6810,15 +6830,8 @@ func _setup_minimal_overlay_hud() -> void:
 	player_hud_grp.add_child(player_score_lbl)
 
 	wheel_lap_lbl = Label.new()
-	wheel_lap_lbl.text = "100 PT ×1"
-	wheel_lap_lbl.position = Vector2(342, 8)
-	wheel_lap_lbl.size = Vector2(76, 22)
-	wheel_lap_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	wheel_lap_lbl.add_theme_font_override("font", _get_font(true))
-	wheel_lap_lbl.add_theme_font_size_override("font_size", 11)
-	wheel_lap_lbl.add_theme_color_override("font_color", Color(0.98, 0.78, 0.30))
-	wheel_lap_lbl.add_theme_color_override("font_outline_color", Color(0.04, 0.02, 0.02))
-	wheel_lap_lbl.add_theme_constant_override("outline_size", 4)
+	wheel_lap_lbl.text = ""
+	wheel_lap_lbl.visible = false
 	player_hud_grp.add_child(wheel_lap_lbl)
 
 	mult_lbl = Label.new()
@@ -6987,9 +7000,12 @@ func _setup_minimal_overlay_hud() -> void:
 	combo_hud_grp.mouse_filter = Control.MOUSE_FILTER_PASS
 	combo_hud_grp.mouse_entered.connect(func():
 		if hover_inspect_panel and hover_inspect_title and hovered_card_idx < 0:
-			hover_inspect_title.text = _tr("✦ TURN-PAIR SCORING & CHARGE VESSEL", "✦ PÁROVÉ BODOVÁNÍ A NABÍJENÍ KALICHU")
-			hover_inspect_sub.text = _tr("Your Turn -> Rival Turn -> Combined Score Surge & Vessel Evolution", "Tvůj tah -> Tah soupeře -> Finální zápis rovnice a nabití kalicha")
-			hover_inspect_desc.text = _tr("• Play your cards to queue points into this fixed Score Ledger.\n• After your Rival finishes their move, both turns settle together here (e.g. 6 + 24 = 30)!\n• As your Score fills toward Goal, the Chalice artwork evolves across 5 Tiers.", "• Zahráním karet připravíš body do tohoto stálého zápisníku.\n• Až soupeř dohraje svůj tah, ukáže se přesná rovnice (např. 6 + 24 = 30) a spustí se nabití!\n• Obrázek Kalicha vlevo se s každým stupněm nabití proměňuje do mocnější podoby.")
+			hover_inspect_title.text = _tr("✦ SCORE LEDGER", "✦ ZÁPIS BODŮ")
+			hover_inspect_sub.text = _tr("Card Value × Count = Points", "Hodnota karty × Počet = Body")
+			if tutorial_mode:
+				hover_inspect_desc.text = _tr("Play cards to queue points and charge the Chalice.\nHover or stage cards to preview your combo equation.", "Zahráním karet nabiješ Kalich k cíli.\nNajeď na kartu nebo ji vyber pro náhled rovnice.")
+			else:
+				hover_inspect_desc.text = _tr("Play cards to charge the Chalice.\nHover cards to preview exact combo points.", "Zahraj karty pro nabití Kalicha.\nNajeď na kartu pro náhled bodů.")
 			hover_inspect_panel.visible = true
 	)
 	combo_hud_grp.mouse_exited.connect(func():
@@ -7044,10 +7060,11 @@ func _setup_minimal_overlay_hud() -> void:
 	combo_hud_grp.add_child(combo_dial_ctrl)
 
 	combo_title_lbl = Label.new()
-	combo_title_lbl.text = _tr("✦ COMPLEX SCORE LEDGER", "✦ ROZPIS BODOVÁNÍ")
+	combo_title_lbl.text = _tr("CARD × COUNT", "KARTA × POČET")
 	combo_title_lbl.position = Vector2(10, 4)
-	combo_title_lbl.size = Vector2(190, 16)
+	combo_title_lbl.size = Vector2(190, 18)
 	combo_title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	combo_title_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	combo_title_lbl.clip_text = true
 	combo_title_lbl.add_theme_font_override("font", _get_font(true))
 	combo_title_lbl.add_theme_font_size_override("font_size", 11)
@@ -7059,9 +7076,10 @@ func _setup_minimal_overlay_hud() -> void:
 
 	score_delta_lbl = Label.new()
 	score_delta_lbl.text = "EVEN"
-	score_delta_lbl.position = Vector2(202, 4)
-	score_delta_lbl.size = Vector2(92, 16)
+	score_delta_lbl.position = Vector2(204, 4)
+	score_delta_lbl.size = Vector2(88, 18)
 	score_delta_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	score_delta_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	score_delta_lbl.add_theme_font_override("font", _get_font(true))
 	score_delta_lbl.add_theme_font_size_override("font_size", 10)
 	score_delta_lbl.add_theme_color_override("font_color", Color(0.92, 0.84, 0.56))
@@ -7070,87 +7088,76 @@ func _setup_minimal_overlay_hud() -> void:
 	combo_hud_grp.add_child(score_delta_lbl)
 
 	score_ledger_eq_lbl = Label.new()
-	score_ledger_eq_lbl.text = "0 → 90 PTS"
-	score_ledger_eq_lbl.position = Vector2(8, 20)
-	score_ledger_eq_lbl.size = Vector2(286, 28)
-	score_ledger_eq_lbl.pivot_offset = Vector2(143, 14)
-	score_ledger_eq_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	score_ledger_eq_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	score_ledger_eq_lbl.clip_text = true
-	score_ledger_eq_lbl.add_theme_font_override("font", _get_font(true))
-	score_ledger_eq_lbl.add_theme_font_size_override("font_size", 18)
-	score_ledger_eq_lbl.add_theme_color_override("font_color", Color(1.0, 0.96, 0.78))
-	score_ledger_eq_lbl.add_theme_color_override("font_outline_color", Color(0.02, 0.01, 0.02, 0.98))
-	score_ledger_eq_lbl.add_theme_constant_override("outline_size", 7)
-	score_ledger_eq_lbl.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.92))
-	score_ledger_eq_lbl.add_theme_constant_override("shadow_offset_x", 2)
-	score_ledger_eq_lbl.add_theme_constant_override("shadow_offset_y", 2)
+	score_ledger_eq_lbl.text = ""
+	score_ledger_eq_lbl.visible = false
 	combo_hud_grp.add_child(score_ledger_eq_lbl)
 
-	# Live Breakdown Chip Badges Row (Base × Count, Class Mults, Relic & Tabletop Buffs)
-	score_breakdown_row = HBoxContainer.new()
-	score_breakdown_row.position = Vector2(8, 48)
-	score_breakdown_row.size = Vector2(286, 18)
-	score_breakdown_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	score_breakdown_row.add_theme_constant_override("separation", 4)
-	score_breakdown_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	combo_hud_grp.add_child(score_breakdown_row)
-
 	var cf_row := HBoxContainer.new()
-	cf_row.position = Vector2(10, 66)
-	cf_row.size = Vector2(174, 24)
-	cf_row.alignment = BoxContainer.ALIGNMENT_BEGIN
-	cf_row.add_theme_constant_override("separation", 5)
+	cf_row.position = Vector2(8, 26)
+	cf_row.size = Vector2(286, 46)
+	cf_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	cf_row.add_theme_constant_override("separation", 6)
 	cf_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	combo_hud_grp.add_child(cf_row)
 
+	# Live Breakdown Chip Badges Row (max 3 crisp short tag pills)
+	score_breakdown_row = HBoxContainer.new()
+	score_breakdown_row.position = Vector2(8, 76)
+	score_breakdown_row.size = Vector2(286, 22)
+	score_breakdown_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	score_breakdown_row.add_theme_constant_override("separation", 5)
+	score_breakdown_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	combo_hud_grp.add_child(score_breakdown_row)
+
 	score_history_lbl = Label.new()
 	score_history_lbl.text = ""
-	score_history_lbl.position = Vector2(184, 70)
-	score_history_lbl.size = Vector2(110, 18)
-	score_history_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	score_history_lbl.clip_text = true
-	score_history_lbl.add_theme_font_override("font", _get_font(true))
-	score_history_lbl.add_theme_font_size_override("font_size", 10)
-	score_history_lbl.add_theme_color_override("font_color", Color(0.76, 0.84, 0.94))
-	score_history_lbl.add_theme_color_override("font_outline_color", Color(0.03, 0.01, 0.02))
-	score_history_lbl.add_theme_constant_override("outline_size", 4)
 	score_history_lbl.visible = false
 	combo_hud_grp.add_child(score_history_lbl)
 
 	chips_lbl = Label.new()
-	chips_lbl.text = "0 pts"
+	chips_lbl.text = "0"
 	chips_lbl.add_theme_font_override("font", _get_font(true))
-	chips_lbl.add_theme_font_size_override("font_size", 16)
-	chips_lbl.add_theme_color_override("font_color", Color(0.60, 0.92, 1.0))
+	chips_lbl.add_theme_font_size_override("font_size", 17)
+	chips_lbl.add_theme_color_override("font_color", Color(0.60, 0.94, 1.0))
 	chips_lbl.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.08))
 	chips_lbl.add_theme_constant_override("outline_size", 5)
-	cf_row.add_child(chips_lbl)
+	cf_row.add_child(_wrap_eq_capsule(chips_lbl, Color(0.04, 0.08, 0.14, 0.94), Color(0.32, 0.88, 1.0, 0.92), 10, 4, 8))
+
+	var mul_sep := Label.new()
+	mul_sep.text = "×"
+	mul_sep.add_theme_font_override("font", _get_font(true))
+	mul_sep.add_theme_font_size_override("font_size", 15)
+	mul_sep.add_theme_color_override("font_color", Color(0.95, 0.82, 0.52))
+	mul_sep.add_theme_color_override("font_outline_color", Color(0.06, 0.02, 0.01))
+	mul_sep.add_theme_constant_override("outline_size", 4)
+	cf_row.add_child(mul_sep)
 
 	flat_mult_lbl = Label.new()
-	flat_mult_lbl.text = "× 1"
+	flat_mult_lbl.text = "1"
 	flat_mult_lbl.add_theme_font_override("font", _get_font(true))
-	flat_mult_lbl.add_theme_font_size_override("font_size", 15)
+	flat_mult_lbl.add_theme_font_size_override("font_size", 17)
 	flat_mult_lbl.add_theme_color_override("font_color", Color(1.0, 0.56, 0.40))
 	flat_mult_lbl.add_theme_color_override("font_outline_color", Color(0.12, 0.02, 0.02))
 	flat_mult_lbl.add_theme_constant_override("outline_size", 5)
-	cf_row.add_child(flat_mult_lbl)
+	cf_row.add_child(_wrap_eq_capsule(flat_mult_lbl, Color(0.14, 0.04, 0.05, 0.94), Color(1.0, 0.46, 0.34, 0.92), 10, 4, 8))
 
 	xmult_lbl = Label.new()
-	xmult_lbl.text = "×1.00"
+	xmult_lbl.text = "×1"
 	xmult_lbl.visible = false
 	xmult_lbl.add_theme_font_override("font", _get_font(true))
 	xmult_lbl.add_theme_font_size_override("font_size", 15)
-	xmult_lbl.add_theme_color_override("font_color", Color(0.96, 0.50, 1.0))
-	xmult_lbl.add_theme_color_override("font_outline_color", Color(0.14, 0.02, 0.16))
+	xmult_lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.44))
+	xmult_lbl.add_theme_color_override("font_outline_color", Color(0.14, 0.06, 0.01))
 	xmult_lbl.add_theme_constant_override("outline_size", 5)
-	cf_row.add_child(xmult_lbl)
+	var xmult_cap := _wrap_eq_capsule(xmult_lbl, Color(0.14, 0.09, 0.02, 0.95), Color(1.0, 0.82, 0.28, 0.96), 8, 4, 8)
+	xmult_cap.visible = false
+	cf_row.add_child(xmult_cap)
 
 	var arr_lbl := Label.new()
 	arr_lbl.text = "="
 	arr_lbl.add_theme_font_override("font", _get_font(true))
-	arr_lbl.add_theme_font_size_override("font_size", 15)
-	arr_lbl.add_theme_color_override("font_color", Color(1.0, 0.56, 0.22))
+	arr_lbl.add_theme_font_size_override("font_size", 16)
+	arr_lbl.add_theme_color_override("font_color", Color(1.0, 0.78, 0.30))
 	arr_lbl.add_theme_color_override("font_outline_color", Color(0.06, 0.02, 0.01))
 	arr_lbl.add_theme_constant_override("outline_size", 4)
 	cf_row.add_child(arr_lbl)
@@ -7159,10 +7166,10 @@ func _setup_minimal_overlay_hud() -> void:
 	total_calc_lbl.text = "+0"
 	total_calc_lbl.add_theme_font_override("font", _get_font(true))
 	total_calc_lbl.add_theme_font_size_override("font_size", 19)
-	total_calc_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.34))
+	total_calc_lbl.add_theme_color_override("font_color", Color(1.0, 0.94, 0.44))
 	total_calc_lbl.add_theme_color_override("font_outline_color", Color(0.14, 0.04, 0.01))
 	total_calc_lbl.add_theme_constant_override("outline_size", 6)
-	cf_row.add_child(total_calc_lbl)
+	cf_row.add_child(_wrap_eq_capsule(total_calc_lbl, Color(0.12, 0.09, 0.02, 0.96), Color(1.0, 0.86, 0.32, 0.98), 11, 4, 8))
 
 	# ZONE 1 RIGHT WING: Round 1 / 6 + Rival Score & 10 HP Crest (x: 994..1350, y: 10..84)
 	rival_hud_grp = Control.new()
@@ -7757,13 +7764,13 @@ func _setup_minimal_overlay_hud() -> void:
 	sc_vb.add_child(stagger_eq_row)
 
 	stagger_eq_chips_lbl = Label.new()
-	stagger_eq_chips_lbl.text = "0 pts"
+	stagger_eq_chips_lbl.text = "0"
 	stagger_eq_chips_lbl.add_theme_font_override("font", _get_font(true))
 	stagger_eq_chips_lbl.add_theme_font_size_override("font_size", 22)
 	stagger_eq_chips_lbl.add_theme_color_override("font_color", Color(0.48, 0.92, 1.0))
 	stagger_eq_chips_lbl.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.08))
 	stagger_eq_chips_lbl.add_theme_constant_override("outline_size", 6)
-	stagger_eq_row.add_child(stagger_eq_chips_lbl)
+	stagger_eq_row.add_child(_wrap_eq_capsule(stagger_eq_chips_lbl, Color(0.04, 0.08, 0.14, 0.94), Color(0.32, 0.88, 1.0, 0.92), 14, 5, 10))
 
 	var eq_mul_sep := Label.new()
 	eq_mul_sep.text = "×"
@@ -7775,23 +7782,25 @@ func _setup_minimal_overlay_hud() -> void:
 	stagger_eq_row.add_child(eq_mul_sep)
 
 	stagger_eq_mult_lbl = Label.new()
-	stagger_eq_mult_lbl.text = "1.0"
+	stagger_eq_mult_lbl.text = "1"
 	stagger_eq_mult_lbl.add_theme_font_override("font", _get_font(true))
 	stagger_eq_mult_lbl.add_theme_font_size_override("font_size", 22)
 	stagger_eq_mult_lbl.add_theme_color_override("font_color", Color(1.0, 0.54, 0.36))
 	stagger_eq_mult_lbl.add_theme_color_override("font_outline_color", Color(0.12, 0.02, 0.02))
 	stagger_eq_mult_lbl.add_theme_constant_override("outline_size", 6)
-	stagger_eq_row.add_child(stagger_eq_mult_lbl)
+	stagger_eq_row.add_child(_wrap_eq_capsule(stagger_eq_mult_lbl, Color(0.14, 0.04, 0.05, 0.94), Color(1.0, 0.46, 0.34, 0.92), 14, 5, 10))
 
 	stagger_eq_xmult_lbl = Label.new()
-	stagger_eq_xmult_lbl.text = "× 1.00"
+	stagger_eq_xmult_lbl.text = "×1"
 	stagger_eq_xmult_lbl.visible = false
 	stagger_eq_xmult_lbl.add_theme_font_override("font", _get_font(true))
 	stagger_eq_xmult_lbl.add_theme_font_size_override("font_size", 22)
-	stagger_eq_xmult_lbl.add_theme_color_override("font_color", Color(0.96, 0.46, 1.0))
-	stagger_eq_xmult_lbl.add_theme_color_override("font_outline_color", Color(0.14, 0.02, 0.16))
+	stagger_eq_xmult_lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.44))
+	stagger_eq_xmult_lbl.add_theme_color_override("font_outline_color", Color(0.14, 0.06, 0.01))
 	stagger_eq_xmult_lbl.add_theme_constant_override("outline_size", 6)
-	stagger_eq_row.add_child(stagger_eq_xmult_lbl)
+	var stag_xm_cap := _wrap_eq_capsule(stagger_eq_xmult_lbl, Color(0.14, 0.09, 0.02, 0.95), Color(1.0, 0.82, 0.28, 0.96), 12, 5, 10)
+	stag_xm_cap.visible = false
+	stagger_eq_row.add_child(stag_xm_cap)
 
 	var eq_eq_sep := Label.new()
 	eq_eq_sep.text = "="
@@ -7806,10 +7815,10 @@ func _setup_minimal_overlay_hud() -> void:
 	stagger_eq_total_lbl.text = "+0"
 	stagger_eq_total_lbl.add_theme_font_override("font", _get_font(true))
 	stagger_eq_total_lbl.add_theme_font_size_override("font_size", 24)
-	stagger_eq_total_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.34))
+	stagger_eq_total_lbl.add_theme_color_override("font_color", Color(1.0, 0.94, 0.44))
 	stagger_eq_total_lbl.add_theme_color_override("font_outline_color", Color(0.14, 0.04, 0.01))
 	stagger_eq_total_lbl.add_theme_constant_override("outline_size", 7)
-	stagger_eq_row.add_child(stagger_eq_total_lbl)
+	stagger_eq_row.add_child(_wrap_eq_capsule(stagger_eq_total_lbl, Color(0.12, 0.09, 0.02, 0.96), Color(1.0, 0.86, 0.32, 0.98), 16, 5, 10))
 
 	hud_root.add_child(stagger_callout_pill)
 
@@ -10504,30 +10513,34 @@ func _update_3d_hover(mouse_pos: Vector2, delta: float) -> void:
 					preview_hud_active = true
 				elif preview_hud_active:
 					preview_hud_active = false
-					_update_combo_hud(_tr("✦ COMPLEX SCORE LEDGER", "✦ ROZPIS BODOVÁNÍ"), 0, 1.0, 0, false, 1.0)
+					_update_combo_hud(_tr("CARD × COUNT", "KARTA × POČET"), 0, 1.0, 0, false, 1.0)
 					_set_score_breakdown_chips([])
 
-			var desc_parts: Array[String] = []
-			if hp_id != "":
-				desc_parts.append(str(hp_loc.get("desc", hc.get("desc", ""))))
-			elif hcls_id == "MERCHANT":
-				desc_parts.append(_tr("🪙 Merchant — +16g Florins (no rank ability).", "🪙 Kupec — +16g při zahrání (bez schopnosti)."))
+			var is_plain_normal := (not tutorial_mode) and (hp_id == "") and (hcls_id == "NORMAL") and (not is_deb)
+			if is_plain_normal:
+				hover_inspect_panel.visible = false
 			else:
-				var r_ab := ScoreEng.get_rank_ability_info(str(hc["rank"]), opts_language)
-				if not r_ab.is_empty():
-					desc_parts.append("%s — %s" % [str(r_ab.get("badge", "")), str(r_ab.get("desc", ""))])
-			if hcls_id == "MAGE":
-				var mc := int(hc.get("mage_charge", 0))
-				var mmax := int(hed.get("max_charge", 2))
-				desc_parts.append(_tr("🔮 Mage %d/%d — %s" % [mc, mmax, "READY TO BLAST!" if mc >= mmax else "Charges in hand."], "🔮 Mág %d/%d — %s" % [mc, mmax, "PŘIPRAVEN K ÚDERU!" if mc >= mmax else "Nabíjí se v ruce."]))
-			elif hcls_id != "NORMAL" and hcls_id != "MERCHANT":
-				desc_parts.append("✦ %s: %s" % [hed["name"], hed["desc"]])
-			if is_deb:
-				desc_parts.append("⚠ %s: %s" % [active_boss_mod.replace("_", " "), _get_boss_counterplay_tip()])
-			elif desc_parts.is_empty():
-				desc_parts.append(_tr("Stack 8s (∞) or up to 3 Aces! Right-click for Combo.", "Skákej Osmičky (∞) nebo až 3 Esa! Pravým klikem tvoř kombo."))
-			hover_inspect_desc.text = "\n".join(desc_parts)
-			hover_inspect_panel.visible = true
+				var desc_parts: Array[String] = []
+				if hp_id != "":
+					desc_parts.append(str(hp_loc.get("desc", hc.get("desc", ""))))
+				elif hcls_id == "MERCHANT":
+					desc_parts.append(_tr("🪙 Merchant — +5 pts & +15g Florins.", "🪙 Kupec — +5 b. a +15g při zahrání."))
+				elif tutorial_mode:
+					var r_ab := ScoreEng.get_rank_ability_info(str(hc["rank"]), opts_language)
+					if not r_ab.is_empty():
+						desc_parts.append("%s — %s" % [str(r_ab.get("badge", "")), str(r_ab.get("desc", ""))])
+				if hcls_id == "MAGE":
+					var mc := int(hc.get("mage_charge", 0))
+					var mmax := int(hed.get("max_charge", 2))
+					desc_parts.append(_tr("🔮 Mage %d/%d — %s" % [mc, mmax, "READY (+20 & ×2)!" if mc >= mmax else "Charges in hand (+5 now)."], "🔮 Mág %d/%d — %s" % [mc, mmax, "PŘIPRAVEN (+20 a ×2)!" if mc >= mmax else "Nabíjí se (+5 b.)."]))
+				elif hcls_id != "NORMAL" and hcls_id != "MERCHANT":
+					desc_parts.append("✦ %s: %s" % [hed["name"], hed["desc"]])
+				if is_deb:
+					desc_parts.append("⚠ %s: %s" % [active_boss_mod.replace("_", " "), _get_boss_counterplay_tip()])
+				elif tutorial_mode and desc_parts.is_empty():
+					desc_parts.append(_tr("Stack 8s (∞) or up to 3 Aces! Right-click for Combo.", "Skákej Osmičky (∞) nebo až 3 Esa! Pravým klikem tvoř kombo."))
+				hover_inspect_desc.text = "\n".join(desc_parts)
+				hover_inspect_panel.visible = true
 	elif hover_inspect_panel and not _is_hand_tucked() and hovered_boss_plaque and active_boss_mod != "":
 		hover_inspect_title.text = _tr("☠ BOSS EDICT: %s", "☠ PRAVIDLO BOSSE: %s") % active_boss_mod.replace("_", " ")
 		hover_inspect_sub.text = _get_stage_name_loc()
