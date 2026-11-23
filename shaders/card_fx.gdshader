@@ -1,12 +1,12 @@
 shader_type spatial;
-// LIALO Overhauled Dark-Fantasy + Bleach TYBW-Inspired Card Material Shader (gl_compatibility):
+// LIALO Overhauled Dark-Fantasy Card Material Shader (gl_compatibility):
 // - Distinct archetype identities:
 //     0 = NORMAL (illuminated aged medieval parchment & gold-leaf hairline)
-//     1 = MAGE (Runecaster: animated dual counter-rotating arcane circles, floating Kidō glyphs, reiatsu flame rim)
-//     2 = KNIGHT (Mistblade: heavy forged Damascus steel armor plate, corner iron rivets, anisotropic metallic sheen)
+//     1 = MAGE (Runecaster: animated dual counter-rotating arcane circles, floating arcane glyphs, luminous aura rim)
+//     2 = KNIGHT (Mistblade: full-surface forged Damascus steel armor plate, corner iron rivets, anisotropic metallic sheen)
 //     3 = MERCHANT (Guildsman: embossed burnished 24k gold-leaf bullion filigree & coin glints)
-//     4 = THIEF (Cutpurse: dark smoked obsidian shadow-cloak & Shunpo twin razor glints)
-// - Power Cards: stark TYBW ink-contrast frame + flaring spiritual pressure rim
+//     4 = THIEF (Cutpurse: dark smoked obsidian shadow-cloak & phantom twin razor glints)
+// - Power Cards: stark ink-contrast frame + flaring arcane pressure rim
 // - Card Backs (`is_back > 0.5`): embossed metallic foil + velvet/leather sheen tailored per deck set!
 
 uniform vec4 albedo : source_color = vec4(0.95, 0.92, 0.85, 1.0);
@@ -97,22 +97,22 @@ void fragment() {
 		out_roughness = mix(0.82, 0.48, hairline);
 		out_metallic = hairline * 0.42;
 
-		// POWER CARDS: Stark Bleach TYBW high-contrast obsidian inner frame + flaring spiritual pressure aura
+		// POWER CARDS: Stark high-contrast obsidian inner frame + flaring arcane pressure aura
 		if (is_power_card > 0.5) {
 			float ink_frame = smoothstep(0.052, 0.036, border_dist) * (1.0 - smoothstep(0.022, 0.010, border_dist));
 			float aura_n = vnoise(vec2(uv.x * 9.0, uv.y * 14.0 - TIME * 2.2));
 			float aura_n2 = vnoise(vec2(uv.x * 16.0 + TIME * 1.1, uv.y * 22.0 - TIME * 3.4));
-			float reiatsu = smoothstep(0.32, 0.82, aura_n * 0.6 + aura_n2 * 0.4);
+			float aura_flare = smoothstep(0.32, 0.82, aura_n * 0.6 + aura_n2 * 0.4);
 			if (!use_texture) {
 				base = mix(base * 0.78, accent_color.rgb * 0.30 + vec3(0.05, 0.04, 0.06), 0.58);
 			}
 			base = mix(base, vec3(0.02, 0.015, 0.025), ink_frame * 0.82);
-			fx_emit += accent_color.rgb * (rim_mask * (0.38 + reiatsu * 0.72 + hover_glow * 0.45) + fresnel * 0.35);
+			fx_emit += accent_color.rgb * (rim_mask * (0.38 + aura_flare * 0.72 + hover_glow * 0.45) + fresnel * 0.35);
 			out_metallic = max(out_metallic, 0.32 + ink_frame * 0.45);
 			out_roughness = min(out_roughness, 0.32);
 		}
 
-		// ARCHETYPE 1: MAGE (Runecaster) — Live Animated Arcane Spell Circles, Drifting Kidō Glyphs & Spirit Flame
+		// ARCHETYPE 1: MAGE (Runecaster) — Luminous Magical Aura Border, Drifting Flame Wisps & Arcane Circles
 		if (edition_id == 1) {
 			vec2 p = (uv - vec2(0.5, 0.48)) * vec2(1.0, 1.45);
 			float r = length(p);
@@ -122,40 +122,51 @@ void fragment() {
 			float outer_ring = smoothstep(0.014, 0.002, abs(r - 0.39));
 			float inner_ring = smoothstep(0.011, 0.002, abs(r - 0.27));
 			float glyphs = smoothstep(0.45, 0.82, sin(spin1 * 12.0) * sin(r * 42.0)) * smoothstep(0.055, 0.0, abs(r - 0.33));
-			// Sacred hexagram / Quincy-arcane geometric star spokes
+			// Sacred hexagram arcane geometric star spokes
 			float star = smoothstep(0.015, 0.002, abs(r - (0.24 + 0.07 * cos(spin2 * 6.0))));
-			float spirit_flow = vnoise(vec2(uv.x * 7.0 + sin(TIME * 0.8), uv.y * 11.0 - TIME * 2.4));
-			float pulse = 0.55 + 0.45 * sin(TIME * (3.0 + mage_charge * 5.0));
-			vec3 mage_c = mix(vec3(0.46, 0.24, 1.0), vec3(0.24, 0.94, 1.0), clamp(mage_charge * 0.85 + spirit_flow * 0.35, 0.0, 1.0));
-			float magic_mask = clamp(outer_ring + inner_ring * 0.85 + glyphs * 1.15 + star * 0.75, 0.0, 1.4);
-			base = mix(base, mage_c * 0.26 + base * 0.78, 0.22 + mage_charge * 0.14);
-			fx_emit += mage_c * ((0.22 + mage_charge * 0.58) * (magic_mask * 0.85 + rim_mask * (0.70 + spirit_flow * 0.75) + fresnel * 0.55) * (0.72 + pulse * 0.42));
-			out_metallic = 0.24;
-			out_roughness = 0.28;
+			float wisp1 = vnoise(vec2(uv.x * 7.5 + sin(TIME * 0.9), uv.y * 12.0 - TIME * 2.6));
+			float wisp2 = vnoise(vec2(uv.x * 13.0 - TIME * 0.7, uv.y * 18.0 - TIME * 3.8));
+			float flame_wisps = smoothstep(0.32, 0.86, wisp1 * 0.58 + wisp2 * 0.42);
+			float pulse = 0.62 + 0.38 * sin(TIME * (3.2 + mage_charge * 4.5));
+			float aura_band = smoothstep(0.145, 0.012, border_dist);
+			float outer_halo = smoothstep(0.045, 0.003, border_dist);
+			vec3 violet_aura = vec3(0.56, 0.22, 1.0);
+			vec3 cyan_aura = vec3(0.20, 0.94, 1.0);
+			vec3 mage_c = mix(violet_aura, cyan_aura, clamp(mage_charge * 0.55 + flame_wisps * 0.60 + 0.18 * sin(TIME * 2.1 + uv.y * 6.0), 0.0, 1.0));
+			float magic_mask = clamp(outer_ring + inner_ring * 0.85 + glyphs * 1.10 + star * 0.70, 0.0, 1.35);
+			// Subtle arcane tint in center so card art stays crisp & legible, strong luminous aura on border
+			base = mix(base, mage_c * 0.28 + base * 0.80, 0.14 + aura_band * 0.24 + mage_charge * 0.10);
+			vec3 border_glow = mage_c * (rim_mask * (1.05 + flame_wisps * 0.95) + outer_halo * (0.85 + pulse * 0.55) + aura_band * flame_wisps * 0.52);
+			vec3 circle_glow = mage_c * (magic_mask * (0.34 + mage_charge * 0.58));
+			fx_emit += (border_glow + circle_glow + mage_c * fresnel * 0.65) * (0.78 + pulse * 0.36 + mage_charge * 0.45);
+			out_metallic = 0.22;
+			out_roughness = 0.26;
 		}
-		// ARCHETYPE 2: KNIGHT (Mistblade) — Heavy Forged Metallic Damascus Steel Armor Plate & Corner Rivets
+		// ARCHETYPE 2: KNIGHT (Mistblade) — Full-Surface Forged Damascus Steel Armor Plate & Corner Rivets
 		else if (edition_id == 2) {
-			// Damascus steel swirling forged grain + cold brushed anisotropic sheen
+			// Damascus steel swirling forged grain + cold brushed anisotropic sheen across the entire card
 			float damascus_w = sin(uv.x * 38.0 + vnoise(uv * 11.0) * 7.5) * 0.5 + 0.5;
-			float brushed = vnoise(vec2(uv.x * 160.0, uv.y * 14.0));
+			float brushed = vnoise(vec2(uv.x * 165.0, uv.y * 14.0));
 			float plate_frame = smoothstep(0.095, 0.052, border_dist);
 			float inner_groove = smoothstep(0.008, 0.001, abs(border_dist - 0.078));
 			// 4 hammered iron corner rivets
 			vec2 corner_uv = abs(uv - vec2(0.5)) - vec2(0.415, 0.442);
 			float rivet = smoothstep(0.022, 0.011, length(corner_uv * vec2(1.0, 1.45)));
 			float rivet_hi = smoothstep(0.014, 0.004, length((corner_uv + vec2(0.004, 0.004)) * vec2(1.0, 1.45)));
-			// Sharp steel diagonal glint sweeping with tilt
-			float steel_sweep = (uv.x * 0.85 + uv.y * 0.46) - TIME * 0.22 + tilt_shift * 1.15;
-			float razor_band = smoothstep(0.065, 0.0, abs(fract(steel_sweep) - 0.5));
-			vec3 steel_plate = mix(vec3(0.42, 0.48, 0.56), vec3(0.76, 0.84, 0.92), damascus_w * 0.55 + brushed * 0.45);
-			// Blend heavy forged steel frame around artwork + subtle cold metallic glaze across art
-			base = mix(base * vec3(0.88, 0.94, 1.00), steel_plate, clamp(plate_frame * 0.88 + 0.08, 0.0, 0.94));
-			base = mix(base, vec3(0.10, 0.13, 0.18), inner_groove * 0.90);
-			base = mix(base, vec3(0.76, 0.82, 0.90), rivet * 0.92);
-			base += vec3(0.32, 0.38, 0.46) * rivet_hi;
-			fx_emit += mix(vec3(0.56, 0.82, 1.0), vec3(0.95, 0.98, 1.0), razor_band) * (razor_band * 0.54 + plate_frame * 0.18 + rim_mask * 0.24 + fresnel * 0.34 + rivet_hi * 0.26);
-			out_metallic = mix(0.38, 0.90, clamp(plate_frame + rivet, 0.0, 1.0));
-			out_roughness = mix(0.32, 0.16, clamp(razor_band + plate_frame * 0.65, 0.0, 1.0));
+			// Bold diagonal polished-metal specular sweeps with tilt
+			float steel_sweep = (uv.x * 0.85 + uv.y * 0.48) - TIME * 0.24 + tilt_shift * 1.25;
+			float razor_band = smoothstep(0.085, 0.0, abs(fract(steel_sweep) - 0.5));
+			float second_sweep = smoothstep(0.045, 0.0, abs(fract(steel_sweep + 0.33) - 0.5)) * 0.55;
+			float spec_sweep = clamp(razor_band + second_sweep, 0.0, 1.0);
+			vec3 steel_plate = mix(vec3(0.46, 0.52, 0.60), vec3(0.82, 0.88, 0.96), damascus_w * 0.50 + brushed * 0.50);
+			// Forged brushed steel armor metal tint across entire card while keeping rank/suit crisp
+			base = mix(base * vec3(0.84, 0.90, 0.98), steel_plate, clamp(plate_frame * 0.86 + 0.22, 0.0, 0.94));
+			base = mix(base, vec3(0.08, 0.11, 0.16), inner_groove * 0.92);
+			base = mix(base, vec3(0.78, 0.84, 0.92), rivet * 0.94);
+			base += vec3(0.34, 0.40, 0.48) * rivet_hi;
+			fx_emit += mix(vec3(0.62, 0.84, 1.0), vec3(0.96, 0.99, 1.0), spec_sweep) * (spec_sweep * 0.62 + plate_frame * 0.16 + rim_mask * 0.22 + fresnel * 0.38 + rivet_hi * 0.28);
+			out_metallic = mix(0.82, 0.96, clamp(plate_frame + rivet + spec_sweep * 0.45, 0.0, 1.0));
+			out_roughness = mix(0.24, 0.14, clamp(spec_sweep + plate_frame * 0.65, 0.0, 1.0));
 		}
 		// ARCHETYPE 3: MERCHANT (Guildsman) — Burnished 24k Embossed Gold Bullion & Coin Medallions
 		else if (edition_id == 3) {
@@ -168,7 +179,7 @@ void fragment() {
 			out_metallic = 0.84;
 			out_roughness = 0.20;
 		}
-		// ARCHETYPE 4: THIEF (Cutpurse) — Obsidian Shadow-Cloak & TYBW Shunpo Twin Razor Glints
+		// ARCHETYPE 4: THIEF (Cutpurse) — Obsidian Shadow-Cloak & Phantom Twin Razor Glints
 		else if (edition_id == 4) {
 			float slash1 = smoothstep(0.020, 0.0, abs((uv.x * 0.92 - uv.y * 0.72) - 0.06 + sin(TIME * 2.1) * 0.06));
 			float slash2 = smoothstep(0.014, 0.0, abs((uv.x * 0.88 - uv.y * 0.76) + 0.12 - cos(TIME * 1.8) * 0.05));

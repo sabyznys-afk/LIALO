@@ -872,6 +872,12 @@ static func get_power_card(card_id: String) -> Dictionary:
 static func get_relic_art_path(rel_id: String) -> String:
 	return "res://assets/relics/%s.png" % rel_id
 
+static func get_sword_art_path(sid: String) -> String:
+	return "res://assets/relics/%s.png" % sid
+
+static func get_table_relic_art_path(tid: String) -> String:
+	return "res://assets/relics/%s.png" % tid
+
 static func get_relic(rel_id: String) -> Dictionary:
 	for r in RELICS:
 		if r["id"] == rel_id:
