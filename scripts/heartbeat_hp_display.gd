@@ -15,8 +15,8 @@ const PATH_HEART_BOSS_PNG := "res://assets/ui/heart_2d_boss.png"
 const PATH_HEART_CRACKS_PNG := "res://assets/ui/heart_2d_cracks.png"
 const PATH_PILL_3D_PNG := "res://assets/ui/blender/ui_status_pill_3d.png"
 
-const SIZE_STANDARD := Vector2(148.0, 148.0)
-const SIZE_BOSS := Vector2(180.0, 180.0)
+const SIZE_STANDARD := Vector2(96.0, 96.0)
+const SIZE_BOSS := Vector2(118.0, 118.0)
 
 var _disp_font: Font
 var _is_rival: bool = false
@@ -54,6 +54,7 @@ var _beat_phase: float = 0.0
 var _shake_intensity: float = 0.0
 var _damage_flash: float = 0.0
 var _heal_swell: float = 0.0
+var _pulse_thump: float = 0.0
 var _motes: Array[Dictionary] = []
 
 
@@ -297,10 +298,10 @@ func _apply_frame_metrics() -> void:
 	size = target_sz
 
 	if is_instance_valid(_heart_rect):
-		var pad_x := 4.0 if not _is_boss else 2.0
-		var pad_top := 14.0 if _is_boss else 0.0
+		var pad_x := 3.0 if not _is_boss else 2.0
+		var pad_top := 10.0 if _is_boss else 0.0
 		var sprite_w := target_sz.x - pad_x * 2.0
-		var sprite_h := target_sz.y - (28.0 if _is_boss else 20.0)
+		var sprite_h := target_sz.y - (20.0 if _is_boss else 14.0)
 		_heart_rect.position = Vector2(pad_x, pad_top)
 		_heart_rect.size = Vector2(sprite_w, sprite_h)
 		_heart_rect.pivot_offset = Vector2(sprite_w * 0.5, sprite_h * 0.48)
@@ -311,8 +312,8 @@ func _apply_frame_metrics() -> void:
 			var cr_tex_sb := StyleBoxTexture.new()
 			cr_tex_sb.texture = _pill_tex_3d
 			cr_tex_sb.modulate_color = Color(1.12, 0.92, 0.70)
-			cr_tex_sb.content_margin_left = 8
-			cr_tex_sb.content_margin_right = 8
+			cr_tex_sb.content_margin_left = 6
+			cr_tex_sb.content_margin_right = 6
 			cr_tex_sb.content_margin_top = 1
 			cr_tex_sb.content_margin_bottom = 1
 			_crown_plaque.add_theme_stylebox_override("panel", cr_tex_sb)
@@ -321,17 +322,18 @@ func _apply_frame_metrics() -> void:
 			cr_sb.bg_color = Color(0.11, 0.025, 0.035, 0.94)
 			cr_sb.border_color = _boss_accent_col
 			cr_sb.set_border_width_all(1)
-			cr_sb.set_corner_radius_all(8)
-			cr_sb.content_margin_left = 7
-			cr_sb.content_margin_right = 7
+			cr_sb.set_corner_radius_all(7)
+			cr_sb.content_margin_left = 5
+			cr_sb.content_margin_right = 5
 			cr_sb.content_margin_top = 1
 			cr_sb.content_margin_bottom = 1
 			_crown_plaque.add_theme_stylebox_override("panel", cr_sb)
-		var cr_w := 76.0
-		var cr_h := 18.0
+		var cr_w := 58.0
+		var cr_h := 14.0
 		_crown_plaque.position = Vector2((target_sz.x - cr_w) * 0.5, 0.0)
 		_crown_plaque.size = Vector2(cr_w, cr_h)
 		if is_instance_valid(_crown_lbl):
+			_crown_lbl.add_theme_font_size_override("font_size", 9)
 			_crown_lbl.add_theme_color_override("font_color", _boss_accent_col.lerp(Color(1.0, 0.95, 0.72), 0.35))
 
 	if is_instance_valid(_hp_plaque):
@@ -339,10 +341,10 @@ func _apply_frame_metrics() -> void:
 			var hp_tex_sb := StyleBoxTexture.new()
 			hp_tex_sb.texture = _pill_tex_3d
 			hp_tex_sb.modulate_color = Color(1.08, 0.96, 0.78) if _is_boss else (Color(1.08, 0.80, 0.78) if _is_rival else Color(1.02, 0.98, 0.92))
-			hp_tex_sb.content_margin_left = 10
-			hp_tex_sb.content_margin_right = 10
-			hp_tex_sb.content_margin_top = 2
-			hp_tex_sb.content_margin_bottom = 2
+			hp_tex_sb.content_margin_left = 6
+			hp_tex_sb.content_margin_right = 6
+			hp_tex_sb.content_margin_top = 1
+			hp_tex_sb.content_margin_bottom = 1
 			_hp_plaque.add_theme_stylebox_override("panel", hp_tex_sb)
 		else:
 			var hp_sb := StyleBoxFlat.new()
@@ -350,19 +352,19 @@ func _apply_frame_metrics() -> void:
 			var border_col := _boss_accent_col if _is_boss else (Color(0.90, 0.62, 0.26, 0.94) if not _is_rival else Color(0.90, 0.38, 0.36, 0.94))
 			hp_sb.border_color = border_col
 			hp_sb.set_border_width_all(2 if _is_boss else 1)
-			hp_sb.set_corner_radius_all(11)
-			hp_sb.content_margin_left = 8
-			hp_sb.content_margin_right = 8
+			hp_sb.set_corner_radius_all(9)
+			hp_sb.content_margin_left = 6
+			hp_sb.content_margin_right = 6
 			hp_sb.content_margin_top = 1
 			hp_sb.content_margin_bottom = 1
 			_hp_plaque.add_theme_stylebox_override("panel", hp_sb)
 
-		var plaque_w := 118.0 if _is_boss else 96.0
-		var plaque_h := 25.0 if _is_boss else 23.0
+		var plaque_w := 86.0 if _is_boss else 72.0
+		var plaque_h := 20.0 if _is_boss else 18.0
 		_hp_plaque.position = Vector2((target_sz.x - plaque_w) * 0.5, target_sz.y - plaque_h)
 		_hp_plaque.size = Vector2(plaque_w, plaque_h)
 		if is_instance_valid(_hp_lbl):
-			_hp_lbl.add_theme_font_size_override("font_size", 16 if _is_boss else 15)
+			_hp_lbl.add_theme_font_size_override("font_size", 12 if _is_boss else 11)
 
 
 # =============================================================================
@@ -376,19 +378,24 @@ func _recompute_heartbeat_state() -> void:
 		_crack_emit_energy = 0.0
 	elif ratio >= 0.75:
 		var t := clampf((1.0 - ratio) / 0.25, 0.0, 1.0)
-		_current_bpm = lerpf(63.0, 68.0, t)
+		_current_bpm = lerpf(64.0, 74.0, t)
 		_target_speed_scale = _current_bpm / 60.0
 		_crack_emit_energy = lerpf(0.18, 0.38, t) * (1.25 if _is_boss else 1.0)
 	elif ratio >= 0.40:
 		var t := clampf((0.75 - ratio) / 0.35, 0.0, 1.0)
-		_current_bpm = lerpf(86.0, 103.0, t)
+		_current_bpm = lerpf(84.0, 105.0, t)
 		_target_speed_scale = _current_bpm / 60.0
 		_crack_emit_energy = lerpf(0.82, 1.48, t) * (1.30 if _is_boss else 1.0)
-	else:
-		var t := clampf((0.40 - ratio) / 0.39, 0.0, 1.0)
-		_current_bpm = lerpf(152.0, 175.0, t)
+	elif ratio >= 0.20:
+		var t := clampf((0.40 - ratio) / 0.20, 0.0, 1.0)
+		_current_bpm = lerpf(118.0, 150.0, t)
 		_target_speed_scale = _current_bpm / 60.0
-		_crack_emit_energy = lerpf(2.15, 3.25, t) * (1.35 if _is_boss else 1.0)
+		_crack_emit_energy = lerpf(1.75, 2.55, t) * (1.32 if _is_boss else 1.0)
+	else:
+		var t := clampf((0.20 - ratio) / 0.19, 0.0, 1.0)
+		_current_bpm = lerpf(154.0, 185.0, t)
+		_target_speed_scale = _current_bpm / 60.0
+		_crack_emit_energy = lerpf(2.60, 3.35, t) * (1.35 if _is_boss else 1.0)
 
 	_sync_shader_uniforms()
 
@@ -485,16 +492,24 @@ func _process(delta: float) -> void:
 				alive_m.append(m)
 		_motes = alive_m
 
-	# Subtle 2D heartbeat tremor + scale thump on sprite
+	# Subtle 2D heartbeat tremor + rhythmic double-thump scale pulse on sprite
 	var danger_tremor := lerpf(0.8, 2.4, (0.40 - ratio) / 0.40) if (_cur_hp > 0 and ratio < 0.40) else 0.0
 	var total_shake := _shake_intensity + danger_tremor
+	var lub := pow(maxf(0.0, sin(_beat_phase)), 3.0)
+	var dub := pow(maxf(0.0, sin(_beat_phase * 2.0 - 0.85)), 3.0) * 0.68
+	_pulse_thump = clampf(lub + dub, 0.0, 1.0) if _cur_hp > 0 else 0.0
 	if is_instance_valid(_heart_rect):
-		var lub := maxf(0.0, sin(_beat_phase))
-		var dub := maxf(0.0, sin(_beat_phase * 2.0 - 0.85)) * 0.62
-		var sc_pulse := 1.0 + (lub + dub) * (0.045 if _is_boss else 0.036) + _heal_swell * 0.08 - _damage_flash * 0.05 if _cur_hp > 0 else 0.94
+		var sc_pulse := 0.94
+		if _cur_hp > 0:
+			if ratio < 0.75:
+				var low_hp_t := clampf((0.75 - ratio) / 0.75, 0.0, 1.0)
+				var max_boost := lerpf(0.12, 0.24, low_hp_t)
+				sc_pulse = 1.0 + _pulse_thump * max_boost + _heal_swell * 0.08 - _damage_flash * 0.05
+			else:
+				sc_pulse = 1.0 + _pulse_thump * (0.045 if _is_boss else 0.036) + _heal_swell * 0.08 - _damage_flash * 0.05
 		_heart_rect.scale = Vector2(sc_pulse, sc_pulse)
-		var base_x := 2.0 if _is_boss else 4.0
-		var base_y := 14.0 if _is_boss else 0.0
+		var base_x := 2.0 if _is_boss else 3.0
+		var base_y := 10.0 if _is_boss else 0.0
 		if total_shake > 0.02:
 			_heart_rect.position = Vector2(base_x + sin(_time_acc * 51.0) * total_shake * 0.65, base_y + cos(_time_acc * 63.0) * total_shake * 0.65)
 		else:
@@ -519,6 +534,14 @@ func _draw() -> void:
 	var center := Vector2(sz.x * 0.5, sz.y * 0.45)
 	var base_rad := minf(sz.x, sz.y) * (0.44 if _is_boss else 0.42)
 	var ratio := get_hp_ratio()
+
+	# Localized low-HP crimson heartbeat aura ring (strictly confined around this heart widget)
+	if _cur_hp > 0 and ratio < 0.75:
+		var low_hp_t := clampf((0.75 - ratio) / 0.75, 0.0, 1.0)
+		var aura_alpha := _pulse_thump * lerpf(0.24, 0.58, low_hp_t)
+		var aura_rad := base_rad * (0.86 + _pulse_thump * 0.24)
+		draw_circle(center, aura_rad, Color(0.92, 0.10, 0.14, aura_alpha * 0.28))
+		draw_arc(center, aura_rad, 0.0, TAU, 36, Color(1.0, 0.22, 0.24, aura_alpha), 2.2 + low_hp_t * 1.8, true)
 
 	# Crisp 2D Vector Fallback Heart if PNG not imported yet
 	if _heart_rect == null or _heart_rect.texture == null:
