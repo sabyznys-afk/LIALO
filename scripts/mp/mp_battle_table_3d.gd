@@ -357,10 +357,10 @@ func _rebuild_seats_if_needed(seats_arr: Array) -> void:
 		if char_id == "":
 			char_id = str(Config.CHARACTERS[si % Config.CHARACTERS.size()]["id"])
 		var deck_back_map := {
-			"CHAR_GUILLOTINE": "res://assets/table/deck_back_reaper.png",
+			"CHAR_GUILLOTINE": "res://assets/table/deck_back_obsidian.png",
 			"CHAR_MONARCH": "res://assets/table/deck_back_stredovek.png",
 			"CHAR_JESTER": "res://assets/table/deck_back_prohibicia.png",
-			"CHAR_MISTBLADE": "res://assets/table/deck_back_quincy.png",
+			"CHAR_MISTBLADE": "res://assets/table/deck_back_astral.png",
 		}
 		var seat_back_p := str(deck_back_map.get(char_id, "res://assets/table/card_back.png"))
 
@@ -1152,10 +1152,10 @@ func _rebuild_seat_hand_3d(si: int, seat_pub: Dictionary) -> void:
 		return
 	var step_x := clampf(grip_span / float(maxi(2, count)), 0.038, 0.066)
 	var back_map := {
-		"CHAR_GUILLOTINE": "res://assets/table/deck_back_reaper.png",
+		"CHAR_GUILLOTINE": "res://assets/table/deck_back_obsidian.png",
 		"CHAR_MONARCH": "res://assets/table/deck_back_stredovek.png",
 		"CHAR_JESTER": "res://assets/table/deck_back_prohibicia.png",
-		"CHAR_MISTBLADE": "res://assets/table/deck_back_quincy.png",
+		"CHAR_MISTBLADE": "res://assets/table/deck_back_astral.png",
 	}
 	var cid := str(sn.get("char_id", "CHAR_GUILLOTINE"))
 	var back_tex_p := str(back_map.get(cid, "res://assets/table/card_back.png"))

@@ -485,7 +485,7 @@ const TABLE_RELICS := [
 		"charges": 1,
 		"col": Color(0.24, 0.90, 1.0),
 		"glb": "res://assets/models/relics/TRELIC_SOUL_BELL.glb",
-		"desc": "TABLE RELIC (1×/duel): Rings a Reiatsu shockwave that shatters all Rival Shields & drains -18 Rival pts.",
+		"desc": "TABLE RELIC (1×/duel): Rings a resonant shockwave that shatters all Rival Shields & drains -18 Rival pts.",
 		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Rozezní rázovou vlnu — zničí všechny soupeřovy štíty a sebere mu -18 bodů."
 	},
 	{
@@ -503,7 +503,7 @@ const TABLE_RELICS := [
 	},
 	{
 		"id": "TRELIC_STAR_BOW",
-		"name": "Quincy Astrolabe",
+		"name": "Astral Astrolabe",
 		"name_cs": "Hvězdný astroláb",
 		"short": "REVEAL & PIERCE",
 		"short_cs": "ODHALENÍ + SALVA",
@@ -542,15 +542,15 @@ const TABLE_RELICS := [
 	},
 	{
 		"id": "TRELIC_HOLLOW_MASK",
-		"name": "Hollow Mask Fragment",
-		"name_cs": "Střep prázdné masky",
+		"name": "Phantom Mask Shard",
+		"name_cs": "Střep masky přízraku",
 		"short": "-1♥ → WILD ×2",
 		"short_cs": "-1♥ → DIVOKÁ ×2",
 		"cost": 30,
 		"charges": 1,
 		"col": Color(1.0, 0.22, 0.30),
 		"glb": "res://assets/models/relics/TRELIC_HOLLOW_MASK.glb",
-		"desc": "TABLE RELIC (1×/duel): Pay 1 ♥ HP to unleash Hollow Reiatsu — your next card plays WILD on any suit at ×2.0 Score!",
+		"desc": "TABLE RELIC (1×/duel): Pay 1 ♥ HP to unleash Phantom Aura — your next card plays WILD on any suit at ×2.0 Score!",
 		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Obětuj 1 ♥ HP — tvoje příští karta je DIVOKÁ na jakoukoli barvu s ×2.0 body!"
 	},
 	{
@@ -1107,6 +1107,22 @@ static func sanitize_profile(prof: Dictionary) -> Dictionary:
 				continue
 			clean_ce[ck] = normalize_card_class(str(raw_ce[ck_v]))
 		prof["card_editions"] = clean_ce
+
+	# Migrate legacy deck IDs ("reaper" -> "obsidian", "quincy" -> "astral")
+	var legacy_deck_map := {"reaper": "obsidian", "quincy": "astral"}
+	var sel_deck := str(prof.get("selected_deck", "klasic"))
+	if legacy_deck_map.has(sel_deck):
+		prof["selected_deck"] = legacy_deck_map[sel_deck]
+	var raw_ud = prof.get("unlocked_decks", [])
+	if raw_ud is Array:
+		var clean_ud: Array = []
+		for did_v in raw_ud:
+			var did := str(did_v)
+			if legacy_deck_map.has(did):
+				did = legacy_deck_map[did]
+			if not (did in clean_ud):
+				clean_ud.append(did)
+		prof["unlocked_decks"] = clean_ud
 
 	prof.erase("prism_pts_bonus")
 	return prof

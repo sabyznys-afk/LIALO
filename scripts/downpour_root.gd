@@ -325,14 +325,14 @@ const PLAYER_DECKS = [
 		"extra_draw": 0,
 	},
 	{
-		"id": "reaper",
+		"id": "obsidian",
 		"era_id": "stredovek",
-		"name": "Soul Reaper Seal",
-		"name_cs": "Pečeť Žence duší",
-		"desc": "Stark sumi-e ink & crimson barrier seal. +1 Hellfire Phial & obsidian-steel gauntlets.",
-		"desc_cs": "Černá tuš a rudá bariéra Žence duší. +1 Baňka ohně a obsidiánové rukavice.",
-		"back_tex": "res://assets/table/deck_back_reaper.png",
-		"box_style": "reaper",
+		"name": "Obsidian Seal",
+		"name_cs": "Obsidiánová pečeť",
+		"desc": "Forged obsidian-iron & crimson ritual seal. +1 Hellfire Phial & obsidian-steel gauntlets.",
+		"desc_cs": "Kovaná obsidiánová pečeť a rudý rituální znak. +1 Baňka ohně a obsidiánové rukavice.",
+		"back_tex": "res://assets/table/deck_back_obsidian.png",
+		"box_style": "obsidian",
 		"glove_col": Color(0.12, 0.08, 0.10),
 		"border_col": Color(0.96, 0.18, 0.26),
 		"use_iron": true,
@@ -341,14 +341,14 @@ const PLAYER_DECKS = [
 		"extra_draw": 0,
 	},
 	{
-		"id": "quincy",
+		"id": "astral",
 		"era_id": "objavy",
-		"name": "Starlight Aegis",
-		"name_cs": "Hvězdný štít",
-		"desc": "Midnight indigo & blazing cyan star crest. +1 extra draw & silver celestial bracers.",
-		"desc_cs": "Půlnoční modř a zářící azurová hvězda. +1 karta navíc a stříbrné nátepníky.",
-		"back_tex": "res://assets/table/deck_back_quincy.png",
-		"box_style": "quincy",
+		"name": "Astral Compass",
+		"name_cs": "Astrální kompas",
+		"desc": "Midnight indigo & blazing cyan star-chart crest. +1 extra draw & silver celestial bracers.",
+		"desc_cs": "Půlnoční modř a zářící azurová hvězdná mapa. +1 karta navíc a stříbrné nátepníky.",
+		"back_tex": "res://assets/table/deck_back_astral.png",
+		"box_style": "astral",
 		"glove_col": Color(0.16, 0.24, 0.42),
 		"border_col": Color(0.24, 0.90, 1.0),
 		"use_iron": true,
@@ -2466,7 +2466,7 @@ func _draw_custom_arsenal_illustration(ctrl: Control, entry: Dictionary, show_fr
 	elif kind == "table_relic":
 		var tr_d: Dictionary = entry.get("raw_data", {})
 		var r_col: Color = tr_d.get("col", accent)
-		# Ornate Bleach-TYBW inspired concentric ritual seal + 3D Tabletop Relic medallion
+		# Ornate medieval ritual seal + 3D Tabletop Relic medallion
 		ctrl.draw_circle(c, sz.x * 0.35, Color(r_col.r, r_col.g, r_col.b, 0.22))
 		ctrl.draw_arc(c, sz.x * 0.35, 0.0, TAU, 36, ink, 2.6)
 		ctrl.draw_arc(c, sz.x * 0.30, 0.0, TAU, 32, r_col, 2.2)

@@ -1,10 +1,10 @@
 class_name CinematicProfiles
 extends RefCounted
 
-## Expanded Multi-Act Bleach TYBW-Inspired Cutscene Profiles for LIALO:
+## Expanded Multi-Act Dark-Fantasy Cutscene Profiles for LIALO:
 ## Covers ALL 15 active Special Cards (5.2s - 6.2s, 5-shot choreography),
 ## ALL 5 Campaign Era Rivals (4.3s - 4.8s, 4-shot choreography), and
-## ALL 5 Era Bosses + Endless Overlord (5.8s - 6.6s, 5-shot Bankai/Schrift-scale spectacles).
+## ALL 5 Era Bosses + Endless Overlord (5.8s - 6.6s, 5-shot grand spectacles).
 
 const PATH_VAMPIRE_CRIMSON := "res://assets/models/vfx/cinematic_vampire_crimson.glb"
 const PATH_STORM_TEMPEST := "res://assets/models/vfx/cinematic_storm_tempest.glb"
@@ -63,7 +63,7 @@ const VALID_POSE_KEYS := [
 
 static func _build_5act_special_shots(dur: float, flip_x: float = 1.0) -> Array:
 	return [
-		# Act I: Low-angle stark Reiatsu awakening close-up on the played card
+		# Act I: Low-angle stark aura awakening close-up on the played card
 		{"time": 0.00, "pos": Vector3(-0.62 * flip_x, 1.18, 0.72), "look_at": Vector3(0.08, 0.98, -0.04), "fov": 44.0, "trans": "cut", "roll": -3.2 * flip_x},
 		# Act II: Dramatic sweeping orbital climb as towering 3D manifestation rises
 		{"time": dur * 0.21, "pos": Vector3(0.78 * flip_x, 1.44, 0.36), "look_at": Vector3(0.04, 1.24, -0.26), "fov": 48.0, "trans": "orbit", "roll": 4.2 * flip_x},
@@ -96,7 +96,7 @@ static func _build_5act_boss_shots(dur: float, flip_x: float = 1.0) -> Array:
 
 
 # =============================================================================
-# 15 ACTIVE SPECIAL CARD CUTSCENE PROFILES (5.2s - 6.2s, BLEACH TYBW SCALE)
+# 15 ACTIVE SPECIAL CARD CUTSCENE PROFILES (5.2s - 6.2s, GRAND SCALE)
 # =============================================================================
 const SPECIAL_CARD_PROFILES := {
 	"SPEC_VAMPIRE": {
@@ -104,7 +104,7 @@ const SPECIAL_CARD_PROFILES := {
 		"duration": 5.65,
 		"title_en": "VAMPIRE LEECH",
 		"title_cs": "UPÍŘÍ PIJAVICE",
-		"subtitle_en": "BANKAI SIPHON • CRIMSON BLOOD CRESCENT",
+		"subtitle_en": "BLOOD SIPHON • CRIMSON BLOOD CRESCENT",
 		"subtitle_cs": "KRVAVÝ SRPEK • VYSAJE 15 BODŮ SOUPEŘI",
 		"accent_color": Color(0.96, 0.12, 0.22),
 		"vfx_glb_path": PATH_TYBW_GETSUGA,
@@ -120,7 +120,7 @@ const SPECIAL_CARD_PROFILES := {
 		"duration": 5.80,
 		"title_en": "THUNDER STRIKE",
 		"title_cs": "ÚDER BLESKU",
-		"subtitle_en": "LICHT REGEN • VOLLEY OF HEAVENLY SPEARS",
+		"subtitle_en": "ASTRAL VOLLEY • RAIN OF HEAVENLY SPEARS",
 		"subtitle_cs": "BOUŘNÁ SALVA • +3 LÍZÁNÍ A +0.8× NÁSOBIČ",
 		"accent_color": Color(0.22, 0.90, 1.0),
 		"vfx_glb_path": PATH_TYBW_QUINCY,
@@ -520,7 +520,7 @@ const BOSS_ERA_PROFILES := {
 		"duration": 6.20,
 		"title_en": "PIRATE QUEEN ANNE • BLACK SPOT",
 		"title_cs": "PIRÁTSKÁ KRÁLOVNA • ČERNÁ ZNÁMKA",
-		"subtitle_en": "HIGH-SEAS LICHT REGEN • NO QUARTER GIVEN",
+		"subtitle_en": "HIGH-SEAS VOLLEY • NO QUARTER GIVEN",
 		"subtitle_cs": "KRVAVÁ KOŘIST • ŽÁDNÉ SLITOVÁNÍ",
 		"accent_color": Color(0.20, 0.94, 0.92),
 		"vfx_glb_path": PATH_TYBW_QUINCY,
@@ -538,7 +538,7 @@ const BOSS_ERA_PROFILES := {
 		"duration": 6.55,
 		"title_en": "AL CAPONE • DON'S VENDETTA",
 		"title_cs": "AL CAPONE • VENDETA SYNDIKÁTU",
-		"subtitle_en": "FINAL BOSS BANKAI • THE HOUSE ALWAYS COLLECTS",
+		"subtitle_en": "FINAL BOSS WRATH • THE HOUSE ALWAYS COLLECTS",
 		"subtitle_cs": "HLAVNÍ BOSS • SYNDIKÁT SI BERE VŠE",
 		"accent_color": Color(0.98, 0.16, 0.30),
 		"vfx_glb_path": PATH_TYBW_GETSUGA,

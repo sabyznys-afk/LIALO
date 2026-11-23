@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b11lcr43nm5a6"
-path="res://.godot/imported/deck_back_reaper.png-843a76080529fb183ccdb9dedb518965.ctex"
+uid="uid://b5023x0cd2y8n"
+path="res://.godot/imported/deck_back_obsidian.png-f4cbdceae0d52baaeb5bcd4be3a045b6.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/table/deck_back_reaper.png"
-dest_files=["res://.godot/imported/deck_back_reaper.png-843a76080529fb183ccdb9dedb518965.ctex"]
+source_file="res://assets/table/deck_back_obsidian.png"
+dest_files=["res://.godot/imported/deck_back_obsidian.png-f4cbdceae0d52baaeb5bcd4be3a045b6.ctex"]
 
 [params]
 

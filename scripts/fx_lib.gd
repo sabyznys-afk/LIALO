@@ -603,16 +603,16 @@ static func item_ritual_activation(parent: Node3D, item_pos: Vector3, target_pos
 
 
 # ============================================================================
-# BLEACH TYBW-INSPIRED EFFECTS & ARCHETYPE CARD PLAY VFX
+# DARK-FANTASY INK-CONTRAST EFFECTS & ARCHETYPE CARD PLAY VFX
 # ============================================================================
 
-## Getsuga-style razor-sharp crescent energy slash (pitch-black ink core + blazing reiatsu edge).
+## Razor-sharp crescent energy slash (pitch-black ink core + blazing aura edge).
 static func tybw_slash_arc(parent: Node3D, origin: Vector3, target: Vector3, accent_col: Color,
 		dark_core: bool = true, scale_mult: float = 1.0, tilt_deg: float = -24.0) -> void:
 	if not is_instance_valid(parent):
 		return
 	var root := Node3D.new()
-	root.name = "TybwSlashArc"
+	root.name = "CinematicSlashArc"
 	parent.add_child(root)
 	root.global_position = origin
 	var dir_v := (target - origin)
@@ -620,7 +620,7 @@ static func tybw_slash_arc(parent: Node3D, origin: Vector3, target: Vector3, acc
 		var flat_yaw := atan2(dir_v.x, dir_v.z)
 		root.rotation = Vector3(0.0, flat_yaw, deg_to_rad(tilt_deg))
 
-	# Outer blazing reiatsu crescent
+	# Outer blazing aura crescent
 	var outer := MeshInstance3D.new()
 	var ot := TorusMesh.new()
 	ot.inner_radius = 0.24 * scale_mult
@@ -632,7 +632,7 @@ static func tybw_slash_arc(parent: Node3D, origin: Vector3, target: Vector3, acc
 	outer.material_override = _unlit_mat(Color(accent_col.r, accent_col.g, accent_col.b, 0.96), true)
 	root.add_child(outer)
 
-	# Stark ink-black inner core (signature TYBW Getsuga contrast)
+	# Stark ink-black inner core (signature dark-ink contrast)
 	if dark_core:
 		var inner := MeshInstance3D.new()
 		var it := TorusMesh.new()
@@ -689,7 +689,7 @@ static func tybw_slash_arc(parent: Node3D, origin: Vector3, target: Vector3, acc
 	tw.tween_callback(root.queue_free)
 
 
-## Quincy Heilig Pfeil / Licht Regen: electric-cyan sacred sigil firing staggered spirit arrows.
+## Astral Starlight Volley: electric-cyan sacred sigil firing staggered spirit arrows.
 static func tybw_quincy_volley(parent: Node3D, origin: Vector3, target: Vector3,
 		arrow_count: int = 7, col: Color = Color(0.22, 0.88, 1.0)) -> void:
 	if not is_instance_valid(parent):
@@ -703,7 +703,7 @@ static func tybw_quincy_volley(parent: Node3D, origin: Vector3, target: Vector3,
 		var ang := float(i) * (TAU / float(n))
 		var spawn_p := sigil_pos + Vector3(cos(ang) * 0.32, sin(ang) * 0.18 + 0.08, sin(ang) * 0.16)
 		var lance := Node3D.new()
-		lance.name = "QuincyArrow_%d" % i
+		lance.name = "AstralArrow_%d" % i
 		parent.add_child(lance)
 		lance.global_position = spawn_p
 
@@ -745,13 +745,13 @@ static func tybw_quincy_volley(parent: Node3D, origin: Vector3, target: Vector3,
 		tw.tween_callback(lance.queue_free)
 
 
-## Towering Bleach TYBW vertical Reiatsu pressure pillar (dark inner ink core + glowing outer shell).
+## Towering vertical dark-aura pressure pillar (dark inner ink core + glowing outer shell).
 static func tybw_reiatsu_pillar(parent: Node3D, gpos: Vector3, col: Color,
 		height: float = 2.4, radius: float = 0.34, dur: float = 0.95) -> void:
 	if not is_instance_valid(parent):
 		return
 	var root := Node3D.new()
-	root.name = "TybwReiatsuPillar"
+	root.name = "CinematicAuraPillar"
 	parent.add_child(root)
 	root.global_position = gpos
 
@@ -855,7 +855,7 @@ static func mage_arcane_cast(parent: Node3D, origin: Vector3, target: Vector3,
 		ring(parent, target + Vector3(0.0, 0.02, 0.0), r_col, 0.42, 0.42, 0.10, 2.2, 8.0)
 
 
-## THIEF Shunpo Shadow-Step Strike: twin dark-emerald/crimson razor diagonal slashes + ink wisps.
+## THIEF Shadow-Step Strike: twin dark-emerald/crimson razor diagonal slashes + ink wisps.
 static func thief_shunpo_strike(parent: Node3D, origin: Vector3, target: Vector3,
 		col: Color = Color(0.18, 0.92, 0.56)) -> void:
 	if not is_instance_valid(parent):
@@ -872,7 +872,7 @@ static func merchant_gold_vault(parent: Node3D, impact_pos: Vector3) -> void:
 	gold_flakes(parent, impact_pos + Vector3(0.0, 0.06, 0.0), 42, 1.35)
 
 
-## Custom TYBW-flavored ritual burst for each of the 10 new Active Tabletop Relics.
+## Custom dark-ritual burst for each of the 10 new Active Tabletop Relics.
 static func relic_tybw_ritual(parent: Node3D, item_pos: Vector3, target_pos: Vector3,
 		relic_id: String, col: Color) -> void:
 	if not is_instance_valid(parent):
