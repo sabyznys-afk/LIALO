@@ -153,6 +153,8 @@ var collection_stats_lbl: Label
 var collection_title_lbl: Label
 var collection_flip_btn: Button
 var collection_detail_modal: PanelContainer
+var _active_collection_hover_slot: Control = null
+var _active_collection_hover_reset: Callable = Callable()
 var col_det_title: Label
 var col_det_sub: Label
 var col_det_art: TextureRect
@@ -2282,7 +2284,14 @@ func _build_deck_selector_modal() -> void:
 func _is_cs() -> bool:
 	return str(game_options.get("language", "en")) == "cs"
 
+func _clear_active_collection_hover() -> void:
+	if _active_collection_hover_reset.is_valid():
+		_active_collection_hover_reset.call()
+	_active_collection_hover_slot = null
+	_active_collection_hover_reset = Callable()
+
 func _open_collection_modal(tab: int = 0) -> void:
+	_clear_active_collection_hover()
 	collection_tab_idx = tab
 	_rebuild_collection_view()
 	_open_animated_modal(deck_modal)
@@ -2373,116 +2382,60 @@ func _draw_custom_arsenal_illustration(ctrl: Control, entry: Dictionary, show_fr
 	ctrl.draw_rect(r.grow(-11.0), Color(accent.r * 0.75, accent.g * 0.75, accent.b * 0.75, 0.88), false, 1.8)
 	var c := sz * 0.5 + Vector2(0, -6)
 
-	if kind == "blade":
-		var sw: Dictionary = entry.get("raw_data", {})
-		var b_col: Color = sw.get("blade_col", Color(0.78, 0.82, 0.88))
-		var g_col: Color = sw.get("guard_col", Color(0.88, 0.68, 0.24))
-		var gr_col: Color = sw.get("grip_col", Color(0.36, 0.20, 0.12))
-		var tr_col: Color = sw.get("trail_col", accent)
-		# Runic halo behind sword
-		ctrl.draw_circle(c, sz.x * 0.34, Color(tr_col.r, tr_col.g, tr_col.b, 0.18))
-		ctrl.draw_arc(c, sz.x * 0.32, 0.0, TAU, 36, Color(tr_col.r, tr_col.g, tr_col.b, 0.65), 2.2)
-		# Diagonal woodcut broadsword
-		var dir := Vector2(0.58, -0.81).normalized()
-		var perp := Vector2(-dir.y, dir.x)
-		var hilt := c - dir * (sz.y * 0.20)
-		var tip := c + dir * (sz.y * 0.31)
-		var blade_poly := PackedVector2Array([
-			hilt + perp * 9.0,
-			hilt + dir * (sz.y * 0.42) + perp * 6.5,
-			tip,
-			hilt + dir * (sz.y * 0.42) - perp * 6.5,
-			hilt - perp * 9.0,
-		])
-		ctrl.draw_colored_polygon(blade_poly, b_col.lightened(0.15))
-		ctrl.draw_line(hilt + dir * 8.0, tip - dir * 14.0, b_col.darkened(0.35), 2.4)
-		ctrl.draw_polyline(blade_poly + PackedVector2Array([blade_poly[0]]), ink, 2.4)
-		# Crossguard, leather grip & pommel
-		ctrl.draw_line(hilt - perp * 26.0, hilt + perp * 26.0, ink, 9.0)
-		ctrl.draw_line(hilt - perp * 24.0, hilt + perp * 24.0, g_col, 5.5)
-		var pommel := hilt - dir * 26.0
-		ctrl.draw_line(hilt, pommel, ink, 10.0)
-		ctrl.draw_line(hilt, pommel, gr_col, 6.4)
-		ctrl.draw_circle(pommel, 8.0, ink)
-		ctrl.draw_circle(pommel, 5.8, g_col)
-		ctrl.draw_string(df, Vector2(12, 28), _tr("⚔ BLADE", "⚔ ČEPEL"), HORIZONTAL_ALIGNMENT_LEFT, sz.x - 24, 13, ink)
-		ctrl.draw_string(df, Vector2(10, sz.y - 18), _tr(str(sw.get("name", "Blade")), str(sw.get("name_cs", sw.get("name", "Čepel")))), HORIZONTAL_ALIGNMENT_CENTER, sz.x - 20, 14, ink)
+	if kind in ["blade", "relic", "table_relic"]:
+		# Ornate medieval tarot-style corner ornaments
+		var frame_col := Color(accent.r * 0.72, accent.g * 0.72, accent.b * 0.72, 0.90)
+		for cx_s in [14.0, sz.x - 14.0]:
+			for cy_s in [14.0, sz.y - 14.0]:
+				ctrl.draw_circle(Vector2(cx_s, cy_s), 4.2, ink)
+				ctrl.draw_circle(Vector2(cx_s, cy_s), 2.4, frame_col)
+		# Emblem halo medallion
+		var halo_r := minf(sz.x * 0.35, sz.y * 0.28)
+		ctrl.draw_circle(c, halo_r, Color(accent.r, accent.g, accent.b, 0.20))
+		ctrl.draw_arc(c, halo_r, 0.0, TAU, 40, ink, 2.4)
+		ctrl.draw_arc(c, halo_r - 4.0, 0.0, TAU, 36, frame_col, 1.8)
 
-	elif kind == "relic":
-		var rel: Dictionary = entry.get("raw_data", {})
-		var rel_id := str(rel.get("id", ""))
-		var icon_id := str(rel.get("icon", "Relic"))
-		ctrl.draw_circle(c, sz.x * 0.34, Color(accent.r, accent.g, accent.b, 0.22))
-		ctrl.draw_arc(c, sz.x * 0.33, 0.0, TAU, 36, ink, 2.2)
-		ctrl.draw_arc(c, sz.x * 0.29, 0.0, TAU, 32, accent.darkened(0.15), 2.0)
-		var r_art_p := Catalog.get_relic_art_path(rel_id)
-		var drew_tex := false
-		if ResourceLoader.exists(r_art_p):
-			var rtex := Toon.tex(r_art_p)
-			if rtex:
-				var art_sz := minf(sz.x * 0.62, sz.y * 0.48)
-				ctrl.draw_texture_rect(rtex, Rect2(c - Vector2(art_sz * 0.5, art_sz * 0.5), Vector2(art_sz, art_sz)), false)
-				drew_tex = true
-		if not drew_tex:
-			if icon_id in ["Horn", "Fang", "Plume", "Leaf"]:
-				var horn_pts := PackedVector2Array([
-					c + Vector2(-28, 22), c + Vector2(-12, 28), c + Vector2(18, 10),
-					c + Vector2(30, -26), c + Vector2(12, -10), c + Vector2(-10, 8)
-				])
-				ctrl.draw_colored_polygon(horn_pts, accent)
-				ctrl.draw_polyline(horn_pts + PackedVector2Array([horn_pts[0]]), ink, 2.6)
-			elif icon_id in ["Flask", "Mug", "Seal"]:
-				ctrl.draw_circle(c + Vector2(0, 10), 22.0, accent)
-				ctrl.draw_arc(c + Vector2(0, 10), 22.0, 0.0, TAU, 24, ink, 2.6)
-				ctrl.draw_rect(Rect2(c.x - 8, c.y - 26, 16, 18), accent.lightened(0.2))
-				ctrl.draw_rect(Rect2(c.x - 8, c.y - 26, 16, 18), ink, false, 2.4)
-			elif icon_id in ["Crown", "Ring", "Coin"]:
-				var cr_pts := PackedVector2Array([
-					c + Vector2(-28, 18), c + Vector2(-32, -12), c + Vector2(-14, 4),
-					c + Vector2(0, -22), c + Vector2(14, 4), c + Vector2(32, -12), c + Vector2(28, 18)
-				])
-				ctrl.draw_colored_polygon(cr_pts, accent)
-				ctrl.draw_polyline(cr_pts + PackedVector2Array([cr_pts[0]]), ink, 2.6)
-			elif icon_id in ["Grim", "Scroll"]:
-				var bk_r := Rect2(c.x - 24, c.y - 28, 48, 56)
-				ctrl.draw_rect(bk_r, accent.darkened(0.2))
-				ctrl.draw_rect(bk_r, ink, false, 2.6)
-				ctrl.draw_rect(bk_r.grow(-7.0), Color(0.98, 0.92, 0.76), false, 1.8)
-			elif icon_id in ["Axe", "Blade", "Anvil", "Armor", "Tower"]:
-				var sh_pts := PackedVector2Array([
-					c + Vector2(-24, -24), c + Vector2(24, -24),
-					c + Vector2(26, 4), c + Vector2(0, 30), c + Vector2(-26, 4)
-				])
-				ctrl.draw_colored_polygon(sh_pts, accent)
-				ctrl.draw_polyline(sh_pts + PackedVector2Array([sh_pts[0]]), ink, 2.6)
-				ctrl.draw_line(c + Vector2(0, -20), c + Vector2(0, 24), ink, 2.4)
-			else:
-				for ri in range(8):
-					var ra := float(ri) * (TAU / 8.0)
-					ctrl.draw_line(c, c + Vector2(cos(ra), sin(ra)) * 28.0, ink, 3.2)
-				ctrl.draw_circle(c, 16.0, accent)
-				ctrl.draw_arc(c, 16.0, 0.0, TAU, 24, ink, 2.5)
-		ctrl.draw_string(df, Vector2(12, 26), "✦ " + _tr(str(rel.get("category", "RELIC")), str(rel.get("category_cs", rel.get("category", "RELIKVIE")))).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, sz.x - 24, 11, ink)
-		ctrl.draw_string(df, Vector2(10, sz.y - 18), _tr(str(rel.get("name", "Relic")), str(rel.get("name_cs", rel.get("name", "Relikvie")))), HORIZONTAL_ALIGNMENT_CENTER, sz.x - 20, 13, ink)
+		var art_p := ""
+		var cat_lbl := ""
+		var title_lbl := ""
+		if kind == "blade":
+			var sw: Dictionary = entry.get("raw_data", {})
+			var sid := str(sw.get("id", entry.get("key", "")))
+			art_p = Catalog.get_sword_art_path(sid)
+			cat_lbl = _tr("⚔ BLADE", "⚔ ČEPEL")
+			title_lbl = _tr(str(sw.get("name", "Blade")), str(sw.get("name_cs", sw.get("name", "Čepel"))))
+		elif kind == "table_relic":
+			var tr_d: Dictionary = entry.get("raw_data", {})
+			var tid := str(tr_d.get("id", entry.get("key", "")))
+			art_p = Catalog.get_table_relic_art_path(tid)
+			cat_lbl = _tr("✦ 3D TABLE RELIC", "✦ 3D RELIKVIE NA STŮL")
+			title_lbl = _tr(str(tr_d.get("name", "Table Relic")), str(tr_d.get("name_cs", tr_d.get("name", "Relikvie"))))
+		else:
+			var rel: Dictionary = entry.get("raw_data", {})
+			var rel_id := str(rel.get("id", entry.get("key", "")))
+			art_p = Catalog.get_relic_art_path(rel_id)
+			cat_lbl = "✦ " + _tr(str(rel.get("category", "RELIC")), str(rel.get("category_cs", rel.get("category", "RELIKVIE")))).to_upper()
+			title_lbl = _tr(str(rel.get("name", "Relic")), str(rel.get("name_cs", rel.get("name", "Relikvie"))))
 
-	elif kind == "table_relic":
-		var tr_d: Dictionary = entry.get("raw_data", {})
-		var r_col: Color = tr_d.get("col", accent)
-		# Ornate medieval ritual seal + 3D Tabletop Relic medallion
-		ctrl.draw_circle(c, sz.x * 0.35, Color(r_col.r, r_col.g, r_col.b, 0.22))
-		ctrl.draw_arc(c, sz.x * 0.35, 0.0, TAU, 36, ink, 2.6)
-		ctrl.draw_arc(c, sz.x * 0.30, 0.0, TAU, 32, r_col, 2.2)
-		# Eight-point spiritual pressure star inside the medallion
-		for si in range(8):
-			var sa := float(si) * (TAU / 8.0)
-			var len_r := sz.x * (0.28 if (si % 2 == 0) else 0.17)
-			ctrl.draw_line(c, c + Vector2(cos(sa), sin(sa)) * len_r, ink, 2.8)
-			ctrl.draw_line(c, c + Vector2(cos(sa), sin(sa)) * (len_r - 3.0), r_col.lightened(0.25), 1.6)
-		ctrl.draw_circle(c, 15.0, Color(0.06, 0.04, 0.07))
-		ctrl.draw_arc(c, 15.0, 0.0, TAU, 24, r_col.lightened(0.35), 2.2)
-		ctrl.draw_string(df, Vector2(c.x - 16.0, c.y + 5.0), "3D", HORIZONTAL_ALIGNMENT_CENTER, 32.0, 14, r_col.lightened(0.40))
-		ctrl.draw_string(df, Vector2(12, 26), _tr("✦ 3D TABLE RELIC", "✦ 3D RELIKVIE NA STŮL"), HORIZONTAL_ALIGNMENT_LEFT, sz.x - 24, 11, ink)
-		ctrl.draw_string(df, Vector2(10, sz.y - 18), _tr(str(tr_d.get("name", "Table Relic")), str(tr_d.get("name_cs", tr_d.get("name", "Relikvie")))), HORIZONTAL_ALIGNMENT_CENTER, sz.x - 20, 13, ink)
+		if art_p != "":
+			var ck := "ARSENAL_" + art_p
+			var art_tex: Texture2D = card_face_cache.get(ck, null) as Texture2D
+			if art_tex == null and ResourceLoader.exists(art_p):
+				art_tex = Toon.tex(art_p)
+				if art_tex:
+					card_face_cache[ck] = art_tex
+			if art_tex:
+				var art_sz := minf(sz.x * 0.74, sz.y * 0.56)
+				ctrl.draw_texture_rect(art_tex, Rect2(c - Vector2(art_sz * 0.5, art_sz * 0.5), Vector2(art_sz, art_sz)), false)
+
+		# Category header
+		ctrl.draw_string(df, Vector2(18, 38), cat_lbl, HORIZONTAL_ALIGNMENT_CENTER, sz.x - 36, 11, ink)
+		# Engraved title banner at bottom
+		var ban_r := Rect2(14.0, sz.y - 36.0, sz.x - 28.0, 24.0)
+		ctrl.draw_rect(ban_r, Color(0.82, 0.74, 0.58, 0.94))
+		ctrl.draw_rect(ban_r, ink, false, 1.8)
+		ctrl.draw_rect(ban_r.grow(-2.0), frame_col, false, 1.0)
+		ctrl.draw_string(df, Vector2(16, sz.y - 19), title_lbl, HORIZONTAL_ALIGNMENT_CENTER, sz.x - 32, 13, ink)
 
 	elif kind == "deck":
 		var d: Dictionary = entry.get("raw_data", {})
@@ -2550,9 +2503,9 @@ func _build_collection_card_slot(entry: Dictionary) -> Control:
 		var eq_badge := Label.new()
 		eq_badge.text = "✓ EQUIPPED" if not _is_cs() else "✓ VYBAVENO"
 		eq_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		eq_badge.set_anchors_preset(Control.PRESET_TOP_WIDE)
-		eq_badge.offset_top = 6
-		eq_badge.offset_bottom = 28
+		eq_badge.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		eq_badge.custom_minimum_size = Vector2(0, 26)
+		eq_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		eq_badge.add_theme_font_override("font", _get_font(true))
 		eq_badge.add_theme_font_size_override("font_size", 13)
 		eq_badge.add_theme_color_override("font_color", Color(0.42, 1.0, 0.62))
@@ -2571,24 +2524,40 @@ func _build_collection_card_slot(entry: Dictionary) -> Control:
 		)
 		card_panel.add_child(chain_ctrl)
 
-	var apply_resting := func():
-		var show_front := collection_flip_all or (custom_kind != "" and unlocked)
+	var kill_hover_tw := func():
+		if card_panel.has_meta("hover_tw"):
+			var old_tw: Variant = card_panel.get_meta("hover_tw")
+			if old_tw is Tween and (old_tw as Tween).is_valid():
+				(old_tw as Tween).kill()
+			card_panel.remove_meta("hover_tw")
+
+	var apply_face_state := func(show_front: bool, is_hovered: bool):
 		if custom_kind != "":
 			custom_canvas.set_meta("show_front", show_front)
-			custom_canvas.modulate = Color.WHITE if unlocked else Color(0.45, 0.45, 0.50, 0.94)
+			custom_canvas.modulate = Color.WHITE if unlocked else (Color(0.48, 0.48, 0.52, 0.95) if is_hovered else Color(0.45, 0.45, 0.50, 0.94))
 			custom_canvas.queue_redraw()
 		else:
 			tex_r.texture = face_tex if (show_front and face_tex != null) else (card_back_tex if card_back_tex else face_tex)
 			if not unlocked:
-				tex_r.modulate = Color(0.38, 0.38, 0.42, 0.92)
+				tex_r.modulate = Color(0.42, 0.42, 0.46, 0.95) if is_hovered else Color(0.38, 0.38, 0.42, 0.92)
 			elif show_front:
 				tex_r.modulate = Color.WHITE
 			else:
 				tex_r.modulate = Color(0.86, 0.82, 0.74, 0.95)
-		card_panel.scale = Vector2(1.0, 1.0) if show_front else Vector2(0.88, 0.94)
+
+	var apply_resting := func():
+		var show_front := collection_flip_all or (custom_kind != "" and unlocked)
+		apply_face_state.call(show_front, false)
+		card_panel.scale = Vector2.ONE if show_front else Vector2(0.88, 0.94)
 		card_panel.rotation_degrees = 0.0 if show_front else -2.8
 		slot.z_index = 0
 	apply_resting.call()
+
+	var reset_immediate := func():
+		if not is_instance_valid(card_panel) or not is_instance_valid(slot):
+			return
+		kill_hover_tw.call()
+		apply_resting.call()
 
 	var hit := Button.new()
 	hit.flat = true
@@ -2601,32 +2570,56 @@ func _build_collection_card_slot(entry: Dictionary) -> Control:
 	slot.add_child(hit)
 
 	hit.mouse_entered.connect(func():
+		if _active_collection_hover_slot != slot:
+			_clear_active_collection_hover()
+		_active_collection_hover_slot = slot
+		_active_collection_hover_reset = reset_immediate
+		kill_hover_tw.call()
 		_play_sfx("card_hover", -10.5, randf_range(0.96, 1.08))
 		slot.z_index = 40
 		var tw := card_panel.create_tween()
-		tw.tween_property(card_panel, "scale:x", 0.08, 0.07).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-		tw.tween_callback(func():
-			if custom_kind != "":
-				custom_canvas.set_meta("show_front", true)
-				custom_canvas.modulate = Color.WHITE if unlocked else Color(0.48, 0.48, 0.52, 0.95)
-				custom_canvas.queue_redraw()
-			else:
-				if face_tex:
-					tex_r.texture = face_tex
-				tex_r.modulate = Color.WHITE if unlocked else Color(0.42, 0.42, 0.46, 0.95)
-		)
+		card_panel.set_meta("hover_tw", tw)
+		var already_front := collection_flip_all or (custom_kind != "" and unlocked)
+		if not already_front:
+			tw.tween_property(card_panel, "scale:x", 0.08, 0.07).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			tw.tween_callback(func():
+				if is_instance_valid(card_panel):
+					apply_face_state.call(true, true)
+			)
+		else:
+			apply_face_state.call(true, true)
 		tw.tween_property(card_panel, "scale", Vector2(1.12, 1.12), 0.13).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		tw.parallel().tween_property(card_panel, "rotation_degrees", 0.0, 0.13)
 	)
 	hit.mouse_exited.connect(func():
+		if _active_collection_hover_slot == slot:
+			_active_collection_hover_slot = null
+			_active_collection_hover_reset = Callable()
+		kill_hover_tw.call()
 		var tw := card_panel.create_tween()
+		card_panel.set_meta("hover_tw", tw)
 		var keep_front := collection_flip_all or (custom_kind != "" and unlocked)
 		if not keep_front:
-			tw.tween_property(card_panel, "scale:x", 0.08, 0.06)
-			tw.tween_callback(func(): apply_resting.call())
+			tw.tween_property(card_panel, "scale:x", 0.08, 0.06).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			tw.tween_callback(func():
+				if is_instance_valid(card_panel):
+					apply_face_state.call(false, false)
+					card_panel.scale = Vector2(0.08, 0.94)
+			)
+			tw.tween_property(card_panel, "scale", Vector2(0.88, 0.94), 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tw.parallel().tween_property(card_panel, "rotation_degrees", -2.8, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tw.tween_callback(func():
+				if is_instance_valid(slot):
+					slot.z_index = 0
+			)
 		else:
-			tw.tween_property(card_panel, "scale", Vector2.ONE, 0.11)
-			tw.tween_callback(func(): slot.z_index = 0)
+			tw.set_parallel(true)
+			tw.tween_property(card_panel, "scale", Vector2.ONE, 0.11).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tw.tween_property(card_panel, "rotation_degrees", 0.0, 0.11).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			tw.chain().tween_callback(func():
+				if is_instance_valid(slot):
+					slot.z_index = 0
+			)
 	)
 	hit.pressed.connect(func():
 		_play_sfx("ui_click")
@@ -2733,6 +2726,36 @@ func _build_48_card_fanned_ribbon(all_entries: Array[Dictionary]) -> Control:
 	return holder
 
 func _open_card_collection_detail(entry: Dictionary) -> void:
+	_clear_active_collection_hover()
+	if collection_detail_modal and arsenal_layer:
+		collection_detail_modal.mouse_filter = Control.MOUSE_FILTER_STOP
+		var backdrop := arsenal_layer.get_node_or_null("CollectionDetailBackdrop") as ColorRect
+		if backdrop == null:
+			backdrop = ColorRect.new()
+			backdrop.name = "CollectionDetailBackdrop"
+			backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+			backdrop.offset_left = 0
+			backdrop.offset_top = 0
+			backdrop.offset_right = 0
+			backdrop.offset_bottom = 0
+			backdrop.z_index = 89
+			backdrop.color = Color(0.015, 0.012, 0.02, 0.72)
+			backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+			backdrop.visible = false
+			backdrop.gui_input.connect(func(ev: InputEvent):
+				if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+					_play_sfx("ui_click")
+					_close_animated_modal(collection_detail_modal)
+			)
+			arsenal_layer.add_child(backdrop)
+			collection_detail_modal.visibility_changed.connect(func():
+				if is_instance_valid(backdrop) and not collection_detail_modal.visible:
+					backdrop.visible = false
+			)
+		backdrop.visible = true
+		backdrop.modulate.a = 0.0
+		var btw := backdrop.create_tween()
+		btw.tween_property(backdrop, "modulate:a", 1.0, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	var unlocked := bool(entry["unlocked"])
 	var face_tex: Texture2D = entry.get("tex", null)
 	var custom_kind := str(entry.get("custom_kind", ""))
@@ -2772,6 +2795,18 @@ func _make_pill_style(bg_col: Color, border_col: Color, bottom_lip: int = 4) -> 
 func _rebuild_collection_view() -> void:
 	if not collection_grid or not collection_decks_box:
 		return
+	_clear_active_collection_hover()
+	if not collection_grid.has_meta("_hover_clear_bound"):
+		collection_grid.set_meta("_hover_clear_bound", true)
+		collection_grid.mouse_exited.connect(func():
+			_clear_active_collection_hover()
+		)
+	if deck_modal and not deck_modal.has_meta("_hover_clear_bound"):
+		deck_modal.set_meta("_hover_clear_bound", true)
+		deck_modal.visibility_changed.connect(func():
+			if not deck_modal.visible:
+				_clear_active_collection_hover()
+		)
 	var cs := _is_cs()
 	var lang := "cs" if cs else "en"
 	if collection_title_lbl:
@@ -2927,6 +2962,9 @@ func _rebuild_collection_view() -> void:
 		var eq_sw: String = str(run_profile.get("equipped_sword", "SWORD_IRON"))
 		for sw_raw in Catalog.SWORD_SKINS:
 			var sid := str(sw_raw["id"])
+			var sw_art := Catalog.get_sword_art_path(sid)
+			if not card_face_cache.has("ARSENAL_" + sw_art) and ResourceLoader.exists(sw_art):
+				card_face_cache["ARSENAL_" + sw_art] = Toon.tex(sw_art)
 			var sw := Catalog.get_sword_skin_loc(sid, lang)
 			var is_own := sid in owned_sw
 			var is_eq := (sid == eq_sw)
@@ -2951,6 +2989,9 @@ func _rebuild_collection_view() -> void:
 		var owned_tr: Array = run_profile.get("table_relics", [])
 		for tr_raw in Catalog.TABLE_RELICS:
 			var tid := str(tr_raw["id"])
+			var tr_art := Catalog.get_table_relic_art_path(tid)
+			if not card_face_cache.has("ARSENAL_" + tr_art) and ResourceLoader.exists(tr_art):
+				card_face_cache["ARSENAL_" + tr_art] = Toon.tex(tr_art)
 			var tr_loc := Catalog.get_table_relic_loc(tid, lang)
 			var is_own_tr := (tid in owned_tr)
 			collection_grid.add_child(_build_collection_card_slot({
@@ -2971,6 +3012,9 @@ func _rebuild_collection_view() -> void:
 			var rid := str(r_raw["id"])
 			if Catalog.is_relic_hidden(rid):
 				continue
+			var r_art := Catalog.get_relic_art_path(rid)
+			if not card_face_cache.has("ARSENAL_" + r_art) and ResourceLoader.exists(r_art):
+				card_face_cache["ARSENAL_" + r_art] = Toon.tex(r_art)
 			var r := Catalog.get_relic_loc(rid, lang)
 			var is_own := (rid in owned_rel)
 			collection_grid.add_child(_build_collection_card_slot({
