@@ -184,6 +184,10 @@ var wheel_canvas: Control
 var wheel_lap_lbl: Label
 var round_counter_lbl: Label
 var settings_icon_btn: Button
+var card_guide_btn: Button
+var card_guide_modal: Control
+var card_guide_title_lbl: Label
+var card_guide_scroll_vb: VBoxContainer
 var shop_gate_overlay: Control
 var shop_gate_title: Label
 var shop_gate_sub: Label
@@ -5561,6 +5565,8 @@ func _refresh_hud_language_labels() -> void:
 	_refresh_wager_indicator_ui()
 	if settings_icon_btn:
 		settings_icon_btn.tooltip_text = _tr("Options", "Nastavení")
+	if card_guide_btn:
+		card_guide_btn.tooltip_text = _tr("Card & Rules Guide [F1]", "Průvodce kartami a pravidly [F1]")
 	for sb_entry in sort_hand_btns:
 		var b: Button = sb_entry.get("btn")
 		if is_instance_valid(b):
@@ -6554,8 +6560,8 @@ func _get_tutorial_ghost_copy(step: int, sub: int = 0) -> Dictionary:
 			}
 		5:
 			return {
-				"en": "✓ OK! 3D Hearts (10 ♥ HP): King hits 1–3 HP, 1/2/3 Aces deal 1/4/6 HP + Stun! Beware Boss Hearts!",
-				"cs": "✓ OK! 3D Srdce (10 ♥ HP): Král bere 1–3 HP, 1/2/3 Esa berou 1/4/6 HP + Stopka! Pozor na Boss Srdce!",
+				"en": "✓ OK! 3D Hearts (10 ♥ HP): King hits 1–3 HP; 1/2 Aces deal 1/4 HP + Stun; 3× Aces = INSTANT KILL (chosen target in MP)!",
+				"cs": "✓ OK! 3D Srdce (10 ♥ HP): Král bere 1–3 HP; 1/2 Esa berou 1/4 HP + Stopku; 3× Eso = OKAMŽITÁ SMRT (v MP zvolený cíl)!",
 				"task_en": "TASK: Stack both Aces (E) into a combo to strike Rival's heart for -4 ♥ HP!",
 				"task_cs": "ÚKOL: Spoj obě Esa (E) do komba — zasáhneš soupeřovo srdce za -4 ♥ HP!",
 				"btn_en": "Next", "btn_cs": "Dál",
@@ -6582,8 +6588,8 @@ func _get_tutorial_ghost_copy(step: int, sub: int = 0) -> Dictionary:
 				}
 		7:
 			return {
-				"en": "✓ OK! Rival is burning! The Peddler's Bell opens the Shop every 3rd round.",
-				"cs": "✓ OK! Soupeř hoří! Obchod se zvonečkem se otevírá každé 3. kolo.",
+				"en": "✓ OK! 3 ways to win: 0 ♥ HP, Chalice Score Goal (e.g. 520), or 3× Aces = Instant Kill (chosen target in MP)! Shop opens every 3rd round.",
+				"cs": "✓ OK! 3 cesty k výhře: 0 ♥ HP, Cíl Kalicha (např. 520) nebo 3× Eso = Okamžitá smrt (v MP zvolený cíl)! Obchod je každé 3. kolo.",
 				"task_en": "FINAL TASK: Play your last card (0 in hand = Finisher + Sword Execution)!",
 				"task_cs": "POSLEDNÍ ÚKOL: Vyhoď poslední kartu (0 karet = Finisher + Poprava mečem)!",
 				"btn_en": "Finish", "btn_cs": "Dokončit",
@@ -6606,6 +6612,58 @@ func _advance_tutorial_substep() -> void:
 		_advance_tutorial_to(1)
 	elif tutorial_step >= 8:
 		_skip_tutorial_immediately()
+
+func _layout_tutorial_ghost_center_panel(float_y: float = 0.0) -> void:
+	if not is_instance_valid(tutorial_ghost_center_panel) or not tutorial_ghost_center_panel.visible:
+		return
+	var is_centered_card := (tutorial_step == 0 or tutorial_step >= 8)
+	var vp_w: float = get_viewport().get_visible_rect().size.x if get_viewport() else 1366.0
+	var left_edge := (player_hud_grp.global_position.x + player_hud_grp.size.x) if (player_hud_grp and player_hud_grp.visible and player_hud_grp.size.x > 0.0) else 492.0
+	var right_edge := rival_hud_grp.global_position.x if (rival_hud_grp and rival_hud_grp.visible and rival_hud_grp.global_position.x > left_edge + 120.0) else (vp_w - 368.0)
+	var gap := right_edge - left_edge
+	var min_gw := 410.0 if gap >= 434.0 else maxf(280.0, gap - 20.0)
+	var gw := 620.0 if is_centered_card else clampf(gap - 24.0, min_gw, 540.0)
+	tutorial_ghost_center_panel.custom_minimum_size = Vector2(gw, 0)
+	if tutorial_ghost_center_lbl:
+		tutorial_ghost_center_lbl.custom_minimum_size = Vector2(gw - 56.0, 0)
+	if tutorial_task_lbl:
+		tutorial_task_lbl.custom_minimum_size = Vector2(gw - 88.0, 0)
+	if is_instance_valid(tutorial_ghost_quill) and tutorial_ghost_quill.has_method("set_wrap_width"):
+		tutorial_ghost_quill.call("set_wrap_width", gw - 56.0)
+	if is_instance_valid(tutorial_ghost_quill) and tutorial_ghost_quill.has_method("get_preferred_height"):
+		var qh := float(tutorial_ghost_quill.call("get_preferred_height", gw - 56.0))
+		tutorial_ghost_quill.custom_minimum_size = Vector2(gw - 56.0, maxf(32.0, qh))
+	if is_centered_card:
+		tutorial_ghost_center_panel.anchor_left = 0.5
+		tutorial_ghost_center_panel.anchor_right = 0.5
+		tutorial_ghost_center_panel.anchor_top = 1.0
+		tutorial_ghost_center_panel.anchor_bottom = 1.0
+		tutorial_ghost_center_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		tutorial_ghost_center_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		tutorial_ghost_center_panel.offset_left = -310.0
+		tutorial_ghost_center_panel.offset_right = 310.0
+	else:
+		var mid_x := (left_edge + right_edge) * 0.5
+		tutorial_ghost_center_panel.anchor_left = 0.0
+		tutorial_ghost_center_panel.anchor_right = 0.0
+		tutorial_ghost_center_panel.anchor_top = 0.0
+		tutorial_ghost_center_panel.anchor_bottom = 0.0
+		tutorial_ghost_center_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		tutorial_ghost_center_panel.grow_vertical = Control.GROW_DIRECTION_END
+		tutorial_ghost_center_panel.offset_left = mid_x - gw * 0.5
+		tutorial_ghost_center_panel.offset_right = mid_x + gw * 0.5
+	tutorial_ghost_center_panel.size = Vector2(gw, 0)
+	tutorial_ghost_center_panel.reset_size()
+	var gh := maxf(68.0, tutorial_ghost_center_panel.get_combined_minimum_size().y)
+	if is_centered_card:
+		tutorial_ghost_center_panel.offset_bottom = -36.0 + float_y
+		tutorial_ghost_center_panel.offset_top = -36.0 - gh + float_y
+	else:
+		var mid_x2 := (left_edge + right_edge) * 0.5
+		tutorial_ghost_center_panel.offset_left = mid_x2 - gw * 0.5
+		tutorial_ghost_center_panel.offset_right = mid_x2 + gw * 0.5
+		tutorial_ghost_center_panel.offset_top = 14.0 + float_y
+		tutorial_ghost_center_panel.offset_bottom = 14.0 + gh + float_y
 
 func _apply_staged_tutorial_state(step: int, animate_magic: bool = true) -> void:
 	if hud_shop_btn:
@@ -6646,6 +6704,7 @@ func _apply_staged_tutorial_state(step: int, animate_magic: bool = true) -> void
 		if is_instance_valid(rival_hp_heart): rival_hp_heart.visible = not _is_cinematic_playing()
 		if round_counter_lbl: round_counter_lbl.visible = true
 		if settings_icon_btn: settings_icon_btn.visible = true
+		if card_guide_btn: card_guide_btn.visible = true
 		if is_instance_valid(view_toggle_btn): view_toggle_btn.visible = (not intro_animating) and (not _is_cinematic_playing())
 		if bottom_left_status_pill: bottom_left_status_pill.visible = true
 		if hud_root and hud_root.get_node_or_null("MapExitBtn"):
@@ -6681,6 +6740,7 @@ func _apply_staged_tutorial_state(step: int, animate_magic: bool = true) -> void
 	if rival_hud_grp: rival_hud_grp.visible = show_scores
 	if is_instance_valid(rival_hp_heart): rival_hp_heart.visible = show_hearts and (not _is_cinematic_playing())
 	if settings_icon_btn: settings_icon_btn.visible = show_hand
+	if card_guide_btn: card_guide_btn.visible = show_hand
 	if is_instance_valid(view_toggle_btn): view_toggle_btn.visible = show_hand and (not _is_cinematic_playing())
 	if bottom_left_status_pill: bottom_left_status_pill.visible = show_hand
 	if hud_root and hud_root.get_node_or_null("MapExitBtn"):
@@ -6701,7 +6761,8 @@ func _apply_staged_tutorial_state(step: int, animate_magic: bool = true) -> void
 		tutorial_ghost_center_panel.pivot_offset = tutorial_ghost_center_panel.size * 0.5
 		tutorial_ghost_center_panel.scale = Vector2.ONE
 		var is_centered_card := (step == 0 or step >= 8)
-		var gw := 620.0 if is_centered_card else 490.0
+		var vp_w: float = get_viewport().get_visible_rect().size.x if get_viewport() else 1366.0
+		var gw := 620.0 if is_centered_card else clampf((vp_w - 368.0 - 492.0) - 24.0, 410.0, 540.0)
 		tutorial_ghost_center_panel.custom_minimum_size = Vector2(gw, 0)
 		tutorial_ghost_center_lbl.custom_minimum_size = Vector2(gw - 48.0, 0)
 		if tutorial_step_badge_lbl:
@@ -6719,37 +6780,10 @@ func _apply_staged_tutorial_state(step: int, animate_magic: bool = true) -> void
 			tutorial_ghost_quill.call("set_wrap_width", gw - 48.0)
 		if animate_magic or tutorial_ghost_center_lbl.text != full_txt:
 			_start_handwriting_anim(tutorial_ghost_center_lbl, full_txt, 46.0, animate_magic)
-		if is_instance_valid(tutorial_ghost_quill) and tutorial_ghost_quill.has_method("get_preferred_height"):
-			var qh := float(tutorial_ghost_quill.call("get_preferred_height", gw - 48.0))
-			tutorial_ghost_quill.custom_minimum_size = Vector2(gw - 48.0, maxf(32.0, qh))
 		if tutorial_continue_btn:
 			tutorial_continue_btn.visible = bool(cp.get("show_btn", false))
 			tutorial_continue_btn.text = _tr(str(cp["btn_en"]), str(cp["btn_cs"]))
-		if is_centered_card:
-			tutorial_ghost_center_panel.anchor_top = 1.0
-			tutorial_ghost_center_panel.anchor_bottom = 1.0
-			tutorial_ghost_center_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
-			tutorial_ghost_center_panel.offset_left = -310
-			tutorial_ghost_center_panel.offset_right = 310
-			tutorial_ghost_center_panel.offset_top = -36
-			tutorial_ghost_center_panel.offset_bottom = -36
-		else:
-			tutorial_ghost_center_panel.anchor_top = 0.0
-			tutorial_ghost_center_panel.anchor_bottom = 0.0
-			tutorial_ghost_center_panel.grow_vertical = Control.GROW_DIRECTION_END
-			# 490px wide, clear of left Score Board (<=488px) and right Rival HUD (>=994px) at 1366x768
-			tutorial_ghost_center_panel.offset_left = -190
-			tutorial_ghost_center_panel.offset_right = 300
-			tutorial_ghost_center_panel.offset_top = 64
-			tutorial_ghost_center_panel.offset_bottom = 64
-		tutorial_ghost_center_panel.reset_size()
-		var gh := maxf(68.0, tutorial_ghost_center_panel.get_combined_minimum_size().y)
-		if is_centered_card:
-			tutorial_ghost_center_panel.offset_top = -36.0 - gh
-			tutorial_ghost_center_panel.offset_bottom = -36.0
-		else:
-			tutorial_ghost_center_panel.offset_top = 64.0
-			tutorial_ghost_center_panel.offset_bottom = 64.0 + gh
+		_layout_tutorial_ghost_center_panel(0.0)
 
 	if animate_magic:
 		if step == 1 and is_instance_valid(discard_pile_root):
@@ -7534,9 +7568,9 @@ func _setup_minimal_overlay_hud() -> void:
 	tutorial_skip_btn.anchor_top = 1.0
 	tutorial_skip_btn.anchor_right = 1.0
 	tutorial_skip_btn.anchor_bottom = 1.0
-	tutorial_skip_btn.offset_left = -208
+	tutorial_skip_btn.offset_left = -254
 	tutorial_skip_btn.offset_top = -54
-	tutorial_skip_btn.offset_right = -70
+	tutorial_skip_btn.offset_right = -116
 	tutorial_skip_btn.offset_bottom = -14
 	tutorial_skip_btn.visible = false
 	tutorial_skip_btn.add_theme_font_override("font", _get_font(false))
@@ -8137,6 +8171,33 @@ func _setup_minimal_overlay_hud() -> void:
 		emit_signal("open_options_requested")
 	)
 	hud_root.add_child(settings_icon_btn)
+
+	# BOTTOM-RIGHT: Clean Brass Tavern Card & Rules Guide Button (? / [F1])
+	card_guide_btn = Button.new()
+	card_guide_btn.name = "CardGuideBtn"
+	card_guide_btn.text = "?"
+	card_guide_btn.tooltip_text = _tr("Card & Rules Guide [F1]", "Průvodce kartami a pravidly [F1]")
+	card_guide_btn.anchor_left = 1.0
+	card_guide_btn.anchor_top = 1.0
+	card_guide_btn.anchor_right = 1.0
+	card_guide_btn.anchor_bottom = 1.0
+	card_guide_btn.offset_left = -108
+	card_guide_btn.offset_top = -56
+	card_guide_btn.offset_right = -64
+	card_guide_btn.offset_bottom = -12
+	card_guide_btn.add_theme_font_override("font", _get_font(true))
+	card_guide_btn.add_theme_font_size_override("font_size", 22)
+	card_guide_btn.add_theme_color_override("font_color", Color(0.98, 0.86, 0.46))
+	card_guide_btn.add_theme_color_override("font_hover_color", Color(1.0, 0.96, 0.72))
+	_style_action_button(card_guide_btn, Color(0.11, 0.085, 0.068, 0.96), Color(0.88, 0.68, 0.28), 22)
+	card_guide_btn.pressed.connect(func():
+		_toggle_card_guide_modal()
+	)
+	hud_root.add_child(card_guide_btn)
+
+	_setup_card_guide_modal()
+	if get_viewport() and not get_viewport().size_changed.is_connected(_on_battle_viewport_resized):
+		get_viewport().size_changed.connect(_on_battle_viewport_resized)
 
 	# BUCKSHOT TURN-START ITEM REVIEW BAR (Bottom-Center, clear of bottom-left Heart & YOUR TURN!)
 	item_review_bar = PanelContainer.new()
@@ -9560,6 +9621,8 @@ func _setup_tutorial_final_shed_card() -> void:
 	]
 
 func _advance_tutorial_to(next_step: int) -> void:
+	if stagger_callout_pill:
+		stagger_callout_pill.visible = false
 	tutorial_step = next_step
 	tutorial_substep = 0
 	_tutorial_action_done = ""
@@ -10539,17 +10602,7 @@ func _process(delta: float) -> void:
 		tutorial_arrow_overlay.queue_redraw()
 	if tutorial_ghost_center_panel and tutorial_ghost_center_panel.visible:
 		var float_y := roundf(sin(t * 2.6) * 3.5)
-		var gh := maxf(68.0, tutorial_ghost_center_panel.get_combined_minimum_size().y)
-		if tutorial_step == 0 or tutorial_step >= 8:
-			tutorial_ghost_center_panel.anchor_top = 1.0
-			tutorial_ghost_center_panel.anchor_bottom = 1.0
-			tutorial_ghost_center_panel.offset_bottom = -36.0 + float_y
-			tutorial_ghost_center_panel.offset_top = -36.0 - gh + float_y
-		else:
-			tutorial_ghost_center_panel.anchor_top = 0.0
-			tutorial_ghost_center_panel.anchor_bottom = 0.0
-			tutorial_ghost_center_panel.offset_top = 66.0 + float_y
-			tutorial_ghost_center_panel.offset_bottom = 66.0 + gh + float_y
+		_layout_tutorial_ghost_center_panel(float_y)
 		var hw_inf := _get_handwriting_progress(tutorial_ghost_center_lbl)
 		var pop_sc := 1.0 + float(hw_inf.get("pop", 0.0)) * 0.015 + tutorial_ghost_ok_flash * 0.03
 		tutorial_ghost_center_panel.pivot_offset = tutorial_ghost_center_panel.size * 0.5
@@ -11288,6 +11341,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			_battle_session_token += 1
 			victory_summary_overlay.visible = false
 			emit_signal("exit_to_map_requested")
+			get_viewport().set_input_as_handled()
+		return
+	if card_guide_modal and card_guide_modal.visible:
+		if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ESCAPE, KEY_F1]:
+			_toggle_card_guide_modal(false)
+			get_viewport().set_input_as_handled()
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F1:
+		if visible and not _is_cinematic_playing():
+			_toggle_card_guide_modal(true)
 			get_viewport().set_input_as_handled()
 		return
 	if not visible or suit_modal.visible or mist_guess_open or thief_heist_open:
@@ -15369,7 +15432,10 @@ func _draw_tutorial_arrow_overlay() -> void:
 				elif cam_view_mode == CameraViewMode.TABLE_ITEMS and is_instance_valid(player_sword_root):
 					var sp = _project_world_to_hud(player_sword_root.global_position + Vector3(0.0, 0.08, 0.0))
 					if sp is Vector2:
-						_draw_tutorial_callout_arrow(tutorial_arrow_overlay, sp, Vector2(-72.0, -68.0), _tr("Click 3D Sword", "Klikni na 3D Meč"), gold)
+						var vp_w := tutorial_arrow_overlay.size.x
+						var vp_h := tutorial_arrow_overlay.size.y
+						var clamped_sp := Vector2(clampf(sp.x, 120.0, vp_w - 130.0), clampf(sp.y, 90.0, vp_h - 80.0))
+						_draw_tutorial_callout_arrow(tutorial_arrow_overlay, clamped_sp, Vector2(-84.0, -68.0), _tr("Click 3D Sword", "Klikni na 3D Meč"), gold)
 			elif tutorial_substep == 2 and is_instance_valid(view_toggle_btn) and view_toggle_btn.visible:
 				var br2 := view_toggle_btn.get_global_rect()
 				_draw_tutorial_callout_arrow(tutorial_arrow_overlay, Vector2(br2.position.x + br2.size.x * 0.5, br2.position.y - 4.0), Vector2(0.0, -56.0), _tr("Back to Cards [TAB]", "Zpět ke kartám [TAB]"), emerald)
@@ -15381,8 +15447,8 @@ func _draw_tutorial_arrow_overlay() -> void:
 						_draw_tutorial_callout_arrow(tutorial_arrow_overlay, p_pts, Vector2(-24.0, -72.0), _tr("Suit & Value", "Hodnota karty"), emerald)
 					break
 			if player_hud_grp and player_hud_grp.visible:
-				var pr := player_hud_grp.get_global_rect()
-				_draw_tutorial_callout_arrow(tutorial_arrow_overlay, Vector2(pr.position.x + pr.size.x * 0.65, pr.end.y + 4.0), Vector2(20.0, 56.0), _tr("Chalice Score", "Body do Kalicha"), gold)
+				var chalice_center := player_hud_grp.global_position + Vector2(80.0, 84.0)
+				_draw_tutorial_callout_arrow(tutorial_arrow_overlay, chalice_center + Vector2(0.0, 44.0), Vector2(18.0, 52.0), _tr("Chalice Score", "Body do Kalicha"), gold)
 		3:
 			for i in range(mini(player_hand.size(), player_card_nodes.size())):
 				if str(player_hand[i].get("rank", "")) == "7" and is_instance_valid(player_card_nodes[i]):
@@ -15401,7 +15467,7 @@ func _draw_tutorial_arrow_overlay() -> void:
 					e_idx += 1
 			if combo_hud_grp and combo_hud_grp.visible:
 				var cr := combo_hud_grp.get_global_rect()
-				_draw_tutorial_callout_arrow(tutorial_arrow_overlay, Vector2(cr.position.x + cr.size.x * 0.5, cr.end.y + 4.0), Vector2(18.0, 54.0), _tr("Combo Formula", "Vzorec komba"), gold)
+				_draw_tutorial_callout_arrow(tutorial_arrow_overlay, Vector2(cr.position.x + cr.size.x * 0.5, cr.end.y + 4.0), Vector2(0.0, 54.0), _tr("Combo Formula", "Vzorec komba"), gold)
 		5:
 			var a_idx := 0
 			for i in range(mini(player_hand.size(), player_card_nodes.size())):
@@ -15413,7 +15479,10 @@ func _draw_tutorial_arrow_overlay() -> void:
 					a_idx += 1
 			if is_instance_valid(player_hp_heart) and player_hp_heart.visible:
 				var hr := player_hp_heart.get_global_rect()
-				_draw_tutorial_callout_arrow(tutorial_arrow_overlay, Vector2(hr.end.x + 4.0, hr.position.y + hr.size.y * 0.5), Vector2(76.0, 12.0), _tr("Your Heart (♥ HP)", "Tvoje srdce (♥ HP)"), crimson)
+				_draw_tutorial_callout_arrow(tutorial_arrow_overlay, Vector2(hr.end.x + 4.0, hr.position.y + hr.size.y * 0.5), Vector2(76.0, 0.0), _tr("Your Heart (♥ HP)", "Tvoje srdce (♥ HP)"), crimson)
+			if is_instance_valid(rival_hp_heart) and rival_hp_heart.visible:
+				var rhr := rival_hp_heart.get_global_rect()
+				_draw_tutorial_callout_arrow(tutorial_arrow_overlay, Vector2(rhr.position.x + rhr.size.x * 0.5, rhr.end.y + 4.0), Vector2(-24.0, 56.0), _tr("Rival Heart (♥ HP)", "Soupeřovo srdce (♥ HP)"), crimson)
 		6:
 			if tutorial_substep == 0:
 				for i in range(mini(player_hand.size(), player_card_nodes.size())):
@@ -15583,3 +15652,235 @@ func _check_battle_unlock_tips() -> void:
 				_try_show_unlock_tip("unlock_edition_merchant", "✦ MERCHANT EDITION CARD", "✦ EDICE KUPEC", "Merchant cards mine bonus Florins (Gold) when played so you can afford Forge upgrades!", "Karty Kupce těží bonusové Zlaťáky při zahrání pro nákupy v Kovárně!", Color(1.0, 0.84, 0.30))
 			"THIEF":
 				_try_show_unlock_tip("unlock_edition_thief", "✦ THIEF EDITION CARD", "✦ EDICE ZLODĚJ", "Thief cards siphon points or steal tempo directly from your Rival!", "Karty Zloděje kradou body nebo tempo přímo od soupeře!", Color(0.86, 0.48, 1.0))
+		var r := str(hc.get("rank", ""))
+		match r:
+			"9":
+				_try_show_unlock_tip("unlock_rank_9", "✦ NINE (9) — ARCANE CHARGE", "✦ DEVÍTKA (9) — MAGICKÉ NABITÍ", "Playing a 9 charges all Mage cards in your hand and grants +1 Redraw!", "Zahrání Devítky (9) nabije všechny karty Mága v ruce a přidá +1 Výměnu (Redraw)!", Color(0.44, 0.86, 1.0))
+			"10":
+				_try_show_unlock_tip("unlock_rank_10", "✦ TEN (10) — FLORIN MINT", "✦ DESÍTKA (10) — ZLAŤÁKOVÁ RAŽBA", "Playing a 10 mints +10 Gold (Florins) into your pouch for the Shop!", "Zahrání Desítky (10) ti přidá +10 Zlaťáků do měšce na nákupy v Obchodě!", Color(1.0, 0.84, 0.30))
+			"D":
+				_try_show_unlock_tip("unlock_rank_D", "✦ JACK (D) — GUARD SHIELD", "✦ SPODEK (D) — OCHRANNÝ ŠTÍT", "Playing a Jack (D) grants +1 Guard Shield that blocks incoming ♥ HP damage!", "Zahrání Spodka (D) přidá +1 Ochranný štít, který vykryje příchozí zranění ♥ HP!", Color(0.72, 0.88, 1.0))
+			"H":
+				_try_show_unlock_tip("unlock_rank_H", "✦ QUEEN (H) — WILD SUIT", "✦ SVRŠEK (H) — ZMĚNA BARVY", "Queen (H) is Wild! Play it on any card (except an unblocked 7) to choose the new active Suit.", "Svršek (H) je žolík! Zahraj ho na cokoliv (mimo neblokované 7) a zvol novou barvu.", Color(0.96, 0.56, 0.92))
+			"K":
+				_try_show_unlock_tip("unlock_rank_K", "✦ KING (K) — KING CHALLENGE", "✦ KRÁL (K) — KRÁLOVSKÁ VÝZVA", "Playing a King (K) launches a King Challenge dealing 1–3 ♥ HP damage to your Rival!", "Zahrání Krále (K) spustí Královskou výzvu za 1–3 ♥ HP poškození soupeři!", Color(1.0, 0.44, 0.36))
+			"E":
+				_try_show_unlock_tip("unlock_rank_E_triple", "✦ TRIPLE ACE — INSTANT KILL!", "✦ 3× ESO — OKAMŽITÁ SMRT!", "Stack 3 Aces (E) in one combo for an Instant Kill! In Multiplayer, it kills your chosen target!", "Spoj 3 Esa (E) do jednoho komba pro Okamžitou smrt! V Multiplayeru zabije zvoleného soupeře!", Color(1.0, 0.32, 0.36))
+
+func _on_battle_viewport_resized() -> void:
+	_layout_tutorial_ghost_center_panel(0.0)
+	if is_instance_valid(card_guide_modal) and card_guide_modal.visible:
+		_layout_card_guide_panel()
+
+func _layout_card_guide_panel() -> void:
+	if not is_instance_valid(card_guide_modal):
+		return
+	var panel := card_guide_modal.get_node_or_null("CardGuidePanel") as PanelContainer
+	if not panel:
+		return
+	var vp_sz := get_viewport().get_visible_rect().size if get_viewport() else Vector2(1366, 768)
+	var pw := clampf(vp_sz.x - 80.0, 520.0, 780.0)
+	var ph := clampf(vp_sz.y - 72.0, 420.0, 620.0)
+	panel.offset_left = -pw * 0.5
+	panel.offset_right = pw * 0.5
+	panel.offset_top = -ph * 0.5
+	panel.offset_bottom = ph * 0.5
+
+func _setup_card_guide_modal() -> void:
+	card_guide_modal = Control.new()
+	card_guide_modal.name = "CardGuideModal"
+	card_guide_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
+	card_guide_modal.z_index = 45
+	card_guide_modal.mouse_filter = Control.MOUSE_FILTER_STOP
+	card_guide_modal.visible = false
+
+	var backdrop := ColorRect.new()
+	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop.color = Color(0.02, 0.015, 0.012, 0.72)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	backdrop.gui_input.connect(func(ev: InputEvent):
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
+			_toggle_card_guide_modal(false)
+			get_viewport().set_input_as_handled()
+	)
+	card_guide_modal.add_child(backdrop)
+
+	var panel := PanelContainer.new()
+	panel.name = "CardGuidePanel"
+	panel.anchor_left = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_bottom = 0.5
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.075, 0.058, 0.046, 0.98)
+	sb.border_color = Color(0.88, 0.70, 0.32, 0.96)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(16)
+	sb.shadow_color = Color(0.0, 0.0, 0.0, 0.75)
+	sb.shadow_size = 18
+	sb.content_margin_left = 20
+	sb.content_margin_right = 20
+	sb.content_margin_top = 16
+	sb.content_margin_bottom = 18
+	panel.add_theme_stylebox_override("panel", sb)
+	card_guide_modal.add_child(panel)
+
+	var root_vb := VBoxContainer.new()
+	root_vb.add_theme_constant_override("separation", 12)
+	panel.add_child(root_vb)
+
+	var hdr := HBoxContainer.new()
+	hdr.add_theme_constant_override("separation", 10)
+	root_vb.add_child(hdr)
+
+	card_guide_title_lbl = Label.new()
+	card_guide_title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card_guide_title_lbl.add_theme_font_override("font", _get_font(true))
+	card_guide_title_lbl.add_theme_font_size_override("font_size", 20)
+	card_guide_title_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.44))
+	hdr.add_child(card_guide_title_lbl)
+
+	var close_btn := Button.new()
+	close_btn.text = "✕"
+	close_btn.custom_minimum_size = Vector2(36, 36)
+	close_btn.add_theme_font_override("font", _get_font(true))
+	close_btn.add_theme_font_size_override("font_size", 18)
+	close_btn.add_theme_color_override("font_color", Color(0.98, 0.86, 0.50))
+	_style_action_button(close_btn, Color(0.14, 0.09, 0.07, 0.96), Color(0.88, 0.68, 0.28), 10)
+	close_btn.pressed.connect(func():
+		_toggle_card_guide_modal(false)
+	)
+	hdr.add_child(close_btn)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	root_vb.add_child(scroll)
+
+	card_guide_scroll_vb = VBoxContainer.new()
+	card_guide_scroll_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card_guide_scroll_vb.add_theme_constant_override("separation", 14)
+	scroll.add_child(card_guide_scroll_vb)
+
+	hud_root.add_child(card_guide_modal)
+
+func _add_guide_section_header(parent_vb: VBoxContainer, title_txt: String, accent: Color) -> void:
+	var lbl := Label.new()
+	lbl.text = title_txt
+	lbl.add_theme_font_override("font", _get_font(true))
+	lbl.add_theme_font_size_override("font_size", 16)
+	lbl.add_theme_color_override("font_color", accent)
+	parent_vb.add_child(lbl)
+
+func _add_guide_row(parent_vb: VBoxContainer, badge_txt: String, desc_txt: String, badge_col: Color) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	parent_vb.add_child(row)
+
+	var pill := PanelContainer.new()
+	pill.custom_minimum_size = Vector2(128, 0)
+	var psb := StyleBoxFlat.new()
+	psb.bg_color = Color(badge_col.r * 0.22, badge_col.g * 0.22, badge_col.b * 0.22, 0.92)
+	psb.border_color = Color(badge_col.r, badge_col.g, badge_col.b, 0.72)
+	psb.set_border_width_all(1)
+	psb.set_corner_radius_all(6)
+	psb.content_margin_left = 8; psb.content_margin_right = 8
+	psb.content_margin_top = 4; psb.content_margin_bottom = 4
+	pill.add_theme_stylebox_override("panel", psb)
+	row.add_child(pill)
+
+	var blbl := Label.new()
+	blbl.text = badge_txt
+	blbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	blbl.add_theme_font_override("font", _get_font(true))
+	blbl.add_theme_font_size_override("font_size", 13)
+	blbl.add_theme_color_override("font_color", badge_col)
+	pill.add_child(blbl)
+
+	var dlbl := Label.new()
+	dlbl.text = desc_txt
+	dlbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dlbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	dlbl.add_theme_font_override("font", _get_font(false))
+	dlbl.add_theme_font_size_override("font_size", 13)
+	dlbl.add_theme_color_override("font_color", Color(0.94, 0.90, 0.82))
+	row.add_child(dlbl)
+
+func _populate_card_guide_modal() -> void:
+	if not is_instance_valid(card_guide_scroll_vb):
+		return
+	for ch in card_guide_scroll_vb.get_children():
+		ch.queue_free()
+	if card_guide_title_lbl:
+		card_guide_title_lbl.text = _tr("✦ CARD & RULES GUIDE  [F1 / ESC]", "✦ PRŮVODCE KARTAMI A PRAVIDLY  [F1 / ESC]")
+
+	# 1. WIN CONDITIONS
+	_add_guide_section_header(card_guide_scroll_vb, _tr("1. WIN CONDITIONS (3 WAYS TO WIN)", "1. PODMÍNKY VÝHRY (3 CESTY K VÍTĚZSTVÍ)"), Color(1.0, 0.84, 0.34))
+	_add_guide_row(card_guide_scroll_vb, _tr("0 ♥ HP", "0 ♥ HP"), _tr("Drain Rival's 3D Heart to 0 HP using Kings (1–3 HP), Aces (1/4 HP), or Special Power Cards.", "Sraz soupeřovo 3D Srdce na 0 HP pomocí Králů (1–3 HP), Es (1/4 HP) nebo Mocných karet."), Color(1.0, 0.42, 0.44))
+	_add_guide_row(card_guide_scroll_vb, _tr("Chalice Goal", "Cíl Kalicha"), _tr("Reach the target Chalice Score (currently %d pts) by chaining combos & settling turn points." % target_score, "Dosáhni bodového Cíle Kalicha (aktuálně %d b.) řetězením komb a sčítáním bodů." % target_score), Color(0.42, 0.96, 0.72))
+	_add_guide_row(card_guide_scroll_vb, _tr("3× Aces KILL", "3× Eso SMRT"), _tr("Play 3 Aces (E) in one combo for an INSTANT KILL! In Multiplayer, kills your chosen target.", "Zahraj 3 Esa (E) v jednom kombu pro OKAMŽITOU SMRT! V Multiplayeru zabije zvolený cíl."), Color(1.0, 0.32, 0.36))
+
+	# 2. ALL 8 RANKS & 4 CLASSES
+	_add_guide_section_header(card_guide_scroll_vb, _tr("2. ALL 8 RANKS & 4 CARD CLASSES", "2. VŠECH 8 HODNOT A 4 TŘÍDY KARET"), Color(0.42, 0.90, 1.0))
+	var rank_rows := [
+		["7", _tr("Forces Rival to draw +2 cards & awards 3× points if unblocked.", "Soupeř líže +2 karty a získáš 3× body, pokud ji neblokuje."), Color(0.36, 0.92, 1.0)],
+		["8", _tr("Infinite Chain (∞): stack any number of 8s together in one Combo.", "Nekonečné řetězení (∞): spoj libovolný počet Osmiček do komba."), Color(0.98, 0.56, 0.92)],
+		["9", _tr("Charges all Mage cards in your hand & grants +1 Redraw.", "Nabije všechny karty Mága v ruce a přidá +1 Výměnu (Redraw)."), Color(0.44, 0.86, 1.0)],
+		["10", _tr("Mints +10 Gold (Florins) into your pouch for the Peddler's Shop.", "Přidá +10 Zlaťáků do měšce na nákupy v Kupeckém obchodě."), Color(1.0, 0.84, 0.30)],
+		["D (Jack)", _tr("Grants +1 Guard Shield that blocks incoming ♥ HP damage.", "Přidá +1 Ochranný štít, který vykryje příchozí zranění ♥ HP."), Color(0.74, 0.88, 1.0)],
+		["H (Queen)", _tr("Wild Suit: play on anything (except unblocked 7) to pick a new Suit.", "Změna barvy: lze hrát na cokoliv (mimo neblokované 7) a zvolit barvu."), Color(0.96, 0.56, 0.92)],
+		["K (King)", _tr("Triggers a King Challenge dealing 1–3 ♥ HP damage to Rival.", "Spustí Královskou výzvu za 1–3 ♥ HP poškození soupeři."), Color(1.0, 0.44, 0.36)],
+		["E (Ace)", _tr("Stack up to 3 Aces: 1× = 1 HP + Stun, 2× = 4 HP + Stun, 3× = Instant Kill!", "Až 3 Esa v kombu: 1× = 1 HP + Stopka, 2× = 4 HP + Stopka, 3× = Okamžitá smrt!"), Color(1.0, 0.34, 0.38)],
+	]
+	for rr in rank_rows:
+		_add_guide_row(card_guide_scroll_vb, str(rr[0]), str(rr[1]), rr[2])
+
+	var class_rows := [
+		[_tr("Mage", "Mág"), _tr("Charges up while held in hand to amplify points & effects.", "Nabíjí se držením v ruce pro silnější body a efekty."), Color(0.42, 0.84, 1.0)],
+		[_tr("Knight", "Rytíř"), _tr("Grants protective Shields and armored defense.", "Poskytuje ochranné Štíty a obrněnou obranu."), Color(0.74, 0.86, 1.0)],
+		[_tr("Merchant", "Kupec"), _tr("Mines bonus Gold (Florins) for Shop & Forge upgrades.", "Těží bonusové Zlaťáky pro nákupy v Obchodě a Kovárně."), Color(1.0, 0.84, 0.30)],
+		[_tr("Thief", "Zloděj"), _tr("Siphons points or steals tempo directly from your Rival.", "Krade body nebo tempo přímo od soupeře."), Color(0.86, 0.48, 1.0)],
+	]
+	for cr in class_rows:
+		_add_guide_row(card_guide_scroll_vb, str(cr[0]), str(cr[1]), cr[2])
+
+	# 3. YOUR CURRENT SPECIAL POWER CARDS & ACTIVE RELICS
+	_add_guide_section_header(card_guide_scroll_vb, _tr("3. YOUR SPECIAL POWER CARDS & ACTIVE RELICS", "3. TVOJE MOCNÉ KARTY A AKTIVNÍ RELIKVIE"), Color(0.98, 0.62, 0.38))
+	var seen_powers: Dictionary = {}
+	var power_ids: Array = []
+	for src_arr in [player_hand, deck, discard_pile, run_custom_cards]:
+		if src_arr is Array:
+			for item in src_arr:
+				var pid := str(item.get("power_id", "")) if item is Dictionary else str(item)
+				if pid != "" and not seen_powers.has(pid):
+					seen_powers[pid] = true
+					power_ids.append(pid)
+	for pid in power_ids:
+		var pc := Catalog.get_power_card_loc(str(pid), opts_language)
+		if not pc.is_empty():
+			var p_desc := str(pc.get("desc", pc.get("power_line", "")))
+			_add_guide_row(card_guide_scroll_vb, str(pc.get("name", pid)), p_desc, Color(1.0, 0.48, 0.60))
+
+	for rid in run_active_relics:
+		var r_info := Catalog.get_relic_loc(str(rid), opts_language)
+		if not r_info.is_empty():
+			_add_guide_row(card_guide_scroll_vb, str(r_info.get("name", rid)), str(r_info.get("desc", "")), Color(0.96, 0.82, 0.38))
+
+	for tid in run_table_relics:
+		var t_info := Catalog.get_table_relic_loc(str(tid), opts_language)
+		if not t_info.is_empty():
+			_add_guide_row(card_guide_scroll_vb, str(t_info.get("name", tid)), str(t_info.get("desc", "")), Color(0.46, 0.88, 1.0))
+
+	if power_ids.is_empty() and run_active_relics.is_empty() and run_table_relics.is_empty():
+		_add_guide_row(card_guide_scroll_vb, _tr("None yet", "Zatím žádné"), _tr("Visit the Peddler's Shop (every 3rd round) to buy Special Cards & Relics!", "Navštiv Kupecký obchod (každé 3. kolo) pro nákup Mocných karet a Relikvií!"), Color(0.68, 0.64, 0.58))
+
+func _toggle_card_guide_modal(force_state: Variant = null) -> void:
+	if not is_instance_valid(card_guide_modal):
+		return
+	var next_vis: bool = (not card_guide_modal.visible) if force_state == null else bool(force_state)
+	if next_vis:
+		_populate_card_guide_modal()
+		_layout_card_guide_panel()
+	card_guide_modal.visible = next_vis
+	emit_signal("play_sfx_requested", "ui_click")
