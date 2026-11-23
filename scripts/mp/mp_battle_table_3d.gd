@@ -145,7 +145,7 @@ func _process(delta: float) -> void:
 		_cam_blend = lerpf(_cam_blend, 1.0 if use_top_down else 0.0, clampf(delta * 6.5, 0.0, 1.0))
 		var base_pos := Vector3(0.0, 2.55, 1.12).lerp(Vector3(0.0, 2.95, 0.50), _cam_blend)
 		var base_pitch := lerpf(-56.0, -76.0, _cam_blend)
-		var base_fov := lerpf(52.0, 56.0, _cam_blend)
+		var base_fov := lerpf(68.0, 72.0, _cam_blend)
 		var sh := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0.0) * cam_kick_shake * 0.025
 		cam.position = base_pos + cam_spring.pos_offset + sh
 		cam.rotation_degrees = Vector3(base_pitch + cam_spring.get_pitch_kick(), 0.0, cam_spring.rot_offset_deg.z)

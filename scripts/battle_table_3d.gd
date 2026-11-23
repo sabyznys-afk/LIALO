@@ -230,8 +230,8 @@ var wager_showcase_boost: float = 0.0
 var key_hint_lbl: Label
 
 # Celé 3D karty v ruke jasne čitateľné nad stolom + [SPACE] náhľad (~12% horný okraj dole)
-const HAND_POS_UP := Vector3(0.0, 1.356, 0.818)
-const HAND_ROT_UP := Vector3(-42.0, 0.0, 0.0)
+const HAND_POS_UP := Vector3(0.0, 1.50, 0.91)
+const HAND_ROT_UP := Vector3(-44.0, 0.0, 0.0)
 const HAND_POS_TUCKED := Vector3(0.0, 0.85, 1.35)
 const HAND_ROT_TUCKED := Vector3(-56.0, 0.0, 0.0)
 
@@ -3914,7 +3914,7 @@ func _setup_player_camera_and_3d_hands() -> void:
 	cam = Camera3D.new()
 	cam.position = Vector3(0.0, 1.66, 1.52)
 	cam.rotation_degrees = base_cam_rot
-	cam.fov = 56.0
+	cam.fov = 72.0
 	add_child(cam)
 
 	# Viditeľné 3D Telo sediaceho hráča (umiestnené priamo POD kamerou: pri normálnom pohľade nevidno, viditeľné až pri sklopení pohľadu nadol!)
@@ -8981,7 +8981,7 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 	# Cinematic entrance: player steps into the storm-lit tavern & sits at the table
 	prev_hovered_idx = -1
 	cam_kick_shake = 0.0
-	cam.fov = 56.0
+	cam.fov = 72.0
 	cam.position = Vector3(-0.82, 2.38, 3.05)
 	cam.rotation_degrees = Vector3(-16.0, 22.0, 0.0)
 	player_hand_anchor.position = HAND_POS_TUCKED + Vector3(0.0, -0.32, 0.16)
@@ -10271,7 +10271,7 @@ func _process(delta: float) -> void:
 			var target_pitch := 1.0 if is_ghost_closeup else (-26.0 if is_rival_items_view else (-76.0 if is_top_down_view else -54.0))
 			var target_yaw := 44.0 if is_ghost_closeup else 0.0
 			var target_cam_pos := Vector3(-0.32, 1.50, 0.76) if is_ghost_closeup else (Vector3(0.0, 1.54, 1.04) if is_rival_items_view else (Vector3(0.0, 2.75, 0.45) if is_top_down_view else Vector3(0.0, 2.28, 1.18)))
-			var target_fov := 50.0 if is_ghost_closeup else (52.0 if is_rival_items_view else 56.0)
+			var target_fov := 62.0 if is_ghost_closeup else (64.0 if is_rival_items_view else 72.0)
 			cam.position = cam.position.lerp(target_cam_pos, 9.0 * delta)
 			cam.fov = lerpf(base_fov, target_fov, 8.5 * delta) + next_fov_kick
 			cam.rotation_degrees.x = lerpf(base_pitch, target_pitch, 10.0 * delta) + next_pitch_kick
