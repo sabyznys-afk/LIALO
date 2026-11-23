@@ -243,7 +243,12 @@ func _attach_subtle_outline(node: Node, thickness: float = 0.004) -> void:
 		var cur: Node = stack.pop_back()
 		if cur is MeshInstance3D:
 			var mi := cur as MeshInstance3D
-			if mi.mesh != null:
+			if mi.material_override != null:
+				var dup := mi.material_override.duplicate() as Material
+				if dup != null:
+					dup.next_pass = out_mat
+					mi.material_override = dup
+			elif mi.mesh != null:
 				for si in range(mi.mesh.get_surface_count()):
 					var m := mi.get_active_material(si)
 					if m != null:
