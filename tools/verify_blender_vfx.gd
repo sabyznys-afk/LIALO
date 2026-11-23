@@ -179,7 +179,7 @@ func _run_tests() -> void:
 				_fail("Expected stagger_eq_mult_lbl.text == '1.8', got '%s'" % bt.stagger_eq_mult_lbl.text)
 			if bt.stagger_callout_pill.position.x < 490.0:
 				_fail("stagger_callout_pill overlaps left player_hud_grp: x=%.1f" % bt.stagger_callout_pill.position.x)
-		var sig_cards: Array[Dictionary] = [{"rank": "7", "suit": "CERVEN", "edition": "NORMAL"}]
+		var sig_cards: Array[Dictionary] = [{"rank": "7", "suit": "CERVEN", "edition": "MAGE"}]
 		bt._spawn_signature_play_vfx(sig_cards, bt.discard_pile_root.global_position, 2)
 		bt.player_score = 50
 		bt.puf_charges = 2
