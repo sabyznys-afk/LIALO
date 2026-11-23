@@ -996,7 +996,26 @@ static func get_default_profile() -> Dictionary:
 		"unlocked_swords": ["SWORD_IRON"],
 		"equipped_sword": "SWORD_IRON",
 		"unlocked_cards": DEFAULT_UNLOCKED_CARDS.duplicate(),
+		"seen_unlock_tips": [],
 	}
+
+static func has_seen_unlock_tip(prof: Dictionary, tip_id: String) -> bool:
+	if tip_id == "":
+		return true
+	var tips = prof.get("seen_unlock_tips", [])
+	if tips is Array:
+		return tip_id in tips
+	return false
+
+static func mark_unlock_tip_seen(prof: Dictionary, tip_id: String) -> void:
+	if tip_id == "":
+		return
+	var raw_tips = prof.get("seen_unlock_tips", [])
+	var tips: Array = raw_tips if raw_tips is Array else []
+	if not (tip_id in tips):
+		tips.append(tip_id)
+		prof["seen_unlock_tips"] = tips
+		save_profile(prof)
 
 static func unlock_card(prof: Dictionary, card_key: String) -> bool:
 	var ul: Array = prof.get("unlocked_cards", DEFAULT_UNLOCKED_CARDS.duplicate())
@@ -1108,6 +1127,16 @@ static func sanitize_profile(prof: Dictionary) -> Dictionary:
 			clean_ce[ck] = normalize_card_class(str(raw_ce[ck_v]))
 		prof["card_editions"] = clean_ce
 
+	# Sanitize seen_unlock_tips as Array of unique non-empty Strings
+	var raw_sut = prof.get("seen_unlock_tips", [])
+	var clean_sut: Array = []
+	if raw_sut is Array:
+		for tip_v in raw_sut:
+			var tid_s := str(tip_v).strip_edges()
+			if tid_s != "" and not (tid_s in clean_sut):
+				clean_sut.append(tid_s)
+	prof["seen_unlock_tips"] = clean_sut
+
 	prof.erase("prism_pts_bonus")
 	return prof
 
@@ -1172,6 +1201,9 @@ static func load_profile() -> Dictionary:
 	var uc = cfg.get_value("collection", "unlocked_cards", prof["unlocked_cards"])
 	if uc is Array and not uc.is_empty():
 		prof["unlocked_cards"] = uc
+	var sut = cfg.get_value("collection", "seen_unlock_tips", prof["seen_unlock_tips"])
+	if sut is Array:
+		prof["seen_unlock_tips"] = sut
 	return sanitize_profile(prof)
 
 static func save_profile(prof: Dictionary) -> void:
@@ -1200,6 +1232,7 @@ static func save_profile(prof: Dictionary) -> void:
 	cfg.set_value("gear", "unlocked_swords", prof.get("unlocked_swords", ["SWORD_IRON"]))
 	cfg.set_value("gear", "equipped_sword", str(prof.get("equipped_sword", "SWORD_IRON")))
 	cfg.set_value("collection", "unlocked_cards", prof.get("unlocked_cards", DEFAULT_UNLOCKED_CARDS))
+	cfg.set_value("collection", "seen_unlock_tips", prof.get("seen_unlock_tips", []))
 	cfg.save(PROFILE_PATH)
 
 static func generate_shop_offers(_prof: Dictionary, lang: String = "en") -> Array[Dictionary]:

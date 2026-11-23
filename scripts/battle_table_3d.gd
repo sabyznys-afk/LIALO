@@ -299,6 +299,18 @@ var player_deck_data: Dictionary = {}
 var tutorial_mode: bool = false
 var tutorial_step: int = 0
 var tutorial_turns_left: int = 3
+var tutorial_step_badge_pill: PanelContainer
+var tutorial_step_badge_lbl: Label
+var tutorial_task_pill: PanelContainer
+var tutorial_task_lbl: Label
+var tutorial_arrow_overlay: Control
+var unlock_tip_panel: PanelContainer
+var unlock_tip_title_lbl: Label
+var unlock_tip_body_lbl: Label
+var unlock_tip_btn: Button
+var _active_unlock_tip_id: String = ""
+var _unlock_tip_queue: Array[Dictionary] = []
+var active_run_profile: Dictionary = {}
 var cards_points_revealed: bool = true
 var abilities_revealed: bool = true
 var hud_score_revealed: bool = true
@@ -639,7 +651,9 @@ func _is_cinematic_playing() -> bool:
 	return is_instance_valid(cinematic_director) and bool(cinematic_director.call("is_playing"))
 
 func _can_change_opening_wager() -> bool:
-	return (not tutorial_mode) and (not opening_turn_committed) and current_round_num == 1 and (not busy_animating) and (not intro_animating) and (not peddler_open) and (not shop_gate_open) and (not _is_cinematic_playing())
+	if tutorial_mode:
+		return tutorial_step == 1 and tutorial_substep >= 1 and (not busy_animating) and (not intro_animating)
+	return (not opening_turn_committed) and current_round_num == 1 and (not busy_animating) and (not intro_animating) and (not peddler_open) and (not shop_gate_open) and (not _is_cinematic_playing())
 
 func _cycle_opening_wager() -> void:
 	if not _can_change_opening_wager():
@@ -692,11 +706,11 @@ func _refresh_wager_indicator_ui() -> void:
 	)
 
 func _sync_heartbeat_hp_displays(animate_change: bool = true) -> void:
-	var show_player_hp := (hud_score_revealed or (not tutorial_mode)) and (not _is_cinematic_playing())
+	var show_player_hp := ((not tutorial_mode) or tutorial_step >= 5) and (not _is_cinematic_playing())
 	if is_instance_valid(player_hp_heart):
 		player_hp_heart.visible = show_player_hp
 		player_hp_heart.call("set_hp_with_status", player_hp, player_max_hp, player_shields, "", animate_change)
-	var show_rival_hp := ((rival_hud_grp != null and rival_hud_grp.visible) or (not tutorial_mode)) and (not _is_cinematic_playing())
+	var show_rival_hp := ((not tutorial_mode) or tutorial_step >= 5) and (not _is_cinematic_playing())
 	if is_instance_valid(rival_hp_heart):
 		rival_hp_heart.visible = show_rival_hp
 		var r_tag := ("🔥%d" % rival_burn_turns) if rival_burn_turns > 0 else (("☠%d" % rival_poison_turns) if rival_poison_turns > 0 else "")
@@ -753,6 +767,12 @@ func toggle_camera_view_mode(play_fx: bool = true) -> void:
 	turn_glance_timer = 0.0
 	var next_mode := CameraViewMode.CARDS if cam_view_mode == CameraViewMode.TABLE_ITEMS else CameraViewMode.TABLE_ITEMS
 	set_camera_view_mode(next_mode, play_fx)
+	if tutorial_mode and tutorial_step == 1:
+		if tutorial_substep == 1 and next_mode == CameraViewMode.TABLE_ITEMS:
+			_update_tutorial_callout_ui(1, false)
+		elif tutorial_substep == 2 and next_mode == CameraViewMode.CARDS:
+			_trigger_ghost_ok_flash()
+			_advance_tutorial_to(2)
 
 func _player_has_any_playable_card() -> bool:
 	for c in player_hand:
@@ -768,7 +788,7 @@ func _begin_player_item_review_stage(play_fx: bool = true) -> void:
 	staged_card_indices.clear()
 	is_player_turn = true
 	busy_animating = false
-	if tutorial_mode and tutorial_step < 5:
+	if tutorial_mode and tutorial_step < 7:
 		turn_stage = TurnStage.CARD_PLAY
 		set_camera_view_mode(CameraViewMode.CARDS, false)
 		return
@@ -6407,47 +6427,113 @@ func _trigger_ghost_ok_flash() -> void:
 		Fx.burst(self, tutorial_ghost_3d.global_position + Vector3(0.0, 0.56, 0.14), Color(0.36, 1.0, 0.62), 20, 0.95, 0.55, 0.032, 0.4, true, 160.0)
 		Fx.float_number(self, tutorial_ghost_3d.global_position + Vector3(0.0, 0.78, 0.12), "✓ OK!", Color(0.42, 1.0, 0.66), 72, 0.24, 0.85, 1.55)
 
-func _get_tutorial_ghost_copy(step: int, _sub: int = 0) -> Dictionary:
+func _get_tutorial_ghost_copy(step: int, sub: int = 0) -> Dictionary:
 	match step:
 		0:
 			return {
-				"en": "Hey! Welcome to LIALO — tavern card duels with special powers & high-stakes bets.",
-				"cs": "Čau! Vítej v LIALU — hospodské Prší se silami karet.",
+				"en": "Hey! Welcome to LIALO — high-stakes tavern card duels of wit and blade. I'm Spirko, the tavern ghost, and I'll teach you every trick!",
+				"cs": "Čau! Vítej v LIALU — krčmových karetních soubojích na život a na smrt. Jsem Spirko, duch této krčmy, a naučím tě všechny triky!",
+				"task_en": "", "task_cs": "",
 				"btn_en": "Start Learning [SPACE] ▸", "btn_cs": "Jdeme na to [SPACE] ▸",
 				"show_btn": true,
 			}
 		1:
-			return {
-				"en": "Core rule: match the Suit or Rank on top.\nTASK: Play any glowing card from your hand!",
-				"cs": "Základ Prší: hoď stejnou Barvu nebo Hodnotu.\nÚKOL: Zahraj jakoukoli svítící kartu z ruky!",
-				"btn_en": "Next", "btn_cs": "Dál",
-				"show_btn": false,
-			}
+			if sub == 0:
+				return {
+					"en": "Before Turn 1, you can Veto a bad opening hand once or decline the duel.",
+					"cs": "Před 1. tahem můžeš 1× vyměnit špatnou ruku (Veto) nebo duel odmítnout.",
+					"task_en": "TASK: Press [V] (or click ⚖ Veto Hand) to deal 5 fresh cards!",
+					"task_cs": "ÚKOL: Stiskni [V] (nebo klikni na ⚖ Vetovat karty) pro novou ruku!",
+					"btn_en": "Next", "btn_cs": "Dál",
+					"show_btn": false,
+				}
+			elif sub == 1:
+				return {
+					"en": "✓ OK! Press [TAB] or [SPACE] anytime to switch between Cards and 3D Table Items.",
+					"cs": "✓ OK! Klávesou [TAB] nebo [SPACE] kdykoliv přepneš mezi Kartami a 3D Stolem.",
+					"task_en": "TASK: Toggle to 3D Table [TAB] and click your 3D SWORD to stake it!",
+					"task_cs": "ÚKOL: Přepni na 3D Stůl [TAB] a klikni na svůj 3D MEČ pro sázku!",
+					"btn_en": "Next", "btn_cs": "Dál",
+					"show_btn": false,
+				}
+			else:
+				return {
+					"en": "✓ OK! Blood Oath Sword staked (+100g on victory)!",
+					"cs": "✓ OK! Krvavá přísaha meče je vsazena (+100g při výhře)!",
+					"task_en": "TASK: Press [TAB] or [SPACE] again to return to your 3D cards!",
+					"task_cs": "ÚKOL: Stiskni znovu [TAB] nebo [SPACE] a vrať se ke svým kartám!",
+					"btn_en": "Next", "btn_cs": "Dál",
+					"show_btn": false,
+				}
 		2:
 			return {
-				"en": "✓ OK! Seven (7) gives +2 cards (3× points if Rival has no 7)!\nTASK: Play your glowing Seven (7) now!",
-				"cs": "✓ OK! Sedmička (7) dává +2 karty (3× body, když soupeř nemá 7)!\nÚKOL: Hoď teď svou svítící Sedmičku (7)!",
+				"en": "Match the active Suit (♥/●/♠/♣) or Rank. Turn points settle together into the Chalice.",
+				"cs": "Základ Prší: hoď stejnou Barvu (♥/●/♠/♣) nebo Hodnotu. Body tahu se slijí do Kalicha.",
+				"task_en": "TASK: Play your glowing ♥ Ten from hand (click or press [W])!",
+				"task_cs": "ÚKOL: Zahraj svítící ♥ Desítku z ruky (klikem nebo klávesou [W])!",
 				"btn_en": "Next", "btn_cs": "Dál",
 				"show_btn": false,
 			}
 		3:
 			return {
-				"en": "✓ OK! 8 (∞) stacks more! Queen=Suit • Ace=Stun+DMG • King=Curse.\nTASK: Click both Eights (8) to play a 2× Combo!",
-				"cs": "✓ OK! Osma (∞) jde dát víckrát! Svršek=barva • Eso=omráčí • Král=kletba.\nÚKOL: Naklikej obě Osmičky (8) a zahraj je spolu!",
+				"en": "✓ OK! Seven (7) forces +2 draw & 3× POINTS (21 pts)! Queen (H) shifts Suit.",
+				"cs": "✓ OK! Sedmička (7) dává +2 karty a 3× BODY (21 b.)! Svršek (H) mění Barvu.",
+				"task_en": "TASK: Play your glowing ♥ Seven (7) now!",
+				"task_cs": "ÚKOL: Zahraj teď svou svítící ♥ Sedmičku (7)!",
 				"btn_en": "Next", "btn_cs": "Dál",
 				"show_btn": false,
 			}
 		4:
 			return {
-				"en": "✓ OK! Red Phial burns Rival, Shop opens every 3 rounds.\nFINAL TASK: Empty all 3 cards to win 1 Round!",
-				"cs": "✓ OK! Ohnivá baňka pálí soupeře, Obchod je každé 3. kolo.\nPOSLEDNÍ ÚKOL: Zbav se všech 3 karet a vyhraj 1 kolo!",
+				"en": "✓ OK! Only Eights (8 ∞) or up to 3 Aces can be chained into a Combo!",
+				"cs": "✓ OK! Řetězit do komba lze jen Osmičky (8 ∞) nebo max. 3 Esa najednou!",
+				"task_en": "TASK: Right-click [RMB] both Eights (8) and slam a 2× Combo [W]!",
+				"task_cs": "ÚKOL: Označ pravým klikem [RMB] obě Osmičky (8) a odpal 2× Kombo [W]!",
+				"btn_en": "Next", "btn_cs": "Dál",
+				"show_btn": false,
+			}
+		5:
+			return {
+				"en": "✓ OK! 3D Hearts (10 ♥ HP): King hits 1–3 HP, 1/2/3 Aces deal 1/4/6 HP + Stun! Beware Boss Hearts!",
+				"cs": "✓ OK! 3D Srdce (10 ♥ HP): Král bere 1–3 HP, 1/2/3 Esa berou 1/4/6 HP + Stopka! Pozor na Boss Srdce!",
+				"task_en": "TASK: Stack both Aces (E) into a combo to strike Rival's heart for -4 ♥ HP!",
+				"task_cs": "ÚKOL: Spoj obě Esa (E) do komba — zasáhneš soupeřovo srdce za -4 ♥ HP!",
+				"btn_en": "Next", "btn_cs": "Dál",
+				"show_btn": false,
+			}
+		6:
+			if sub == 0:
+				return {
+					"en": "✓ OK! Rival's heart is racing! Unleash a Special Card cutscene.",
+					"cs": "✓ OK! Soupeřovo srdce zběsile buší! Povolej Mocnou kartu s cutscénou.",
+					"task_en": "TASK: Play your special card 🦇 Vampire Leech (SPEC_VAMPIRE)!",
+					"task_cs": "ÚKOL: Zahraj speciální kartu 🦇 Upíří pijavice (SPEC_VAMPIRE)!",
+					"btn_en": "Next", "btn_cs": "Dál",
+					"show_btn": false,
+				}
+			else:
+				return {
+					"en": "✓ OK! Your 3D Hellfire Phial IGNIS glows on the right (costs 20 pts).",
+					"cs": "✓ OK! Na stole vpravo plane 3D Baňka pekelného ohně IGNIS (stojí 20 b.).",
+					"task_en": "TASK: Click the 3D Hellfire Phial IGNIS (or via [TAB]) to burn Rival!",
+					"task_cs": "ÚKOL: Klikni na 3D Ohnivou baňku IGNIS (nebo přes [TAB]) a zapal soupeře!",
+					"btn_en": "Next", "btn_cs": "Dál",
+					"show_btn": false,
+				}
+		7:
+			return {
+				"en": "✓ OK! Rival is burning! The Peddler's Bell opens the Shop every 3rd round.",
+				"cs": "✓ OK! Soupeř hoří! Obchod se zvonečkem se otevírá každé 3. kolo.",
+				"task_en": "FINAL TASK: Play your last card (0 in hand = Finisher + Sword Execution)!",
+				"task_cs": "POSLEDNÍ ÚKOL: Vyhoď poslední kartu (0 karet = Finisher + Poprava mečem)!",
 				"btn_en": "Finish", "btn_cs": "Dokončit",
 				"show_btn": false,
 			}
 		_:
 			return {
-				"en": "✓ OK! Round won — you know the whole game! Good luck!",
-				"cs": "✓ OK! Vyhrál jsi kolo — znáš celou hru! Hodně štěstí!",
+				"en": "✓ OK! Round won and Rival executed by the blade — you master all of LIALO! (Replay anytime from Options ⚙.)",
+				"cs": "✓ OK! Kolo vyhráno a soupeř popraven mečem — ovládáš celé LIALO! (Tutoriál můžeš kdykoliv zopakovat v Nastavení ⚙.)",
+				"task_en": "", "task_cs": "",
 				"btn_en": "Play Now! ▸", "btn_cs": "Hrát naplno! ▸",
 				"show_btn": true,
 			}
@@ -6458,11 +6544,10 @@ func _advance_tutorial_substep() -> void:
 	if tutorial_step == 0:
 		tutorial_substep = 0
 		_advance_tutorial_to(1)
-	elif tutorial_step >= 6:
+	elif tutorial_step >= 8:
 		_skip_tutorial_immediately()
 
 func _apply_staged_tutorial_state(step: int, animate_magic: bool = true) -> void:
-	var in_tut := tutorial_mode and (step < 6 or (tutorial_ghost_center_panel != null and step == 6))
 	if hud_shop_btn:
 		hud_shop_btn.visible = false
 	if dock_backdrop_panel:
@@ -6470,11 +6555,20 @@ func _apply_staged_tutorial_state(step: int, animate_magic: bool = true) -> void
 	if wager_bar_panel:
 		wager_bar_panel.visible = false
 	if veto_standalone_panel:
-		veto_standalone_panel.visible = (not tutorial_mode) and (not opening_turn_committed) and current_round_num == 1 and (not intro_animating) and (not peddler_open) and (not shop_gate_open) and (not _is_cinematic_playing())
+		var show_veto_real := (not tutorial_mode) and (not opening_turn_committed) and current_round_num == 1 and (not intro_animating) and (not peddler_open) and (not shop_gate_open) and (not _is_cinematic_playing())
+		var show_veto_tut := tutorial_mode and (step == 1 and tutorial_substep == 0) and (not intro_animating)
+		veto_standalone_panel.visible = show_veto_real or show_veto_tut
+		if show_veto_tut:
+			if wager_veto_hand_btn:
+				wager_veto_hand_btn.disabled = false
+				wager_veto_hand_btn.text = _tr("Veto Hand [V]", "Vetovat karty [V]")
+			if wager_veto_duel_btn:
+				wager_veto_duel_btn.disabled = false
+				wager_veto_duel_btn.text = _tr("Veto Game", "Vetovat hru")
 	_refresh_wager_indicator_ui()
 	if player_puf_lbl:
 		player_puf_lbl.visible = false
-	if not tutorial_mode and step >= 6:
+	if not tutorial_mode and step >= 8:
 		if is_instance_valid(player_hand_anchor): player_hand_anchor.visible = true
 		if is_instance_valid(player_body_root): player_body_root.visible = true
 		if is_instance_valid(opp_silhouette_root): opp_silhouette_root.visible = true
@@ -6497,38 +6591,42 @@ func _apply_staged_tutorial_state(step: int, animate_magic: bool = true) -> void
 		if hud_root and hud_root.get_node_or_null("MapExitBtn"):
 			(hud_root.get_node("MapExitBtn") as Control).visible = true
 		if tutorial_ghost_center_panel: tutorial_ghost_center_panel.visible = false
+		if tutorial_arrow_overlay: tutorial_arrow_overlay.visible = false
 		return
 
-	# Progressive visibility aligned with Task-Based Tutorial Steps (0..4, 6=Won)
+	# Progressive visibility aligned with 8-Step Tutorial (0..7, 8=Complete)
 	var show_table := (step >= 1)
 	var show_hand := (step >= 1)
 	var show_scores := (step >= 2)
-	var show_wheel := (step >= 3)
-	var show_opp := (step >= 1)
-	var show_full := (step >= 4)
+	var show_combo := (step >= 4)
+	var show_hearts := (step >= 5)
+	var show_phial := (step >= 6)
+	var show_bell := (step >= 7)
 
 	if is_instance_valid(draw_deck_root): draw_deck_root.visible = show_table
 	if is_instance_valid(discard_pile_root): discard_pile_root.visible = show_table
 	if is_instance_valid(player_hand_anchor): player_hand_anchor.visible = show_hand
 	if is_instance_valid(player_body_root): player_body_root.visible = show_hand
-	if is_instance_valid(opp_silhouette_root): opp_silhouette_root.visible = show_opp
-	if is_instance_valid(opp_hands_anchor): opp_hands_anchor.visible = show_opp
-	if is_instance_valid(boss_plaque_root): boss_plaque_root.visible = show_full
-	if is_instance_valid(magic_puf_bottle): magic_puf_bottle.visible = show_full
-	if is_instance_valid(tavern_bell_root): tavern_bell_root.visible = show_full
+	if is_instance_valid(opp_silhouette_root): opp_silhouette_root.visible = show_table
+	if is_instance_valid(opp_hands_anchor): opp_hands_anchor.visible = show_table
+	if is_instance_valid(boss_plaque_root): boss_plaque_root.visible = show_phial
+	if is_instance_valid(magic_puf_bottle): magic_puf_bottle.visible = show_phial
+	if is_instance_valid(tavern_bell_root): tavern_bell_root.visible = show_bell
 
 	if player_hud_grp: player_hud_grp.visible = show_scores
 	if player_hp_pill: player_hp_pill.visible = false
-	if is_instance_valid(player_hp_heart): player_hp_heart.visible = show_scores and (not _is_cinematic_playing())
+	if is_instance_valid(player_hp_heart): player_hp_heart.visible = show_hearts and (not _is_cinematic_playing())
 	if carry_out_pill: carry_out_pill.visible = false
-	if combo_hud_grp: combo_hud_grp.visible = show_scores
+	if combo_hud_grp: combo_hud_grp.visible = show_combo
 	if rival_hud_grp: rival_hud_grp.visible = show_scores
-	if is_instance_valid(rival_hp_heart): rival_hp_heart.visible = show_scores and (not _is_cinematic_playing())
+	if is_instance_valid(rival_hp_heart): rival_hp_heart.visible = show_hearts and (not _is_cinematic_playing())
 	if settings_icon_btn: settings_icon_btn.visible = show_hand
 	if is_instance_valid(view_toggle_btn): view_toggle_btn.visible = show_hand and (not _is_cinematic_playing())
 	if bottom_left_status_pill: bottom_left_status_pill.visible = show_hand
 	if hud_root and hud_root.get_node_or_null("MapExitBtn"):
 		(hud_root.get_node("MapExitBtn") as Control).visible = show_hand
+	if tutorial_arrow_overlay:
+		tutorial_arrow_overlay.visible = tutorial_mode and (step >= 1 and step <= 7)
 
 	if tutorial_callout_grp:
 		tutorial_callout_grp.visible = false
@@ -6538,23 +6636,36 @@ func _apply_staged_tutorial_state(step: int, animate_magic: bool = true) -> void
 	if tutorial_ghost_center_panel and tutorial_ghost_center_lbl:
 		var cp := _get_tutorial_ghost_copy(step, tutorial_substep)
 		var full_txt := _tr(str(cp["en"]), str(cp["cs"]))
+		var task_txt := _tr(str(cp.get("task_en", "")), str(cp.get("task_cs", "")))
 		tutorial_ghost_center_panel.visible = true
 		tutorial_ghost_center_panel.pivot_offset = tutorial_ghost_center_panel.size * 0.5
 		tutorial_ghost_center_panel.scale = Vector2.ONE
-		var gw := 620.0 if step == 0 else (540.0 if step == 1 else 500.0)
+		var is_centered_card := (step == 0 or step >= 8)
+		var gw := 620.0 if is_centered_card else 490.0
 		tutorial_ghost_center_panel.custom_minimum_size = Vector2(gw, 0)
 		tutorial_ghost_center_lbl.custom_minimum_size = Vector2(gw - 48.0, 0)
+		if tutorial_step_badge_lbl:
+			if step == 0:
+				tutorial_step_badge_lbl.text = _tr("✦ INTRO", "✦ ÚVOD")
+			elif step >= 8:
+				tutorial_step_badge_lbl.text = _tr("★ COMPLETE", "★ DOKONČENO")
+			else:
+				tutorial_step_badge_lbl.text = _tr("✦ STEP %d / 7" % step, "✦ KROK %d / 7" % step)
+		if tutorial_task_pill and tutorial_task_lbl:
+			tutorial_task_pill.visible = (task_txt != "")
+			tutorial_task_lbl.text = task_txt
+			tutorial_task_lbl.custom_minimum_size = Vector2(gw - 72.0, 0)
 		if is_instance_valid(tutorial_ghost_quill) and tutorial_ghost_quill.has_method("set_wrap_width"):
 			tutorial_ghost_quill.call("set_wrap_width", gw - 48.0)
 		if animate_magic or tutorial_ghost_center_lbl.text != full_txt:
-			_start_handwriting_anim(tutorial_ghost_center_lbl, full_txt, 44.0, animate_magic)
+			_start_handwriting_anim(tutorial_ghost_center_lbl, full_txt, 46.0, animate_magic)
 		if is_instance_valid(tutorial_ghost_quill) and tutorial_ghost_quill.has_method("get_preferred_height"):
 			var qh := float(tutorial_ghost_quill.call("get_preferred_height", gw - 48.0))
-			tutorial_ghost_quill.custom_minimum_size = Vector2(gw - 48.0, maxf(36.0, qh))
+			tutorial_ghost_quill.custom_minimum_size = Vector2(gw - 48.0, maxf(32.0, qh))
 		if tutorial_continue_btn:
 			tutorial_continue_btn.visible = bool(cp.get("show_btn", false))
 			tutorial_continue_btn.text = _tr(str(cp["btn_en"]), str(cp["btn_cs"]))
-		if step == 0:
+		if is_centered_card:
 			tutorial_ghost_center_panel.anchor_top = 1.0
 			tutorial_ghost_center_panel.anchor_bottom = 1.0
 			tutorial_ghost_center_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -6562,30 +6673,23 @@ func _apply_staged_tutorial_state(step: int, animate_magic: bool = true) -> void
 			tutorial_ghost_center_panel.offset_right = 310
 			tutorial_ghost_center_panel.offset_top = -36
 			tutorial_ghost_center_panel.offset_bottom = -36
-		elif step == 1:
-			tutorial_ghost_center_panel.anchor_top = 0.0
-			tutorial_ghost_center_panel.anchor_bottom = 0.0
-			tutorial_ghost_center_panel.grow_vertical = Control.GROW_DIRECTION_END
-			tutorial_ghost_center_panel.offset_left = -270
-			tutorial_ghost_center_panel.offset_right = 270
-			tutorial_ghost_center_panel.offset_top = 66
-			tutorial_ghost_center_panel.offset_bottom = 66
 		else:
 			tutorial_ghost_center_panel.anchor_top = 0.0
 			tutorial_ghost_center_panel.anchor_bottom = 0.0
 			tutorial_ghost_center_panel.grow_vertical = Control.GROW_DIRECTION_END
-			tutorial_ghost_center_panel.offset_left = -188
-			tutorial_ghost_center_panel.offset_right = 312
-			tutorial_ghost_center_panel.offset_top = 66
-			tutorial_ghost_center_panel.offset_bottom = 66
+			# 490px wide, clear of left Score Board (<=488px) and right Rival HUD (>=994px) at 1366x768
+			tutorial_ghost_center_panel.offset_left = -190
+			tutorial_ghost_center_panel.offset_right = 300
+			tutorial_ghost_center_panel.offset_top = 64
+			tutorial_ghost_center_panel.offset_bottom = 64
 		tutorial_ghost_center_panel.reset_size()
 		var gh := maxf(68.0, tutorial_ghost_center_panel.get_combined_minimum_size().y)
-		if step == 0:
+		if is_centered_card:
 			tutorial_ghost_center_panel.offset_top = -36.0 - gh
 			tutorial_ghost_center_panel.offset_bottom = -36.0
 		else:
-			tutorial_ghost_center_panel.offset_top = 66.0
-			tutorial_ghost_center_panel.offset_bottom = 66.0 + gh
+			tutorial_ghost_center_panel.offset_top = 64.0
+			tutorial_ghost_center_panel.offset_bottom = 64.0 + gh
 
 	if animate_magic:
 		if step == 1 and is_instance_valid(discard_pile_root):
@@ -6596,12 +6700,12 @@ func _apply_staged_tutorial_state(step: int, animate_magic: bool = true) -> void
 			player_hud_grp.scale = Vector2(0.18, 0.18)
 			var wtw := player_hud_grp.create_tween()
 			wtw.tween_property(player_hud_grp, "scale", Vector2.ONE, 0.42).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		elif step == 3 and combo_hud_grp:
+		elif step == 4 and combo_hud_grp:
 			combo_hud_grp.pivot_offset = combo_hud_grp.size * 0.5
 			combo_hud_grp.scale = Vector2(0.18, 0.18)
 			var ctw := combo_hud_grp.create_tween()
 			ctw.tween_property(combo_hud_grp, "scale", Vector2.ONE, 0.42).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		elif show_full and is_instance_valid(tavern_bell_root):
+		elif step == 7 and is_instance_valid(tavern_bell_root):
 			Fx.ring(self, tavern_bell_root.position + Vector3(0.0, 0.05, 0.0), Color(1.0, 0.84, 0.32), 0.32, 0.45, 0.05, 1.8, 4.0)
 
 func _setup_minimal_overlay_hud() -> void:
@@ -7590,7 +7694,7 @@ func _setup_minimal_overlay_hud() -> void:
 	prop_hover_pill.visible = false
 	hud_root.add_child(prop_hover_pill)
 
-	# GHOST CLOSE-UP CENTERED DIALOGUE PANEL (Task-Based Tutorial + Animated Handwriting Quill Effect!)
+	# GHOST CLOSE-UP CENTERED DIALOGUE PANEL (Rich Parchment & Tavern-Brass Frame + Step Badge + Task Pill)
 	tutorial_ghost_center_panel = PanelContainer.new()
 	tutorial_ghost_center_panel.custom_minimum_size = Vector2(620, 0)
 	tutorial_ghost_center_panel.anchor_left = 0.5
@@ -7604,10 +7708,12 @@ func _setup_minimal_overlay_hud() -> void:
 	tutorial_ghost_center_panel.offset_bottom = -36
 	tutorial_ghost_center_panel.pivot_offset = Vector2(310, 56)
 	var gc_sb := StyleBoxFlat.new()
-	gc_sb.bg_color = Color(0.045, 0.052, 0.086, 0.96)
-	gc_sb.border_color = Color(0.46, 0.86, 0.96, 0.94)
+	gc_sb.bg_color = Color(0.065, 0.052, 0.044, 0.96)
+	gc_sb.border_color = Color(0.86, 0.70, 0.34, 0.94)
 	gc_sb.set_border_width_all(2)
-	gc_sb.set_corner_radius_all(18)
+	gc_sb.set_corner_radius_all(16)
+	gc_sb.shadow_color = Color(0.0, 0.0, 0.0, 0.65)
+	gc_sb.shadow_size = 12
 	gc_sb.set_content_margin_all(0)
 	tutorial_ghost_center_panel.add_theme_stylebox_override("panel", gc_sb)
 	var ghost_wave := Control.new()
@@ -7623,44 +7729,100 @@ func _setup_minimal_overlay_hud() -> void:
 		var ring_col := tutorial_ghost_accent.lerp(ok_col, clampf(tutorial_ghost_ok_flash, 0.0, 1.0))
 		var inner_sb := StyleBoxFlat.new()
 		inner_sb.draw_center = false
-		inner_sb.border_color = Color(ring_col.r, ring_col.g, ring_col.b, 0.42 + 0.18 * sin(gt * 3.6))
-		inner_sb.set_border_width_all(2)
-		inner_sb.set_corner_radius_all(15)
+		inner_sb.border_color = Color(ring_col.r, ring_col.g, ring_col.b, 0.44 + 0.16 * sin(gt * 3.2))
+		inner_sb.set_border_width_all(1)
+		inner_sb.set_corner_radius_all(13)
 		ghost_wave.draw_style_box(inner_sb, Rect2(Vector2(5.0, 5.0), sz - Vector2(10.0, 10.0)))
 		var hw := _get_handwriting_progress(tutorial_ghost_center_lbl)
 		if bool(hw.get("active", false)):
 			var frac := float(hw.get("frac", 0.0))
 			var qx := lerpf(38.0, sz.x - 38.0, frac)
-			var qy := (sz.y * 0.42 if tutorial_continue_btn and tutorial_continue_btn.visible else sz.y * 0.56) + sin(gt * 28.0) * 2.5
+			var qy := (sz.y * 0.42 if tutorial_continue_btn and tutorial_continue_btn.visible else sz.y * 0.50) + sin(gt * 28.0) * 2.5
 			ghost_wave.draw_circle(Vector2(qx, qy), 8.5, Color(0.42, 0.96, 1.0, 0.34))
 			ghost_wave.draw_circle(Vector2(qx, qy), 3.0, Color(1.0, 0.96, 0.72, 0.96))
 	)
 	tutorial_ghost_center_panel.add_child(ghost_wave)
 	var gc_pad := MarginContainer.new()
-	gc_pad.add_theme_constant_override("margin_left", 24)
-	gc_pad.add_theme_constant_override("margin_right", 24)
-	gc_pad.add_theme_constant_override("margin_top", 11)
-	gc_pad.add_theme_constant_override("margin_bottom", 11)
+	gc_pad.add_theme_constant_override("margin_left", 20)
+	gc_pad.add_theme_constant_override("margin_right", 20)
+	gc_pad.add_theme_constant_override("margin_top", 10)
+	gc_pad.add_theme_constant_override("margin_bottom", 12)
 	tutorial_ghost_center_panel.add_child(gc_pad)
 	var gc_vb := VBoxContainer.new()
-	gc_vb.add_theme_constant_override("separation", 6)
+	gc_vb.add_theme_constant_override("separation", 7)
 	gc_pad.add_child(gc_vb)
+
+	var gc_hdr := HBoxContainer.new()
+	gc_hdr.add_theme_constant_override("separation", 8)
+	gc_vb.add_child(gc_hdr)
+
+	tutorial_step_badge_pill = PanelContainer.new()
+	var badge_sb := StyleBoxFlat.new()
+	badge_sb.bg_color = Color(0.18, 0.13, 0.06, 0.96)
+	badge_sb.border_color = Color(0.92, 0.76, 0.36, 0.92)
+	badge_sb.set_border_width_all(1)
+	badge_sb.set_corner_radius_all(9)
+	badge_sb.content_margin_left = 10
+	badge_sb.content_margin_right = 10
+	badge_sb.content_margin_top = 2
+	badge_sb.content_margin_bottom = 2
+	tutorial_step_badge_pill.add_theme_stylebox_override("panel", badge_sb)
+	tutorial_step_badge_lbl = Label.new()
+	tutorial_step_badge_lbl.text = _tr("✦ INTRO", "✦ ÚVOD")
+	tutorial_step_badge_lbl.add_theme_font_override("font", _get_font(true))
+	tutorial_step_badge_lbl.add_theme_font_size_override("font_size", 13)
+	tutorial_step_badge_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.44))
+	tutorial_step_badge_pill.add_child(tutorial_step_badge_lbl)
+	gc_hdr.add_child(tutorial_step_badge_pill)
+
+	var gc_spacer := Control.new()
+	gc_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gc_hdr.add_child(gc_spacer)
+
+	var spirko_tag := Label.new()
+	spirko_tag.text = "👻 SPIRKO"
+	spirko_tag.add_theme_font_override("font", _get_font(true))
+	spirko_tag.add_theme_font_size_override("font_size", 12)
+	spirko_tag.add_theme_color_override("font_color", Color(0.62, 0.88, 0.96, 0.86))
+	gc_hdr.add_child(spirko_tag)
+
 	tutorial_ghost_center_lbl = Label.new()
 	tutorial_ghost_center_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tutorial_ghost_center_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tutorial_ghost_center_lbl.add_theme_font_override("font", _get_quill_font())
-	tutorial_ghost_center_lbl.add_theme_font_size_override("font_size", 24)
-	tutorial_ghost_center_lbl.add_theme_color_override("font_color", Color(0.90, 0.99, 1.0))
+	tutorial_ghost_center_lbl.add_theme_font_size_override("font_size", 20)
+	tutorial_ghost_center_lbl.add_theme_color_override("font_color", Color(0.97, 0.94, 0.86))
 	gc_vb.add_child(tutorial_ghost_center_lbl)
 
 	tutorial_ghost_quill = HandwritingQuillScript.new()
 	tutorial_ghost_quill.name = "TutorialGhostQuill"
 	tutorial_ghost_quill.visible = false
-	tutorial_ghost_quill.call("setup", _get_quill_font(), 24, Color(0.92, 0.99, 1.0), Color(0.45, 0.94, 1.0), Color(0.98, 0.94, 0.82), Color(0.45, 0.92, 1.0, 0.85))
+	tutorial_ghost_quill.call("setup", _get_quill_font(), 21, Color(0.97, 0.94, 0.86), Color(0.45, 0.94, 1.0), Color(0.98, 0.94, 0.82), Color(0.45, 0.92, 1.0, 0.85))
 	tutorial_ghost_quill.quill_stroke_sfx.connect(func(pitch_val: float):
 		emit_signal("play_sfx_pitched_requested", "quill_scratch", pitch_val)
 	)
 	gc_vb.add_child(tutorial_ghost_quill)
+
+	tutorial_task_pill = PanelContainer.new()
+	tutorial_task_pill.visible = false
+	var task_sb := StyleBoxFlat.new()
+	task_sb.bg_color = Color(0.08, 0.19, 0.13, 0.96)
+	task_sb.border_color = Color(0.38, 0.96, 0.64, 0.92)
+	task_sb.set_border_width_all(1)
+	task_sb.set_corner_radius_all(10)
+	task_sb.content_margin_left = 12
+	task_sb.content_margin_right = 12
+	task_sb.content_margin_top = 5
+	task_sb.content_margin_bottom = 5
+	tutorial_task_pill.add_theme_stylebox_override("panel", task_sb)
+	tutorial_task_lbl = Label.new()
+	tutorial_task_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tutorial_task_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tutorial_task_lbl.add_theme_font_override("font", _get_font(true))
+	tutorial_task_lbl.add_theme_font_size_override("font_size", 15)
+	tutorial_task_lbl.add_theme_color_override("font_color", Color(0.56, 1.0, 0.74))
+	tutorial_task_pill.add_child(tutorial_task_lbl)
+	gc_vb.add_child(tutorial_task_pill)
 
 	var gc_btn_row := HBoxContainer.new()
 	gc_btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -7679,6 +7841,18 @@ func _setup_minimal_overlay_hud() -> void:
 	tutorial_ghost_center_panel.visible = false
 	hud_root.add_child(tutorial_ghost_center_panel)
 	hud_root.add_child(boss_rule_lbl)
+
+	# Full-screen Tutorial Arrow Overlay (projects 3D card/prop positions + 2D HUD rects into animated golden-ink arrows)
+	tutorial_arrow_overlay = Control.new()
+	tutorial_arrow_overlay.name = "TutorialArrowOverlay"
+	tutorial_arrow_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	tutorial_arrow_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tutorial_arrow_overlay.z_index = 25
+	tutorial_arrow_overlay.visible = false
+	tutorial_arrow_overlay.draw.connect(_draw_tutorial_arrow_overlay)
+	hud_root.add_child(tutorial_arrow_overlay)
+
+	_setup_unlock_tip_banner()
 
 	# ZONE 2 RELIC SEAL RAIL: Directly beneath Wager / Veto row to the right of Player Heart (x: 166..640, y: 264..296)
 	relic_bar_hbox = HBoxContainer.new()
@@ -8348,7 +8522,17 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 	_refresh_draw_deck_theme(chosen_deck)
 	tutorial_mode = is_tutorial
 	tutorial_step = 0
+	tutorial_substep = 0
 	_tutorial_action_done = ""
+	_active_unlock_tip_id = ""
+	_unlock_tip_queue.clear()
+	if unlock_tip_panel:
+		unlock_tip_panel.visible = false
+	if is_tutorial:
+		active_run_profile = {}
+	else:
+		var prof_in = run_loadout.get("profile", null)
+		active_run_profile = prof_in if (prof_in is Dictionary and not prof_in.is_empty()) else Catalog.load_profile()
 	if is_tutorial:
 		run_custom_cards = []
 		run_active_relics = []
@@ -8681,7 +8865,7 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 	# Apply tutorial vs real duel node/HUD visibility right away so ghost/panels never leak into a fresh battle
 	intro_animating = true
 	busy_animating = true
-	_apply_staged_tutorial_state(tutorial_step if tutorial_mode else 6, false)
+	_apply_staged_tutorial_state(tutorial_step if tutorial_mode else 8, false)
 
 	# Cinematic entrance: player steps into the storm-lit tavern & sits at the table
 	prev_hovered_idx = -1
@@ -8726,12 +8910,13 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 			magic_puf_bottle.set_meta("base_pos", magic_puf_bottle.position)
 		if is_instance_valid(player_sword_root):
 			player_sword_root.set_meta("base_pos", player_sword_root.position)
-		_apply_staged_tutorial_state(tutorial_step if tutorial_mode else 6, false)
+		_apply_staged_tutorial_state(tutorial_step if tutorial_mode else 8, false)
 		_rebuild_all_3d_hands()
 		_refresh_table_labels()
 		emit_signal("play_sfx_requested", "turn_player")
 		if was_natural_intro and not tutorial_mode:
 			_begin_player_item_review_stage(true)
+			_check_battle_unlock_tips()
 	)
 
 var _tutorial_action_done: String = ""
@@ -8747,10 +8932,20 @@ func _refresh_suit_modal_labels() -> void:
 				blbl.text = "%s %s" % [_tr(str(s["name"]), str(s.get("name_cs", s["name"]))), str(s["sym"])]
 
 func _perform_opening_veto_hand() -> void:
-	if tutorial_mode or busy_animating or not is_player_turn or opening_turn_committed or opening_veto_used:
+	var allow_in_tut := (tutorial_mode and tutorial_step == 1 and tutorial_substep == 0)
+	if (tutorial_mode and not allow_in_tut) or busy_animating or not is_player_turn or opening_turn_committed or opening_veto_used:
 		return
 	opening_veto_used = true
 	staged_card_indices.clear()
+	if allow_in_tut:
+		_deal_tutorial_scripted_hand_after_veto()
+		tutorial_substep = 1
+		emit_signal("play_sfx_requested", "card_shuffle")
+		_spawn_score_popup(_tr("⚖ VETO! NEW OPENING DEAL!", "⚖ VETO! NOVÉ ÚVODNÍ KARTY!"), Color(0.54, 0.94, 1.0), true)
+		_trigger_ghost_ok_flash()
+		_update_tutorial_callout_ui(1, true)
+		_refresh_table_labels()
+		return
 	for hc in player_hand:
 		deck.push_front(hc)
 	player_hand.clear()
@@ -8778,7 +8973,10 @@ func _perform_opening_veto_hand() -> void:
 	_refresh_table_labels()
 
 func _perform_opening_veto_duel() -> void:
-	if tutorial_mode or busy_animating or opening_turn_committed:
+	if tutorial_mode:
+		_whisper_tutorial_nudge(_tr("🏳 Veto Game safely returns you to the map in campaign. For now, click ⚖ Veto Hand [V]!", "🏳 Vetovat hru tě v kampani bezpečně vrátí na mapu. Teď klikni na ⚖ Vetovat karty [V]!"))
+		return
+	if busy_animating or opening_turn_committed:
 		return
 	_cancel_active_cinematic()
 	emit_signal("play_sfx_requested", "ui_click")
@@ -8791,6 +8989,26 @@ func _make_card_dict(s_id: String, r_id: String) -> Dictionary:
 			return {"suit": s_id, "rank": r_id, "pts": r["pts"], "rname": _get_rank_name(r_id)}
 	return {"suit": s_id, "rank": "8", "pts": 8, "rname": _get_rank_name("8")}
 
+func _deal_tutorial_pre_veto_hand() -> void:
+	player_hand = [
+		_make_card_dict("ZELEN", "9"),
+		_make_card_dict("ZALUD", "D"),
+		_make_card_dict("GULA", "9"),
+		_make_card_dict("ZELEN", "10"),
+		_make_card_dict("ZALUD", "10"),
+	]
+
+func _deal_tutorial_scripted_hand_after_veto() -> void:
+	player_hand = [
+		_make_card_dict("CERVEN", "10"),
+		_make_card_dict("CERVEN", "H"),
+		_make_card_dict("CERVEN", "7"),
+		_make_card_dict("CERVEN", "8"),
+		_make_card_dict("ZELEN", "8"),
+	]
+	_rebuild_all_3d_hands()
+	_animate_deal_pop_in()
+
 func _deal_tutorial_round() -> void:
 	deck.clear()
 	discard_pile.clear()
@@ -8801,14 +9019,8 @@ func _deal_tutorial_round() -> void:
 		if not (c is Area3D):
 			c.queue_free()
 
-	# Fixed starter setup so every task chapter (Basic Prší -> 7 +2 -> 2×8 Combo -> Win 1 Round) works seamlessly
-	player_hand = [
-		_make_card_dict("CERVEN", "10"),
-		_make_card_dict("CERVEN", "H"),
-		_make_card_dict("CERVEN", "7"),
-		_make_card_dict("CERVEN", "8"),
-		_make_card_dict("ZELEN", "8")
-	]
+	# Pre-veto starter hand for Step 1a; Veto [V] deals the scripted combo hand
+	_deal_tutorial_pre_veto_hand()
 	ai_hand = [
 		_make_card_dict("ZALUD", "8"),
 		_make_card_dict("GULA", "9"),
@@ -8983,44 +9195,50 @@ func _update_tutorial_callout_ui(step: int, animate_magic: bool = true) -> void:
 	match step:
 		0:
 			spoken_line = _tr(
-				"\"Psst, friend! Regular tavern cards first:\nMatch the Suit (Hearts/Bells/Leaves/Acorns) or Rank!\"",
-				"\"Psst, příteli! Nejdřív základy:\nHoď stejnou Barvu (Srdce/Koule/Listí/Žaludy) nebo Hodnotu!\""
+				"\"Psst, friend! Pull up a chair — I'll show you how to win gold and keep your head!\"",
+				"\"Psst, příteli! Sedni ke stolu — ukážu ti, jak v téhle krčmě vyhrát zlato i život!\""
 			)
 			accent = Color(0.56, 0.80, 0.96)
 		1:
 			spoken_line = _tr(
-				"\"Nice! Need cards? Click the Draw Deck!\nCareful: Sevens deal +2 (or TRIPLE pts if they draw!)\"",
-				"\"Skvěle! Potřebuješ karty? Klikni na Balíček!\nPozor: Sedma dává +2 (nebo 3× body, když soupeř líže!)\""
+				"\"Bad opening deal? Veto it [V]! Press [TAB] to inspect 3D table items and stake your Sword!\"",
+				"\"Špatné karty na startu? Vetuj je [V]! Klávesou [TAB] koukni na 3D předměty a vsaď Meč!\""
 			)
-			accent = Color(1.0, 0.86, 0.34)
+			accent = Color(1.0, 0.84, 0.34)
 		2:
 			spoken_line = _tr(
-				"\"Card powers: 7=+2, Queen=Suit shift, King=1-3 HP DMG unless countered,\nand 1/2/3 Aces hit for 1/4/6 HP (max 3)!\"",
-				"\"Schopnosti: 7=+2, Svršek=změna barvy, Král=1-3 HP poškození,\na 1/2/3 Esa dají 1/4/6 HP (max 3 Esa)!\""
+				"\"Suit on Suit, Rank on Rank! Both turns settle together into your Charge Chalice!\"",
+				"\"Barva na barvu, hodnota na hodnotu! Body obou tahů se slijí do Kalicha!\""
 			)
-			accent = Color(0.36, 0.92, 1.0)
+			accent = Color(0.42, 0.96, 0.72)
 		3:
 			spoken_line = _tr(
-				"\"Classes & Formula: Chips × +Mult × ×Mult!\nMages charge in hand; Merchants mine Gold; Thieves steal!\"",
-				"\"Třídy a vzorec: Body × +Násobič × ×Násobič!\nMágové se nabíjí v ruce; Kupci těží zlato; Zloději kradou!\""
+				"\"Seven deals +2 cards (and 3× pts if they draw)! Queen shifts Suit and Jack grants a Shield!\"",
+				"\"Sedma dává +2 karty (a 3× body, když soupeř líže)! Svršek mění barvu a Spodek dává Štít!\""
 			)
-			accent = Color(0.98, 0.52, 0.92)
+			accent = Color(0.36, 0.92, 1.0)
 		4:
 			spoken_line = _tr(
-				"\"Chain Law: Stack Eights (∞) or up to 3 Aces!\nRight-click matching cards to build a Combo!\"",
-				"\"Řetězení: Skákej Osmičky (∞) nebo až 3 Esa najednou!\nPravým klikem označ karty do komba!\""
+				"\"Chain Law: Stack Eights (∞) or up to 3 Aces! Right-click [RMB] matching cards for a Combo!\"",
+				"\"Zákon řetězení: Skládej Osmičky (∞) nebo až 3 Esa! Pravým klikem [RMB] postavíš kombo!\""
 			)
-			accent = Color(0.32, 0.92, 1.0)
+			accent = Color(0.98, 0.52, 0.92)
 		5:
 			spoken_line = _tr(
-				"\"Bet Gold or your SWORD to execute Rival at Duel End!\nToss the Hellfire Phial to set Rival on FIRE!\"",
-				"\"Vsaď zlato nebo MEČ na popravu soupeře!\nHoď ohnivou baňku IGNIS a zapal soupeře!\""
+				"\"Watch the 3D Hearts! As HP drops, heartbeat races & cracks glow. Beware giant Boss Hearts!\"",
+				"\"Sleduj 3D Srdce! Když HP klesá, tep zrychluje a praskliny žhnou. Pozor na Boss Srdce!\""
+			)
+			accent = Color(1.0, 0.34, 0.38)
+		6:
+			spoken_line = _tr(
+				"\"Special Cards trigger dramatic cutscenes, and the IGNIS Phial burns rivals for 3 rounds!\"",
+				"\"Mocné karty spouští filmové cutscény a baňka IGNIS pálí soupeře na 3 kola!\""
 			)
 			accent = Color(1.0, 0.54, 0.22)
 		_:
 			spoken_line = _tr(
-				"\"Watch your 10 ♥ HP & Knights in Battle Mist!\n6 Rounds per duel, Crossroads Shop every 3rd Round!\"",
-				"\"Hlídej si 10 ♥ HP a Rytíře v mlze!\nZápas má 6 kol, Obchod je každé 3. kolo!\""
+				"\"Empty your hand for a Finisher bonus! Duels last 6 rounds with the Shop every 3rd round!\"",
+				"\"Vyhoď poslední kartu pro Finisher bonus! Zápas má 6 kol, Obchod cinkne každé 3. kolo!\""
 			)
 			accent = Color(1.0, 0.90, 0.42)
 
@@ -9226,15 +9444,88 @@ func _reveal_puf_bottle_magic() -> void:
 			_spawn_hud_sparkles(cam.unproject_position(magic_puf_bottle.global_position), Color(0.78, 0.42, 1.0), 22)
 	emit_signal("play_sfx_pitched_requested", "puf", 1.28)
 
+func _setup_tutorial_hearts_and_aces_step() -> void:
+	pending_draw = 0
+	pending_skip = false
+	pending_skip_turns = 0
+	pending_king_challenge.clear()
+	staged_card_indices.clear()
+	var s_now := active_suit_id if active_suit_id != "" else "CERVEN"
+	var alt_s := "ZELEN" if s_now != "ZELEN" else "GULA"
+	player_hand = [
+		_make_card_dict(s_now, "E"),
+		_make_card_dict(alt_s, "E"),
+		_make_card_dict("CERVEN", "10"),
+	]
+	ai_hand = [
+		_make_card_dict("ZALUD", "9"),
+		_make_card_dict("GULA", "D"),
+		_make_card_dict("ZELEN", "10"),
+	]
+	# Show Rival King strike (-2 HP to player) & short Boss Heart preview
+	player_hp = 8
+	ai_hp = 10
+	if is_instance_valid(player_hp_heart):
+		player_hp_heart.call("set_hp", player_hp, player_max_hp, true)
+		player_hp_heart.call("trigger_damage_pulse", 2)
+	if is_instance_valid(rival_hp_heart):
+		rival_hp_heart.call("set_hp", ai_hp, ai_max_hp, false)
+	_preview_tutorial_boss_heart()
+
+func _preview_tutorial_boss_heart() -> void:
+	if not is_instance_valid(rival_hp_heart):
+		return
+	rival_hp_heart.call("set_boss_mode", true, Color(1.0, 0.72, 0.24))
+	var my_sess := _battle_session_token
+	get_tree().create_timer(_pace(2.2)).timeout.connect(func():
+		if my_sess == _battle_session_token and is_instance_valid(rival_hp_heart) and tutorial_mode:
+			rival_hp_heart.call("set_boss_mode", false)
+	)
+
+func _setup_tutorial_special_and_phial_step() -> void:
+	pending_draw = 0
+	pending_skip = false
+	pending_skip_turns = 0
+	pending_king_challenge.clear()
+	staged_card_indices.clear()
+	var spec_card := _make_card_dict("CERVEN", "H")
+	var p_data := Catalog.get_power_card("SPEC_VAMPIRE")
+	if not p_data.is_empty():
+		spec_card = p_data.duplicate(true)
+	spec_card["suit"] = active_suit_id if active_suit_id != "" else "CERVEN"
+	player_hand = [
+		spec_card,
+		_make_card_dict(active_suit_id if active_suit_id != "" else "CERVEN", "10"),
+	]
+
+func _setup_tutorial_final_shed_card() -> void:
+	pending_draw = 0
+	pending_skip = false
+	pending_skip_turns = 0
+	pending_king_challenge.clear()
+	staged_card_indices.clear()
+	var s_now := active_suit_id if active_suit_id != "" else "CERVEN"
+	player_hand = [
+		_make_card_dict(s_now, "10"),
+	]
+
 func _advance_tutorial_to(next_step: int) -> void:
 	tutorial_step = next_step
+	tutorial_substep = 0
 	_tutorial_action_done = ""
 	staged_card_indices.clear()
 	if next_step == 1:
 		set_camera_view_mode(CameraViewMode.CARDS, false)
+		_deal_tutorial_pre_veto_hand()
 		_rebuild_all_3d_hands()
 		_animate_hand_return_wave()
 	elif next_step == 2:
+		set_camera_view_mode(CameraViewMode.CARDS, false)
+		cards_points_revealed = true
+		hud_score_revealed = true
+		_reveal_points_and_score_magic()
+		_rebuild_all_3d_hands()
+	elif next_step == 3:
 		set_camera_view_mode(CameraViewMode.CARDS, false)
 		cards_points_revealed = true
 		abilities_revealed = true
@@ -9242,7 +9533,7 @@ func _advance_tutorial_to(next_step: int) -> void:
 		_ensure_tutorial_seven_setup()
 		_reveal_points_and_score_magic()
 		_reveal_abilities_magic()
-	elif next_step == 3:
+	elif next_step == 4:
 		set_camera_view_mode(CameraViewMode.CARDS, false)
 		cards_points_revealed = true
 		abilities_revealed = true
@@ -9252,28 +9543,32 @@ func _advance_tutorial_to(next_step: int) -> void:
 			combo_hud_grp.position = Vector2(162, 52)
 		_ensure_tutorial_combo_pair()
 		_reveal_combo_hud_magic()
-	elif next_step == 4:
+	elif next_step == 5:
+		set_camera_view_mode(CameraViewMode.CARDS, false)
+		cards_points_revealed = true
+		abilities_revealed = true
+		hud_score_revealed = true
+		hud_combo_revealed = true
+		_setup_tutorial_hearts_and_aces_step()
+		_rebuild_all_3d_hands()
+		_animate_deal_pop_in()
+	elif next_step == 6:
 		set_camera_view_mode(CameraViewMode.CARDS, false)
 		puf_revealed = true
-		if combo_hud_grp:
-			combo_hud_grp.position = Vector2(162, 52)
-		_setup_tutorial_final_round()
+		_setup_tutorial_special_and_phial_step()
 		_reveal_puf_bottle_magic()
 		_rebuild_all_3d_hands()
 		_animate_deal_pop_in()
-	elif next_step == 5:
-		_skip_tutorial_immediately()
-		return
-	elif next_step >= 6:
+	elif next_step == 7:
+		set_camera_view_mode(CameraViewMode.CARDS, false)
+		_setup_tutorial_final_shed_card()
+		_rebuild_all_3d_hands()
+		_animate_deal_pop_in()
+	elif next_step >= 8:
 		_trigger_ghost_ok_flash()
 		emit_signal("play_sfx_requested", "win")
-		_update_tutorial_callout_ui(6, true)
+		_update_tutorial_callout_ui(8, true)
 		_refresh_table_labels()
-		var my_sess := _battle_session_token
-		get_tree().create_timer(_pace(4.2)).timeout.connect(func():
-			if my_sess == _battle_session_token and tutorial_mode and tutorial_step >= 6:
-				_skip_tutorial_immediately()
-		)
 		return
 	_update_tutorial_callout_ui(next_step, true)
 	_refresh_table_labels()
@@ -9285,9 +9580,10 @@ func _skip_tutorial_immediately() -> void:
 	_score_resolve_token += 1
 	_cancel_active_cinematic()
 	tutorial_mode = false
-	tutorial_step = 6
+	tutorial_step = 8
+	tutorial_substep = 0
 	set_camera_view_mode(CameraViewMode.TABLE_ITEMS, false)
-	_apply_staged_tutorial_state(6, false)
+	_apply_staged_tutorial_state(8, false)
 	cards_points_revealed = true
 	abilities_revealed = true
 	hud_score_revealed = true
@@ -9505,14 +9801,20 @@ func _rebuild_all_3d_hands() -> void:
 			border = c_data.get("accent", Color(1.0, 0.84, 0.28))
 		if tutorial_mode and is_player_turn and not busy_animating:
 			var cr: String = str(c_data["rank"])
-			if tutorial_step == 1 and playable:
+			var cpid: String = str(c_data.get("power_id", ""))
+			if tutorial_step == 2 and playable and cr == "10":
 				border = Color(0.32, 0.96, 0.62)
-			elif tutorial_step == 2 and playable and cr == "7":
+			elif tutorial_step == 3 and playable and cr == "7":
 				border = Color(0.28, 0.92, 1.0)
-			elif tutorial_step == 3 and staged_card_indices.is_empty():
+			elif tutorial_step == 4 and staged_card_indices.is_empty():
 				if cr == "8" and int(rank_counts.get("8", 0)) >= 2 and bool(rank_has_playable.get("8", false)):
 					border = Color(0.32, 0.92, 1.0)
-			elif tutorial_step == 4 and playable:
+			elif tutorial_step == 5 and staged_card_indices.is_empty():
+				if cr == "E":
+					border = Color(1.0, 0.36, 0.42)
+			elif tutorial_step == 6 and tutorial_substep == 0 and cpid == "SPEC_VAMPIRE":
+				border = Color(1.0, 0.30, 0.48)
+			elif tutorial_step == 7 and playable:
 				border = Color(0.98, 0.78, 0.28)
 		if can_chain:
 			border = Color(1.0, 0.64, 0.18)
@@ -9738,7 +10040,7 @@ func _apply_hp_damage(to_player: bool, dmg: int, reason: String = "") -> int:
 			_spawn_score_popup(_tr("🛡 SHIELD BLOCKED -%d ♥ HP!" % dmg, "🛡 ŠTÍT VYKRYL -%d ♥ HP!" % dmg), Color(0.45, 0.94, 1.0), true)
 			_refresh_table_labels()
 			return 0
-		var min_hp := 1 if (tutorial_mode and tutorial_step < 6) else 0
+		var min_hp := 1 if (tutorial_mode and tutorial_step < 8) else 0
 		player_hp = maxi(min_hp, player_hp - dmg)
 		_trigger_screen_juice(Color(0.96, 0.16, 0.20), 0.72, 0.44)
 		cam_kick_shake = maxf(cam_kick_shake, 0.75)
@@ -9751,7 +10053,7 @@ func _apply_hp_damage(to_player: bool, dmg: int, reason: String = "") -> int:
 		_spawn_score_popup(msg, Color(1.0, 0.30, 0.34), true)
 		Fx.float_number(self, player_hand_anchor.global_position + Vector3(0.0, 0.22, -0.10), "-%d ♥ HP!" % dmg, Color(1.0, 0.26, 0.30), 74, 0.26, 1.0, 1.8)
 	else:
-		var min_hp := 1 if (tutorial_mode and tutorial_step < 6) else 0
+		var min_hp := 1 if (tutorial_mode and tutorial_step < 8) else 0
 		ai_hp = maxi(min_hp, ai_hp - dmg)
 		_trigger_boss_recoil_stagger(dmg >= 4)
 		cam_kick_shake = maxf(cam_kick_shake, 0.65 if dmg >= 4 else 0.42)
@@ -10145,7 +10447,15 @@ func _process(delta: float) -> void:
 		var wr_sc := 1.0 + sin(t * 4.2) * 0.06 + wager_showcase_boost * 0.16
 		wager_3d_ring.scale = Vector3(wr_sc, 1.0, wr_sc)
 	if tutorial_beacon_mesh:
-		if tutorial_mode and is_player_turn and not busy_animating and tutorial_step == 4 and magic_puf_bottle and magic_puf_bottle.visible:
+		if tutorial_mode and is_player_turn and not busy_animating and tutorial_step == 1 and tutorial_substep == 1 and cam_view_mode == CameraViewMode.TABLE_ITEMS and is_instance_valid(player_sword_root):
+			tutorial_beacon_mesh.visible = true
+			tutorial_beacon_mesh.global_position = player_sword_root.global_position + Vector3(0.0, 0.14 + sin(t * 5.0) * 0.025, 0.0)
+			tutorial_beacon_mesh.rotation_degrees = Vector3(0.0, t * 110.0, 0.0)
+			if tutorial_beacon_mesh.material_override is ShaderMaterial:
+				(tutorial_beacon_mesh.material_override as ShaderMaterial).set_shader_parameter("ring_color", Color(1.0, 0.84, 0.28, 0.94))
+			elif tutorial_beacon_mesh.material_override is StandardMaterial3D:
+				(tutorial_beacon_mesh.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.84, 0.28, 0.92)
+		elif tutorial_mode and is_player_turn and not busy_animating and tutorial_step == 6 and tutorial_substep == 1 and magic_puf_bottle and magic_puf_bottle.visible:
 			tutorial_beacon_mesh.visible = true
 			tutorial_beacon_mesh.global_position = magic_puf_bottle.global_position + Vector3(0.0, 0.16 + sin(t * 5.0) * 0.025, 0.0)
 			tutorial_beacon_mesh.rotation_degrees = Vector3(0.0, t * 110.0, 0.0)
@@ -10155,10 +10465,12 @@ func _process(delta: float) -> void:
 				(tutorial_beacon_mesh.material_override as StandardMaterial3D).albedo_color = Color(0.76, 0.42, 1.0, 0.92)
 		else:
 			tutorial_beacon_mesh.visible = false
+	if tutorial_arrow_overlay and tutorial_arrow_overlay.visible:
+		tutorial_arrow_overlay.queue_redraw()
 	if tutorial_ghost_center_panel and tutorial_ghost_center_panel.visible:
 		var float_y := roundf(sin(t * 2.6) * 3.5)
 		var gh := maxf(68.0, tutorial_ghost_center_panel.get_combined_minimum_size().y)
-		if tutorial_step == 0:
+		if tutorial_step == 0 or tutorial_step >= 8:
 			tutorial_ghost_center_panel.anchor_top = 1.0
 			tutorial_ghost_center_panel.anchor_bottom = 1.0
 			tutorial_ghost_center_panel.offset_bottom = -36.0 + float_y
@@ -10707,8 +11019,11 @@ func _toggle_stage_card(idx: int) -> void:
 func _launch_staged_stack() -> void:
 	if not is_player_turn or busy_animating or staged_card_indices.is_empty():
 		return
-	if tutorial_mode and tutorial_step == 3 and staged_card_indices.size() < 2:
+	if tutorial_mode and tutorial_step == 4 and staged_card_indices.size() < 2:
 		_whisper_tutorial_nudge(_tr("Stage both EIGHTS (8) before playing the Combo!", "Označ obě OSMIČKY (8) před zahráním komba!"))
+		return
+	if tutorial_mode and tutorial_step == 5 and staged_card_indices.size() < 2:
+		_whisper_tutorial_nudge(_tr("Stage both ACES (E) to deal -4 ♥ HP!", "Označ obě ESA (E) pro úder -4 ♥ HP!"))
 		return
 	if tutorial_mode and tutorial_step == 0:
 		_whisper_tutorial_nudge(_tr("Press [SPACE] to begin!", "Stiskni [SPACE] pro začátek!"))
@@ -10866,12 +11181,26 @@ func _trigger_turn_table_bet_glance(quiet_sfx: bool = false) -> void:
 func _find_best_playable_idx_for_w() -> int:
 	if tutorial_mode and tutorial_step == 2:
 		for i in range(player_hand.size()):
+			if str(player_hand[i].get("rank", "")) == "10" and _can_play(player_hand[i]):
+				return i
+	if tutorial_mode and tutorial_step == 3:
+		for i in range(player_hand.size()):
 			if str(player_hand[i].get("rank", "")) == "7" and _can_play(player_hand[i]):
 				return i
 		return -1
-	if tutorial_mode and tutorial_step == 3:
+	if tutorial_mode and tutorial_step == 4:
 		for i in range(player_hand.size()):
 			if str(player_hand[i].get("rank", "")) == "8" and not (i in staged_card_indices):
+				return i
+		return -1
+	if tutorial_mode and tutorial_step == 5:
+		for i in range(player_hand.size()):
+			if str(player_hand[i].get("rank", "")) == "E" and not (i in staged_card_indices):
+				return i
+		return -1
+	if tutorial_mode and tutorial_step == 6:
+		for i in range(player_hand.size()):
+			if str(player_hand[i].get("power_id", "")) == "SPEC_VAMPIRE":
 				return i
 		return -1
 	for i in range(player_hand.size()):
@@ -10914,9 +11243,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 		if event.keycode == KEY_SPACE:
-			if tutorial_mode and (tutorial_step == 0 or tutorial_step >= 6):
-				_finish_handwriting_anim(tutorial_ghost_center_lbl)
-				_advance_tutorial_substep()
+			if unlock_tip_panel and unlock_tip_panel.visible:
+				_dismiss_unlock_tip()
+				get_viewport().set_input_as_handled()
+				return
+			if tutorial_mode and (tutorial_step == 0 or tutorial_step >= 8):
+				var hw := _get_handwriting_progress(tutorial_ghost_center_lbl)
+				if bool(hw.get("active", false)):
+					_finish_handwriting_anim(tutorial_ghost_center_lbl)
+				else:
+					_advance_tutorial_substep()
 				get_viewport().set_input_as_handled()
 				return
 			if is_player_turn and not busy_animating and turn_stage == TurnStage.ITEM_REVIEW and not tutorial_mode:
@@ -10942,7 +11278,16 @@ func _unhandled_input(event: InputEvent) -> void:
 				_advance_tutorial_substep()
 				get_viewport().set_input_as_handled()
 				return
-			if tutorial_mode and tutorial_step == 3:
+			if tutorial_mode and tutorial_step == 1:
+				if tutorial_substep == 0:
+					_whisper_tutorial_nudge(_tr("Try vetoing your opening hand first: press [V] or click ⚖ Veto Hand!", "Nejdřív si vyzkoušej výměnu úvodní ruky: stiskni [V] nebo klikni na ⚖ Vetovat karty!"))
+				elif tutorial_substep == 1:
+					_whisper_tutorial_nudge(_tr("Press [TAB] or [SPACE] to switch to 3D Table Items and click your Sword!", "Stiskni [TAB] nebo [SPACE] pro přepnutí na 3D Stůl a klikni na Meč!"))
+				else:
+					_whisper_tutorial_nudge(_tr("Wager staked! Press [TAB] or [SPACE] to return to your cards.", "Sázka je uzavřena! Stiskni [TAB] nebo [SPACE] pro návrat ke kartám."))
+				get_viewport().set_input_as_handled()
+				return
+			if tutorial_mode and tutorial_step == 4:
 				for i8 in range(player_hand.size()):
 					if str(player_hand[i8].get("rank", "")) == "8" and not (i8 in staged_card_indices):
 						staged_card_indices.append(i8)
@@ -10951,6 +11296,21 @@ func _unhandled_input(event: InputEvent) -> void:
 					_launch_staged_stack()
 				else:
 					_whisper_tutorial_nudge(_tr("Stage both Eights (8) for this combo!", "Označ obě Osmičky (8) pro toto kombo!"))
+				get_viewport().set_input_as_handled()
+				return
+			if tutorial_mode and tutorial_step == 5:
+				for ie in range(player_hand.size()):
+					if str(player_hand[ie].get("rank", "")) == "E" and not (ie in staged_card_indices):
+						staged_card_indices.append(ie)
+				if staged_card_indices.size() >= 2 and _is_staged_slam_valid():
+					_trigger_glove_play_lunge()
+					_launch_staged_stack()
+				else:
+					_whisper_tutorial_nudge(_tr("Stage both Aces (E) to strike for -4 ♥ HP!", "Označ obě Esa (E) pro úder za -4 ♥ HP!"))
+				get_viewport().set_input_as_handled()
+				return
+			if tutorial_mode and tutorial_step == 6 and tutorial_substep == 1:
+				_whisper_tutorial_nudge(_tr("First toss the 3D Hellfire Phial IGNIS on the right side of the table!", "Nejdřív vyzkoušej 3D Baňku pekelného ohně IGNIS vpravo na stole!"))
 				get_viewport().set_input_as_handled()
 				return
 			if not staged_card_indices.is_empty():
@@ -10962,7 +11322,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			if play_idx >= 0:
 				_trigger_glove_play_lunge()
 				_handle_card_click_or_drop(play_idx, true)
-			elif not tutorial_mode or tutorial_step == 4:
+			elif not tutorial_mode:
 				_player_draw_from_3d_deck()
 				_trigger_glove_play_lunge()
 			else:
@@ -10973,7 +11333,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_redraw_staged_cards()
 			get_viewport().set_input_as_handled()
 			return
-		elif event.keycode == KEY_V and not tutorial_mode and not opening_turn_committed and not opening_veto_used:
+		elif event.keycode == KEY_V and not opening_turn_committed and not opening_veto_used and ((not tutorial_mode) or (tutorial_step == 1 and tutorial_substep == 0)):
 			_perform_opening_veto_hand()
 			get_viewport().set_input_as_handled()
 			return
@@ -11062,8 +11422,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if tutorial_mode:
 			if tutorial_step == 0:
 				return
-			if (tutorial_step == 2 or tutorial_step == 3) and hovered_draw_deck:
-				_whisper_tutorial_nudge(_tr("Play the highlighted card in hand for this task!", "Zahraj teď zvýrazněnou kartu z ruky!"))
+			if tutorial_step >= 1 and tutorial_step <= 6 and hovered_draw_deck:
+				_whisper_tutorial_nudge(_tr("No need to draw — follow the highlighted task above!", "Teď nelízej — splň zvýrazněný úkol nahoře!"))
 				return
 
 		if not _is_hand_tucked() and hovered_card_idx >= 0:
@@ -11080,13 +11440,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				_show_stagger_callout(_tr("Press [SPACE] to leave Items and inspect your hand first!", "Stiskni [SPACE] pro přechod z předmětů ke kartám!"), Color(0.98, 0.84, 0.42), 1.05)
 				emit_signal("play_sfx_requested", "ui_click")
 				return
-			if tutorial_mode and (tutorial_step == 2 or tutorial_step == 3):
-				_whisper_tutorial_nudge(_tr("Play the highlighted card in hand for this task!", "Zahraj teď zvýrazněnou kartu z ruky!"))
+			if tutorial_mode and tutorial_step >= 1 and tutorial_step <= 6:
+				_whisper_tutorial_nudge(_tr("No need to draw — follow the highlighted task above!", "Teď nelízej — splň zvýrazněný úkol nahoře!"))
 				return
 			staged_card_indices.clear()
 			_player_draw_from_3d_deck()
 		elif hovered_puf_bottle and puf_revealed:
-			if _can_change_opening_wager():
+			if _can_change_opening_wager() and not (tutorial_mode and tutorial_step == 6):
 				_trigger_tavern_prop_click("phial")
 				return
 			staged_card_indices.clear()
@@ -11095,12 +11455,25 @@ func _unhandled_input(event: InputEvent) -> void:
 func _handle_card_click_or_drop(c_idx: int, from_arena_drop: bool = false) -> void:
 	if c_idx < 0 or c_idx >= player_hand.size() or busy_animating or not is_player_turn:
 		return
+	if tutorial_mode and tutorial_step == 1:
+		if tutorial_substep == 0:
+			_whisper_tutorial_nudge(_tr("Try vetoing your opening hand first: press [V] or click ⚖ Veto Hand!", "Nejdřív si vyzkoušej výměnu úvodní ruky: stiskni [V] nebo klikni na ⚖ Vetovat karty!"))
+		elif tutorial_substep == 1:
+			_whisper_tutorial_nudge(_tr("Press [TAB] or [SPACE] to switch to 3D Table Items and click your Sword!", "Stiskni [TAB] nebo [SPACE] pro přepnutí na 3D Stůl a klikni na Meč!"))
+		else:
+			_whisper_tutorial_nudge(_tr("Wager staked! Press [TAB] or [SPACE] to return to your cards.", "Sázka je uzavřena! Stiskni [TAB] nebo [SPACE] pro návrat ke kartám."))
+		return
 	if tutorial_mode and tutorial_step == 2:
+		var scard2: Dictionary = player_hand[c_idx]
+		if not _can_play(scard2) or str(scard2["rank"]) != "10":
+			_whisper_tutorial_nudge(_tr("That card isn't the task! Play your glowing ♥ Ten from hand.", "Zahraj svítící ♥ Desítku ze své ruky!"))
+			return
+	if tutorial_mode and tutorial_step == 3:
 		var scard: Dictionary = player_hand[c_idx]
 		if str(scard["rank"]) != "7":
 			_whisper_tutorial_nudge(_tr("Task: Play your glowing Seven (7)!", "Úkol: Zahraj svou svítící Sedmičku (7)!"))
 			return
-	if tutorial_mode and tutorial_step == 3:
+	if tutorial_mode and tutorial_step == 4:
 		if c_idx in staged_card_indices:
 			if staged_card_indices.size() >= 2:
 				_launch_staged_stack()
@@ -11112,6 +11485,26 @@ func _handle_card_click_or_drop(c_idx: int, from_arena_drop: bool = false) -> vo
 			return
 		_whisper_tutorial_nudge(_tr("Task: Stack both Eights (8) together!", "Úkol: Spoj obě Osmičky (8) do komba!"))
 		return
+	if tutorial_mode and tutorial_step == 5:
+		if c_idx in staged_card_indices:
+			if staged_card_indices.size() >= 2:
+				_launch_staged_stack()
+			else:
+				_whisper_tutorial_nudge(_tr("First Ace staged! Now click the OTHER Ace (E)!", "První Eso označeno! Teď klikni na DRUHÉ Eso (E)!"))
+			return
+		if str(player_hand[c_idx]["rank"]) == "E":
+			_toggle_stage_card(c_idx)
+			return
+		_whisper_tutorial_nudge(_tr("Task: Stack both Aces (E) to deal -4 ♥ HP!", "Úkol: Spoj obě Esa (E) do komba pro -4 ♥ HP!"))
+		return
+	if tutorial_mode and tutorial_step == 6:
+		if tutorial_substep == 0:
+			if str(player_hand[c_idx].get("power_id", "")) != "SPEC_VAMPIRE":
+				_whisper_tutorial_nudge(_tr("Task: Play your special card 🦇 Vampire Leech (SPEC_VAMPIRE)!", "Úkol: Zahraj speciální kartu 🦇 Upíří pijavice (SPEC_VAMPIRE)!"))
+				return
+		else:
+			_whisper_tutorial_nudge(_tr("First toss the 3D Hellfire Phial IGNIS on the right side of the table!", "Nejdřív vyzkoušej 3D Baňku pekelného ohně IGNIS vpravo na stole!"))
+			return
 
 	if not staged_card_indices.is_empty():
 		if c_idx in staged_card_indices:
@@ -11206,6 +11599,12 @@ func _trigger_tavern_prop_click(prop_id: String) -> void:
 			set_duel_wager("SWORD")
 			_animate_wager_showcase_3d(true)
 			Fx.float_number(self, player_sword_root.global_position + Vector3(0.0, 0.22, 0.0), _tr("⚔ SWORD OATH!", "⚔ KRVAVÁ PŘÍSAHA!"), Color(1.0, 0.36, 0.28), 48, 0.18, 0.75, 1.45)
+			if tutorial_mode and tutorial_step == 1 and tutorial_substep == 1:
+				tutorial_substep = 2
+				_tutorial_action_done = "wager_staked"
+				_trigger_ghost_ok_flash()
+				_update_tutorial_callout_ui(1, true)
+				return
 		else:
 			var stw := player_sword_root.create_tween()
 			stw.tween_property(player_sword_root, "position:y", 0.90, 0.08)
@@ -11505,7 +11904,7 @@ func _sync_peek_ui_visibility() -> void:
 	var cine_active := _is_cinematic_playing() or cam_view_mode == CameraViewMode.CINEMATIC
 	if wager_bar_panel:
 		wager_bar_panel.visible = false
-	var show_opening_pact := (not tutorial_mode) and (not opening_turn_committed) and current_round_num == 1 and (not intro_animating) and (not peddler_open) and (not shop_gate_open) and (not cine_active) and (not (victory_summary_overlay and victory_summary_overlay.visible))
+	var show_opening_pact := ((not tutorial_mode and not opening_turn_committed and current_round_num == 1) or (tutorial_mode and tutorial_step == 1 and tutorial_substep == 0)) and (not intro_animating) and (not peddler_open) and (not shop_gate_open) and (not cine_active) and (not (victory_summary_overlay and victory_summary_overlay.visible))
 	if veto_standalone_panel:
 		veto_standalone_panel.visible = show_opening_pact
 		if show_opening_pact:
@@ -11855,6 +12254,12 @@ func _play_player_cards_3d(play_indices: Array, chosen_suit: String) -> void:
 
 	var run_special_cine := false
 	var special_cine_id := ""
+	if tutorial_mode and tutorial_step == 6 and tutorial_substep == 0 and is_instance_valid(cinematic_director):
+		for c_chk in chosen_cards:
+			if str(c_chk.get("power_id", "")) == "SPEC_VAMPIRE":
+				run_special_cine = true
+				special_cine_id = "SPEC_VAMPIRE"
+				break
 
 	if (not tutorial_mode or tutorial_step >= 3) and (not run_special_cine):
 		for card in chosen_cards:
@@ -12254,7 +12659,7 @@ func _execute_balatro_stagger_timeline(
 	var queued_desc := _tr("∞ %d× Eight Chain (+%d pts)" % [cnt, total_pts], "∞ %d× Osmičky (+%d b.)" % [cnt, total_pts]) if (cnt >= 2 and str(chosen_cards[0].get("rank", "")) == "8") else ("%s %s (+%d %s)" % [s_obj["sym"], _get_rank_name(str(chosen_cards[0].get("rank", "8"))) if str(chosen_cards[0].get("power_id", "")) == "" else str(Catalog.get_power_card_loc(str(chosen_cards[0].get("power_id", "")), opts_language).get("name", chosen_cards[0].get("rname", "Card"))), total_pts, _tr("pts", "b.")] if not chosen_cards.is_empty() else ("+%d %s" % [total_pts, _tr("pts", "b.")]))
 
 	var ace_dmg := int(score_res.get("ace_hp_damage", 0))
-	if ace_dmg > 0 and (not tutorial_mode or tutorial_step >= 3):
+	if ace_dmg > 0 and (not tutorial_mode or tutorial_step >= 5):
 		var ace_cnt := 0
 		for cc_a in chosen_cards:
 			if str(cc_a.get("rank", "")) == "E" and Catalog.normalize_card_class(str(cc_a.get("edition", "NORMAL"))) != "MERCHANT":
@@ -12613,8 +13018,9 @@ func _activate_magic_puf_3d() -> void:
 				puf_lbl_node.visible = true
 			cam_impact_active = false
 			busy_animating = false
-			if tutorial_mode and tutorial_step == 5:
-				_advance_tutorial_to(6)
+			if tutorial_mode and tutorial_step == 6 and tutorial_substep == 1:
+				_trigger_ghost_ok_flash()
+				_advance_tutorial_to(7)
 			else:
 				_refresh_table_labels()
 		)
@@ -12939,9 +13345,9 @@ func _choose_ai_play_idx() -> int:
 			pending_king_challenge.clear()
 
 	if play_idx == -1:
-		if tutorial_mode and tutorial_step == 2:
+		if tutorial_mode and tutorial_step == 3:
 			play_idx = -1
-		elif tutorial_mode and tutorial_step <= 4:
+		elif tutorial_mode and tutorial_step <= 6:
 			for i in range(ai_hand.size()):
 				var ac: Dictionary = ai_hand[i]
 				var ar: String = str(ac["rank"])
@@ -13217,21 +13623,34 @@ func _finish_ai_3d_turn() -> void:
 	busy_animating = false
 	is_player_turn = true
 	if tutorial_mode:
-		if tutorial_step <= 4:
+		if tutorial_step <= 6:
 			pending_draw = 0
 			pending_skip = false
 			pending_skip_turns = 0
-		if tutorial_step == 1 and (_tutorial_action_done == "played_card" or _tutorial_action_done == "played_seven" or _tutorial_action_done == "played_special" or _tutorial_action_done == "slammed_combo"):
-			_trigger_ghost_ok_flash()
-			_advance_tutorial_to(2)
-			return
-		elif tutorial_step == 2 and _tutorial_action_done == "played_seven":
+		if tutorial_step == 2 and (_tutorial_action_done == "played_card" or _tutorial_action_done == "played_seven" or _tutorial_action_done == "played_special" or _tutorial_action_done == "slammed_combo"):
 			_trigger_ghost_ok_flash()
 			_advance_tutorial_to(3)
 			return
-		elif tutorial_step == 3 and _tutorial_action_done == "slammed_combo":
+		elif tutorial_step == 3 and _tutorial_action_done == "played_seven":
 			_trigger_ghost_ok_flash()
 			_advance_tutorial_to(4)
+			return
+		elif tutorial_step == 4 and _tutorial_action_done == "slammed_combo":
+			_trigger_ghost_ok_flash()
+			_advance_tutorial_to(5)
+			return
+		elif tutorial_step == 5 and _tutorial_action_done == "slammed_combo":
+			_trigger_ghost_ok_flash()
+			_advance_tutorial_to(6)
+			return
+		elif tutorial_step == 6 and tutorial_substep == 0 and _tutorial_action_done == "played_special":
+			tutorial_substep = 1
+			_tutorial_action_done = ""
+			_trigger_ghost_ok_flash()
+			_update_tutorial_callout_ui(6, true)
+			emit_signal("play_sfx_requested", "turn_player")
+			_rebuild_all_3d_hands()
+			_refresh_table_labels()
 			return
 	emit_signal("play_sfx_requested", "turn_player")
 	_rebuild_all_3d_hands()
@@ -14519,11 +14938,12 @@ func _check_win_or_redeal() -> bool:
 		_flush_pending_exchange_scores_immediately()
 	var round_cycled := false
 	if player_hand.is_empty():
-		if tutorial_mode and tutorial_step == 4:
-			_advance_tutorial_to(6)
+		if tutorial_mode and tutorial_step == 7:
+			_spawn_score_popup(_tr("★ SHEDDING FINISHER +120 & ×2.44!", "★ SHEDDING FINISHER +120 & ×2.44!"), Color(1.0, 0.88, 0.34), true)
+			_advance_tutorial_to(8)
 			_refresh_table_labels()
 			return false
-		elif tutorial_mode and tutorial_step < 4:
+		elif tutorial_mode and tutorial_step < 7:
 			for _i in range(3):
 				player_hand.append(_draw_from_deck())
 		elif tutorial_mode:
@@ -14538,7 +14958,7 @@ func _check_win_or_redeal() -> bool:
 				_spawn_score_popup(_tr("★ ROUND %d WON! +%s & +35g!" % [current_round_num, _format_pts_ui(shed_ko)], "★ %d. KOLO VYHRÁNO! +%s a +35g!" % [current_round_num, _format_pts_ui(shed_ko)]), Color(0.45, 1.0, 0.68), true)
 			table_status_label3d.text = _tr("Hand emptied — Round %d complete!" % current_round_num, "Prázdná ruka — %d. kolo dokončeno!" % current_round_num)
 	elif ai_hand.is_empty():
-		if tutorial_mode and tutorial_step < 6:
+		if tutorial_mode and tutorial_step < 8:
 			for _i in range(3):
 				ai_hand.append(_make_card_dict("ZALUD", "9") if _i == 0 else _make_card_dict("GULA", "D"))
 		else:
@@ -14547,7 +14967,7 @@ func _check_win_or_redeal() -> bool:
 			_award_ai_score_immediately(ai_empty_b, "+%s BONUS" % _format_pts_ui(ai_empty_b), Color(1.0, 0.40, 0.40))
 			table_status_label3d.text = _tr("Rival emptied their hand (+%s pts)!" % _format_pts_ui(ai_empty_b), "Soupeř dohrál ruku (+%s b.)!" % _format_pts_ui(ai_empty_b))
 
-	if tutorial_mode and tutorial_step < 6:
+	if tutorial_mode and tutorial_step < 7:
 		player_score = mini(player_score, target_score - 10)
 		ai_score = mini(ai_score, target_score - 20)
 
@@ -14781,3 +15201,285 @@ func _refresh_table_labels() -> void:
 		if next_key != _last_turn_toast_key:
 			_last_turn_toast_key = next_key
 			_flash_turn_toast(t_title, t_sub, t_col, 0.85, false)
+
+func _project_world_to_hud(world_pos: Vector3) -> Variant:
+	if not is_instance_valid(cam) or not cam.is_inside_tree():
+		return null
+	if cam.is_position_behind(world_pos):
+		return null
+	return cam.unproject_position(world_pos)
+
+func _draw_tutorial_callout_arrow(ctrl: Control, target_pt: Vector2, tail_offset: Vector2, label_txt: String, accent: Color) -> void:
+	var t := float(Time.get_ticks_msec()) * 0.001
+	var bob := sin(t * 4.2) * 5.0
+	var dir_v := (target_pt - (target_pt + tail_offset)).normalized()
+	var tip := target_pt - dir_v * (6.0 + bob)
+	var tail := target_pt + tail_offset - dir_v * bob
+
+	# Outer dark ink shadow + golden-ink shaft
+	ctrl.draw_line(tail, tip, Color(0.05, 0.04, 0.03, 0.88), 6.0, true)
+	ctrl.draw_line(tail, tip, accent, 3.0, true)
+
+	# Arrowhead
+	var perp := Vector2(-dir_v.y, dir_v.x)
+	var h1 := tip - dir_v * 14.0 + perp * 7.5
+	var h2 := tip - dir_v * 14.0 - perp * 7.5
+	var head_poly := PackedVector2Array([tip, h1, h2])
+	ctrl.draw_colored_polygon(head_poly, accent)
+	ctrl.draw_polyline(PackedVector2Array([tip, h1, h2, tip]), Color(0.08, 0.05, 0.03, 0.92), 1.8, true)
+
+	# Compact micro-callout pill at tail
+	if label_txt != "":
+		var fnt := _get_font(true)
+		var fsize := 13
+		var txt_sz := fnt.get_string_size(label_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize)
+		var pad := Vector2(10.0, 5.0)
+		var box_sz := txt_sz + pad * 2.0
+		var box_pos := tail - Vector2(box_sz.x * 0.5, box_sz.y * 0.5)
+		var vp_sz := ctrl.size
+		box_pos.x = clampf(box_pos.x, 8.0, maxf(8.0, vp_sz.x - box_sz.x - 8.0))
+		box_pos.y = clampf(box_pos.y, 8.0, maxf(8.0, vp_sz.y - box_sz.y - 8.0))
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.06, 0.05, 0.04, 0.94)
+		sb.border_color = accent
+		sb.set_border_width_all(1)
+		sb.set_corner_radius_all(8)
+		ctrl.draw_style_box(sb, Rect2(box_pos, box_sz))
+		ctrl.draw_string(fnt, box_pos + Vector2(pad.x, pad.y + txt_sz.y * 0.78), label_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color(1.0, 0.96, 0.84))
+
+func _draw_tutorial_arrow_overlay() -> void:
+	if not tutorial_mode or not is_instance_valid(tutorial_arrow_overlay) or not tutorial_arrow_overlay.visible:
+		return
+	if intro_animating or busy_animating or _is_cinematic_playing():
+		return
+	var gold := Color(1.0, 0.84, 0.34, 0.96)
+	var cyan := Color(0.36, 0.92, 1.0, 0.96)
+	var emerald := Color(0.40, 0.96, 0.66, 0.96)
+	var crimson := Color(1.0, 0.42, 0.42, 0.96)
+
+	match tutorial_step:
+		1:
+			if tutorial_substep == 0 and veto_standalone_panel and veto_standalone_panel.visible:
+				var vr := veto_standalone_panel.get_global_rect()
+				_draw_tutorial_callout_arrow(tutorial_arrow_overlay, Vector2(vr.position.x + vr.size.x * 0.35, vr.end.y + 4.0), Vector2(36.0, 58.0), _tr("Veto Hand [V]", "Vetovat karty [V]"), cyan)
+			elif tutorial_substep == 1:
+				if cam_view_mode != CameraViewMode.TABLE_ITEMS and is_instance_valid(view_toggle_btn) and view_toggle_btn.visible:
+					var br := view_toggle_btn.get_global_rect()
+					_draw_tutorial_callout_arrow(tutorial_arrow_overlay, Vector2(br.position.x + br.size.x * 0.5, br.position.y - 4.0), Vector2(0.0, -56.0), _tr("3D Table [TAB]", "3D Stůl [TAB]"), gold)
+				elif cam_view_mode == CameraViewMode.TABLE_ITEMS and is_instance_valid(player_sword_root):
+					var sp = _project_world_to_hud(player_sword_root.global_position + Vector3(0.0, 0.08, 0.0))
+					if sp is Vector2:
+						_draw_tutorial_callout_arrow(tutorial_arrow_overlay, sp, Vector2(-72.0, -68.0), _tr("Click 3D Sword", "Klikni na 3D Meč"), gold)
+			elif tutorial_substep == 2 and is_instance_valid(view_toggle_btn) and view_toggle_btn.visible:
+				var br2 := view_toggle_btn.get_global_rect()
+				_draw_tutorial_callout_arrow(tutorial_arrow_overlay, Vector2(br2.position.x + br2.size.x * 0.5, br2.position.y - 4.0), Vector2(0.0, -56.0), _tr("Back to Cards [TAB]", "Zpět ke kartám [TAB]"), emerald)
+		2:
+			for i in range(mini(player_hand.size(), player_card_nodes.size())):
+				if str(player_hand[i].get("rank", "")) == "10" and is_instance_valid(player_card_nodes[i]):
+					var p_pts = _project_world_to_hud(player_card_nodes[i].global_position + Vector3(0.0, 0.075, 0.0))
+					if p_pts is Vector2:
+						_draw_tutorial_callout_arrow(tutorial_arrow_overlay, p_pts, Vector2(-24.0, -72.0), _tr("Suit & Value", "Hodnota karty"), emerald)
+					break
+			if player_hud_grp and player_hud_grp.visible:
+				var pr := player_hud_grp.get_global_rect()
+				_draw_tutorial_callout_arrow(tutorial_arrow_overlay, Vector2(pr.position.x + pr.size.x * 0.65, pr.end.y + 4.0), Vector2(20.0, 56.0), _tr("Chalice Score", "Body do Kalicha"), gold)
+		3:
+			for i in range(mini(player_hand.size(), player_card_nodes.size())):
+				if str(player_hand[i].get("rank", "")) == "7" and is_instance_valid(player_card_nodes[i]):
+					var p7 = _project_world_to_hud(player_card_nodes[i].global_position + Vector3(0.0, 0.075, 0.0))
+					if p7 is Vector2:
+						_draw_tutorial_callout_arrow(tutorial_arrow_overlay, p7, Vector2(0.0, -76.0), _tr("7 = +2 & 3× pts", "7 = +2 & 3× body"), cyan)
+					break
+		4:
+			var e_idx := 0
+			for i in range(mini(player_hand.size(), player_card_nodes.size())):
+				if str(player_hand[i].get("rank", "")) == "8" and is_instance_valid(player_card_nodes[i]):
+					var p8 = _project_world_to_hud(player_card_nodes[i].global_position + Vector3(0.0, 0.075, 0.0))
+					if p8 is Vector2:
+						var off_x := -38.0 if e_idx == 0 else 38.0
+						_draw_tutorial_callout_arrow(tutorial_arrow_overlay, p8, Vector2(off_x, -74.0), _tr("RMB Stage 8", "Pravý klik [RMB]"), gold)
+					e_idx += 1
+			if combo_hud_grp and combo_hud_grp.visible:
+				var cr := combo_hud_grp.get_global_rect()
+				_draw_tutorial_callout_arrow(tutorial_arrow_overlay, Vector2(cr.position.x + cr.size.x * 0.5, cr.end.y + 4.0), Vector2(18.0, 54.0), _tr("Combo Formula", "Vzorec komba"), gold)
+		5:
+			var a_idx := 0
+			for i in range(mini(player_hand.size(), player_card_nodes.size())):
+				if str(player_hand[i].get("rank", "")) == "E" and is_instance_valid(player_card_nodes[i]):
+					var pe = _project_world_to_hud(player_card_nodes[i].global_position + Vector3(0.0, 0.075, 0.0))
+					if pe is Vector2:
+						var off_x := -38.0 if a_idx == 0 else 38.0
+						_draw_tutorial_callout_arrow(tutorial_arrow_overlay, pe, Vector2(off_x, -74.0), _tr("2× Ace = -4 HP", "2× Eso = -4 HP"), crimson)
+					a_idx += 1
+			if is_instance_valid(player_hp_heart) and player_hp_heart.visible:
+				var hr := player_hp_heart.get_global_rect()
+				_draw_tutorial_callout_arrow(tutorial_arrow_overlay, Vector2(hr.end.x + 4.0, hr.position.y + hr.size.y * 0.5), Vector2(76.0, 12.0), _tr("Your Heart (♥ HP)", "Tvoje srdce (♥ HP)"), crimson)
+		6:
+			if tutorial_substep == 0:
+				for i in range(mini(player_hand.size(), player_card_nodes.size())):
+					if str(player_hand[i].get("power_id", "")) == "SPEC_VAMPIRE" and is_instance_valid(player_card_nodes[i]):
+						var pv = _project_world_to_hud(player_card_nodes[i].global_position + Vector3(0.0, 0.075, 0.0))
+						if pv is Vector2:
+							_draw_tutorial_callout_arrow(tutorial_arrow_overlay, pv, Vector2(0.0, -78.0), _tr("Special Card", "Speciální karta"), crimson)
+						break
+			elif tutorial_substep == 1 and is_instance_valid(magic_puf_bottle) and magic_puf_bottle.visible:
+				var pf = _project_world_to_hud(magic_puf_bottle.global_position + Vector3(0.0, 0.14, 0.0))
+				if pf is Vector2:
+					_draw_tutorial_callout_arrow(tutorial_arrow_overlay, pf, Vector2(-72.0, -64.0), _tr("Click IGNIS Phial", "Klikni na Baňku"), gold)
+		7:
+			if not player_card_nodes.is_empty() and is_instance_valid(player_card_nodes[0]):
+				var pl = _project_world_to_hud(player_card_nodes[0].global_position + Vector3(0.0, 0.075, 0.0))
+				if pl is Vector2:
+					_draw_tutorial_callout_arrow(tutorial_arrow_overlay, pl, Vector2(0.0, -76.0), _tr("Last Card!", "Poslední karta!"), emerald)
+			if is_instance_valid(tavern_bell_root) and tavern_bell_root.visible:
+				var pb = _project_world_to_hud(tavern_bell_root.global_position + Vector3(0.0, 0.12, 0.0))
+				if pb is Vector2:
+					_draw_tutorial_callout_arrow(tutorial_arrow_overlay, pb, Vector2(-64.0, -58.0), _tr("Shop every 3rd R", "Obchod každé 3. kolo"), gold)
+
+func _setup_unlock_tip_banner() -> void:
+	unlock_tip_panel = PanelContainer.new()
+	unlock_tip_panel.name = "UnlockTipBanner"
+	unlock_tip_panel.anchor_left = 1.0
+	unlock_tip_panel.anchor_top = 0.0
+	unlock_tip_panel.anchor_right = 1.0
+	unlock_tip_panel.anchor_bottom = 0.0
+	unlock_tip_panel.offset_left = -384
+	unlock_tip_panel.offset_top = 132
+	unlock_tip_panel.offset_right = -16
+	unlock_tip_panel.offset_bottom = 264
+	unlock_tip_panel.z_index = 28
+	unlock_tip_panel.visible = false
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.07, 0.06, 0.05, 0.96)
+	sb.border_color = Color(0.94, 0.78, 0.34, 0.95)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(12)
+	sb.content_margin_left = 14
+	sb.content_margin_right = 14
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 10
+	unlock_tip_panel.add_theme_stylebox_override("panel", sb)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 6)
+	unlock_tip_panel.add_child(vb)
+
+	unlock_tip_title_lbl = Label.new()
+	unlock_tip_title_lbl.add_theme_font_override("font", _get_font(true))
+	unlock_tip_title_lbl.add_theme_font_size_override("font_size", 15)
+	unlock_tip_title_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.40))
+	vb.add_child(unlock_tip_title_lbl)
+
+	unlock_tip_body_lbl = Label.new()
+	unlock_tip_body_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	unlock_tip_body_lbl.custom_minimum_size = Vector2(336, 0)
+	unlock_tip_body_lbl.add_theme_font_override("font", _get_font(false))
+	unlock_tip_body_lbl.add_theme_font_size_override("font_size", 13)
+	unlock_tip_body_lbl.add_theme_color_override("font_color", Color(0.94, 0.91, 0.84))
+	vb.add_child(unlock_tip_body_lbl)
+
+	var btn_row := HBoxContainer.new()
+	btn_row.alignment = BoxContainer.ALIGNMENT_END
+	vb.add_child(btn_row)
+	unlock_tip_btn = Button.new()
+	unlock_tip_btn.text = _tr("Got it [SPACE]", "Rozumím [SPACE]")
+	unlock_tip_btn.custom_minimum_size = Vector2(148, 30)
+	unlock_tip_btn.add_theme_font_override("font", _get_font(true))
+	unlock_tip_btn.add_theme_font_size_override("font_size", 13)
+	_style_action_button(unlock_tip_btn, Color(0.16, 0.24, 0.14, 0.96), Color(0.46, 0.94, 0.62), 10)
+	unlock_tip_btn.pressed.connect(_dismiss_unlock_tip)
+	btn_row.add_child(unlock_tip_btn)
+	hud_root.add_child(unlock_tip_panel)
+
+func _try_show_unlock_tip(tip_id: String, title_en: String, title_cs: String, body_en: String, body_cs: String, accent_col: Color = Color(0.96, 0.80, 0.36)) -> void:
+	if tutorial_mode or tip_id == "":
+		return
+	if active_run_profile.is_empty():
+		active_run_profile = Catalog.load_profile()
+	if Catalog.has_seen_unlock_tip(active_run_profile, tip_id):
+		return
+	if _active_unlock_tip_id == tip_id:
+		return
+	for q_item in _unlock_tip_queue:
+		if str(q_item.get("id", "")) == tip_id:
+			return
+	var tip_data := {
+		"id": tip_id,
+		"title_en": title_en, "title_cs": title_cs,
+		"body_en": body_en, "body_cs": body_cs,
+		"col": accent_col,
+	}
+	if unlock_tip_panel and unlock_tip_panel.visible:
+		_unlock_tip_queue.append(tip_data)
+		return
+	_present_unlock_tip(tip_data)
+
+func _present_unlock_tip(tip_data: Dictionary) -> void:
+	if not is_instance_valid(unlock_tip_panel):
+		return
+	_active_unlock_tip_id = str(tip_data.get("id", ""))
+	var acol: Color = tip_data.get("col", Color(0.96, 0.80, 0.36))
+	var sb := unlock_tip_panel.get_theme_stylebox("panel") as StyleBoxFlat
+	if sb:
+		sb.border_color = acol
+	unlock_tip_title_lbl.text = _tr(str(tip_data["title_en"]), str(tip_data["title_cs"]))
+	unlock_tip_title_lbl.add_theme_color_override("font_color", acol)
+	unlock_tip_body_lbl.text = _tr(str(tip_data["body_en"]), str(tip_data["body_cs"]))
+	unlock_tip_btn.text = _tr("Got it [SPACE]", "Rozumím [SPACE]")
+	unlock_tip_panel.visible = true
+	unlock_tip_panel.modulate.a = 0.0
+	var tw := unlock_tip_panel.create_tween()
+	tw.tween_property(unlock_tip_panel, "modulate:a", 1.0, 0.22)
+
+func _dismiss_unlock_tip() -> void:
+	if _active_unlock_tip_id != "":
+		Catalog.mark_unlock_tip_seen(active_run_profile, _active_unlock_tip_id)
+		_active_unlock_tip_id = ""
+	if is_instance_valid(unlock_tip_panel):
+		unlock_tip_panel.visible = false
+	emit_signal("play_sfx_requested", "ui_click")
+	if not _unlock_tip_queue.is_empty():
+		var next_tip: Dictionary = _unlock_tip_queue.pop_front()
+		_present_unlock_tip(next_tip)
+
+func _check_battle_unlock_tips() -> void:
+	if tutorial_mode:
+		return
+	if active_boss_mod != "":
+		_try_show_unlock_tip(
+			"unlock_boss_stage",
+			"✦ BOSS ENCOUNTER", "✦ SOUBOJ S BOSSEM",
+			"Bosses have special rules & an armored Boss Heart! Hover the Boss Plaque on the table for counterplay tips.",
+			"Bossové mají speciální pravidla a obrněné Boss Srdce! Najeď myší na plaketu Bosse na stole pro radu.",
+			Color(1.0, 0.56, 0.26)
+		)
+	if not run_table_relics.is_empty():
+		_try_show_unlock_tip(
+			"unlock_table_relic",
+			"✦ TABLETOP RELICS", "✦ STOLNÍ RELIKVIE",
+			"3D Relics sit on the left side of the table! Press [TAB] to inspect them or click active ones for bonuses.",
+			"3D Relikvie leží vlevo na stole! Klávesou [TAB] si je prohlédni a aktivuj jejich bonusy.",
+			Color(0.46, 0.88, 1.0)
+		)
+	var seen_spec := false
+	for hc in player_hand:
+		var pid := str(hc.get("power_id", ""))
+		if pid != "" and not seen_spec:
+			seen_spec = true
+			_try_show_unlock_tip(
+				"unlock_special_card",
+				"✦ SPECIAL POWER CARD", "✦ SPECIÁLNÍ MOCNÁ KARTA",
+				"Special Power Cards unleash unique tactical effects and dramatic combos when played!",
+				"Speciální Mocné karty spouští unikátní taktické efekty a silná komba!",
+				Color(1.0, 0.38, 0.52)
+			)
+		var ed := Catalog.normalize_card_class(str(hc.get("edition", "NORMAL")))
+		match ed:
+			"MAGE":
+				_try_show_unlock_tip("unlock_edition_mage", "✦ MAGE EDITION CARD", "✦ EDICE MÁG", "Mage cards charge up while held in your hand — hold them to amplify their power!", "Karty Mága se nabíjí, dokud je držíš v ruce — podrž je pro silnější efekt!", Color(0.42, 0.84, 1.0))
+			"KNIGHT":
+				_try_show_unlock_tip("unlock_edition_knight", "✦ KNIGHT EDITION CARD", "✦ EDICE RYTÍŘ", "Knight cards grant protective Shields and armored synergy against Rival attacks!", "Karty Rytíře dávají ochranné Štíty a brání tě proti útokům soupeře!", Color(0.74, 0.86, 1.0))
+			"MERCHANT":
+				_try_show_unlock_tip("unlock_edition_merchant", "✦ MERCHANT EDITION CARD", "✦ EDICE KUPEC", "Merchant cards mine bonus Florins (Gold) when played so you can afford Forge upgrades!", "Karty Kupce těží bonusové Zlaťáky při zahrání pro nákupy v Kovárně!", Color(1.0, 0.84, 0.30))
+			"THIEF":
+				_try_show_unlock_tip("unlock_edition_thief", "✦ THIEF EDITION CARD", "✦ EDICE ZLODĚJ", "Thief cards siphon points or steal tempo directly from your Rival!", "Karty Zloděje kradou body nebo tempo přímo od soupeře!", Color(0.86, 0.48, 1.0))

@@ -1426,6 +1426,8 @@ func _launch_era_battle(era_idx: int, force_tutorial: bool = false) -> void:
 	var run_tut := force_tutorial or not first_battle_tutorial_done
 	first_battle_tutorial_done = true
 	var loadout := {} if run_tut else _build_roguelite_loadout_for_era(era, false)
+	if not run_tut:
+		loadout["profile"] = run_profile
 	battle_3d.start_3d_battle(era, PLAYER_DECKS[selected_deck_idx], run_tut, loadout)
 	_switch_to(ScreenState.MATCH_3D)
 
@@ -5717,6 +5719,43 @@ func _rebuild_shop_ui(after_win: bool = false) -> void:
 
 	for c in shop_items_box.get_children():
 		c.queue_free()
+
+	if not Catalog.has_seen_unlock_tip(run_profile, "unlock_shop"):
+		var tip_card := PanelContainer.new()
+		var t_sb := _make_modal_card_style(Color(0.08, 0.14, 0.10, 0.96), Color(0.42, 0.94, 0.62))
+		t_sb.set_corner_radius_all(16)
+		t_sb.content_margin_left = 16; t_sb.content_margin_right = 16
+		t_sb.content_margin_top = 10; t_sb.content_margin_bottom = 10
+		tip_card.add_theme_stylebox_override("panel", t_sb)
+		var thb := HBoxContainer.new()
+		thb.add_theme_constant_override("separation", 12)
+		tip_card.add_child(thb)
+		var tlbl := Label.new()
+		tlbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tlbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		tlbl.text = _tr(
+			"✦ FIRST TIME IN THE FORGE: Spend Florins on Power Cards & Card Class Upgrades (Mage/Knight/Merchant/Thief) to power up your deck!",
+			"✦ POPRVÉ V KOVÁRNĚ: Utrať Zlaťáky za Mocné karty a Edice karet (Mág/Rytíř/Kupec/Zloděj) pro posílení balíčku!"
+		)
+		tlbl.add_theme_font_override("font", _get_font(true))
+		tlbl.add_theme_font_size_override("font_size", 14)
+		tlbl.add_theme_color_override("font_color", Color(0.76, 1.0, 0.84))
+		thb.add_child(tlbl)
+		var tbtn := Button.new()
+		tbtn.text = _tr("Got it", "Rozumím")
+		tbtn.custom_minimum_size = Vector2(108, 32)
+		tbtn.add_theme_font_override("font", _get_font(true))
+		tbtn.add_theme_font_size_override("font_size", 13)
+		var tb_sb := _make_modal_card_style(Color(0.14, 0.28, 0.18, 0.98), Color(0.46, 0.96, 0.64))
+		tb_sb.set_corner_radius_all(10)
+		tbtn.add_theme_stylebox_override("normal", tb_sb)
+		tbtn.add_theme_stylebox_override("hover", tb_sb)
+		tbtn.pressed.connect(func():
+			Catalog.mark_unlock_tip_seen(run_profile, "unlock_shop")
+			tip_card.queue_free()
+		)
+		thb.add_child(tbtn)
+		shop_items_box.add_child(tip_card)
 
 	for i in range(shop_offers.size()):
 		var off: Dictionary = shop_offers[i]
