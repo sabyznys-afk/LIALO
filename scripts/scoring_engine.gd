@@ -113,6 +113,14 @@ static func get_rank_ability_info(rank_id: String, lang: String = "en") -> Dicti
 	return d
 
 
+static func _fmt_num(val: float) -> String:
+	if absf(val - roundf(val)) < 0.005:
+		return "%d" % int(round(val))
+	if absf(val * 10.0 - roundf(val * 10.0)) < 0.05:
+		return "%.1f" % val
+	return "%.2f" % val
+
+
 static func get_base_card_chips(rank_id: String, fallback_pts: int = 10) -> int:
 	if BASE_CARD_CHIPS.has(rank_id):
 		return int(BASE_CARD_CHIPS[rank_id])
@@ -372,32 +380,32 @@ static func calculate_hand_score(
 					var max_c := int(cls_info.get("max_charge", 2))
 					if m_chg >= max_c:
 						mage_draws += 1
-						bonus_pts += 24
-						x_mult_product *= 1.5
+						bonus_pts += 20
+						x_mult_product *= 2.0
 						rival_drain += 12
 						lightning = true
-						breakdown_chips.append({"tag": "🔮 MAGE 2/2" if not cs else "🔮 MÁG 2/2", "val": "+24 ×1.5", "col": Color(0.54, 0.72, 1.0)})
-						steps.append(_make_step("edition", "🔮 MAGE BURST (+24 & ×1.5)", str(card.get("rname", "")), 24, 0.0, 1.5, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.64, 0.44, 1.0), "", true))
+						breakdown_chips.append({"tag": "🔮 MAGE 2/2" if not cs else "🔮 MÁG 2/2", "val": "+20 ×2", "col": Color(0.54, 0.72, 1.0)})
+						steps.append(_make_step("edition", "🔮 MAGE BURST (+20 & ×2.0)", str(card.get("rname", "")), 20, 0.0, 2.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.64, 0.44, 1.0), "", true))
 					else:
-						bonus_pts += 8
-						breakdown_chips.append({"tag": "🔮 MAGE" if not cs else "🔮 MÁG", "val": "+8", "col": Color(0.68, 0.52, 1.0)})
-						steps.append(_make_step("edition", "🔮 ARCANE AURA (+8)", str(card.get("rname", "")), 8, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.64, 0.44, 1.0)))
+						bonus_pts += 5
+						breakdown_chips.append({"tag": "🔮 MAGE" if not cs else "🔮 MÁG", "val": "+5", "col": Color(0.68, 0.52, 1.0)})
+						steps.append(_make_step("edition", "🔮 ARCANE AURA (+5)", str(card.get("rname", "")), 5, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.64, 0.44, 1.0)))
 				"KNIGHT":
 					knight_mist_triggered = true
-					bonus_pts += 12
-					x_mult_product *= 1.25
+					bonus_pts += 10
+					x_mult_product *= 1.5
 					lightning = true
-					breakdown_chips.append({"tag": "⚔ KNIGHT" if not cs else "⚔ RYTÍŘ", "val": "+12 ×1.25", "col": Color(0.66, 0.88, 1.0)})
-					steps.append(_make_step("edition", "⚔ STEEL IMPACT (+12 & ×1.25)", str(card.get("rname", "")), 12, 0.0, 1.25, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.60, 0.88, 0.98), "", true))
+					breakdown_chips.append({"tag": "⚔ KNIGHT" if not cs else "⚔ RYTÍŘ", "val": "+10 ×1.5", "col": Color(0.66, 0.88, 1.0)})
+					steps.append(_make_step("edition", "⚔ STEEL IMPACT (+10 & ×1.5)", str(card.get("rname", "")), 10, 0.0, 1.5, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.60, 0.88, 0.98), "", true))
 				"MERCHANT":
-					bonus_pts += 6
-					breakdown_chips.append({"tag": "🪙 GUILD" if not cs else "🪙 KUPEC", "val": "+6 & +16g", "col": Color(1.0, 0.84, 0.28)})
-					steps.append(_make_step("edition", "🪙 BULLION (+6 & +16g)", str(card.get("rname", "")), 6, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.82, 0.24)))
+					bonus_pts += 5
+					breakdown_chips.append({"tag": "🪙 GUILD" if not cs else "🪙 KUPEC", "val": "+5 & +15g", "col": Color(1.0, 0.84, 0.28)})
+					steps.append(_make_step("edition", "🪙 BULLION (+5 & +15g)", str(card.get("rname", "")), 5, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.82, 0.24)))
 				"THIEF":
 					thief_heist_triggered = true
 					bonus_pts += 10
 					breakdown_chips.append({"tag": "🗡 THIEF" if not cs else "🗡 ZLODĚJ", "val": "+10", "col": Color(0.28, 0.92, 0.56)})
-					steps.append(_make_step("edition", "🗡 SHUNPO CUT (+10)", str(card.get("rname", "")), 10, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.28, 0.90, 0.56)))
+					steps.append(_make_step("edition", "🗡 SHADOW CUT (+10)", str(card.get("rname", "")), 10, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.28, 0.90, 0.56)))
 
 		for card in played_cards:
 			var p_id := str(card.get("power_id", ""))
@@ -455,50 +463,53 @@ static func calculate_hand_score(
 					breakdown_chips.append({"tag": "Signet", "val": "+10", "col": Color(1.0, 0.88, 0.38)})
 					steps.append(_make_step("relic", "King's Signet (+10)", "Court Card", 10, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.88, 0.38), "REL_ROYAL"))
 				if "REL_FANG" in active_relics and s_id == "CERVEN":
-					rival_drain += 6
-					breakdown_chips.append({"tag": "Fang", "val": "-6 Rival", "col": Color(0.94, 0.22, 0.32)})
-					steps.append(_make_step("relic", "Crimson Fang (-6 Rival)", "Hearts Affinity", 0, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.94, 0.22, 0.32), "REL_FANG"))
+					rival_drain += 10
+					breakdown_chips.append({"tag": "Fang", "val": "-10 Rival", "col": Color(0.94, 0.22, 0.32)})
+					steps.append(_make_step("relic", "Crimson Fang (-10 Rival)", "Hearts Affinity", 0, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.94, 0.22, 0.32), "REL_FANG"))
 				if "REL_GREED" in active_relics and s_id == "GULA":
-					bonus_gold += 4
-					steps.append(_make_step("relic", "+4 Florins", "Merchant Scale", 0, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.84, 0.20), "REL_GREED"))
+					bonus_gold += 5
+					steps.append(_make_step("relic", "+5 Florins", "Merchant Scale", 0, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.84, 0.20), "REL_GREED"))
 			if "REL_STORMCAP" in active_relics and cnt >= 2:
-				x_mult_product *= 1.25
+				x_mult_product *= 1.5
 				lightning = true
-				breakdown_chips.append({"tag": "Storm", "val": "×1.25", "col": Color(0.38, 0.90, 1.0)})
-				steps.append(_make_step("relic", "Storm Capacitor (×1.25)", "%d× Combo" % cnt, 0, 0.0, 1.25, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.38, 0.90, 1.0), "REL_STORMCAP", true))
+				breakdown_chips.append({"tag": "Storm", "val": "×1.5", "col": Color(0.38, 0.90, 1.0)})
+				steps.append(_make_step("relic", "Storm Capacitor (×1.5)", "%d× Combo" % cnt, 0, 0.0, 1.5, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.38, 0.90, 1.0), "REL_STORMCAP", true))
 			if "REL_CRIMSON_CHOIR" in active_relics and all_red:
-				x_mult_product *= 1.30
-				breakdown_chips.append({"tag": "Choir", "val": "×1.3", "col": Color(0.96, 0.28, 0.42)})
-				steps.append(_make_step("relic", "Crimson Choir (×1.3)", "All-Red Suit Affinity", 0, 0.0, 1.3, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.96, 0.28, 0.42), "REL_CRIMSON_CHOIR"))
+				x_mult_product *= 1.5
+				breakdown_chips.append({"tag": "Choir", "val": "×1.5", "col": Color(0.96, 0.28, 0.42)})
+				steps.append(_make_step("relic", "Crimson Choir (×1.5)", "All-Red Suit Affinity", 0, 0.0, 1.5, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.96, 0.28, 0.42), "REL_CRIMSON_CHOIR"))
 
-		# Active Tabletop Relic Buffs (Blood-Ink Seal ×2, Hollow Mask ×2, Storm Surge)
+		# Active Tabletop Relic Buffs (Blood-Ink Seal ×2, Phantom Mask ×2, Storm Surge)
 		if bool(context.get("blood_seal_active", false)):
 			x_mult_product *= 2.0
 			rival_drain += 10
 			lightning = true
-			breakdown_chips.append({"tag": "🩸 SEAL" if not cs else "🩸 PEČEŤ", "val": "×2.0", "col": Color(0.96, 0.14, 0.24)})
+			breakdown_chips.append({"tag": "🩸 SEAL" if not cs else "🩸 PEČEŤ", "val": "×2", "col": Color(0.96, 0.14, 0.24)})
 			steps.append(_make_step("relic", "🩸 Blood-Ink Seal (×2.0)", "Crimson Resonance", 0, 0.0, 2.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.96, 0.14, 0.24), "TRELIC_BLOOD_SEAL", true))
 		if bool(context.get("hollow_mask_active", false)):
 			x_mult_product *= 2.0
 			lightning = true
-			breakdown_chips.append({"tag": "🎭 HOLLOW", "val": "×2.0 WILD", "col": Color(1.0, 0.22, 0.30)})
-			steps.append(_make_step("relic", "🎭 Hollow Mask (×2.0)", "Hollow Reiatsu", 0, 0.0, 2.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.22, 0.30), "TRELIC_HOLLOW_MASK", true))
+			breakdown_chips.append({"tag": "🎭 PHANTOM", "val": "×2 WILD", "col": Color(1.0, 0.22, 0.30)})
+			steps.append(_make_step("relic", "🎭 Phantom Mask (×2.0)", "Phantom Aura", 0, 0.0, 2.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.22, 0.30), "TRELIC_HOLLOW_MASK", true))
 		var ctx_surge := float(context.get("surge_mult", 0.0))
 		if ctx_surge > 0.01:
-			var s_fac := 1.0 + ctx_surge * 0.5
+			var s_fac := maxf(1.5, roundf((1.0 + ctx_surge * 0.5) * 2.0) * 0.5)
 			x_mult_product *= s_fac
-			breakdown_chips.append({"tag": "⚡ SURGE", "val": "×%.2f" % s_fac, "col": Color(0.32, 0.90, 1.0)})
+			breakdown_chips.append({"tag": "⚡ SURGE", "val": "×%s" % _fmt_num(s_fac), "col": Color(0.32, 0.90, 1.0)})
 
 	final_score = int(round(float(base_subtotal + bonus_pts) * x_mult_product))
 	var eff_mult := mult_val * x_mult_product
 
 	var did_shed := (not (tutorial_mode and tutorial_step < 6)) and current_hand.is_empty()
 	var formula_txt := ""
-	if bonus_pts > 0 or x_mult_product > 1.01:
-		var b_part := ("(%d×%d + %d)" % [display_card_val, cnt, bonus_pts]) if bonus_pts > 0 else ("%d×%d" % [display_card_val, cnt])
-		formula_txt = ("%s × %.2f = %d" % [b_part, x_mult_product, final_score]) if x_mult_product > 1.01 else ("%s = %d" % [b_part, final_score])
+	if bonus_pts > 0 and x_mult_product > 1.01:
+		formula_txt = "(%d + %d) × %s = %d" % [base_subtotal, bonus_pts, _fmt_num(x_mult_product), final_score]
+	elif bonus_pts > 0:
+		formula_txt = "%d + %d = %d" % [base_subtotal, bonus_pts, final_score]
+	elif x_mult_product > 1.01:
+		formula_txt = "%d × %s = %d" % [base_subtotal, _fmt_num(x_mult_product), final_score]
 	else:
-		formula_txt = ("%d × %d = %d b." if cs else "%d × %d = %d pts") % [display_card_val, cnt, final_score]
+		formula_txt = "%d × %d = %d" % [display_card_val, cnt, final_score]
 
 	return {
 		"card_value": display_card_val,
@@ -565,16 +576,16 @@ static func _apply_power_scoring(
 			res["rival_drain"] = 15
 			res["chips"] = 15
 			if chosen_suit == "CERVEN":
-				res["x_mult"] = 1.4
-				res["label"] = "🦇 Upír: +15 a ×1.4!" if cs else "🦇 Vampire: +15 & ×1.4!"
+				res["x_mult"] = 1.5
+				res["label"] = "🦇 Upír: +15 a ×1.5!" if cs else "🦇 Vampire: +15 & ×1.5!"
 			else:
 				res["label"] = "🦇 Upír: -15 Soupeř / +15" if cs else "🦇 Vampire: -15 Rival / +15"
 		"SPEC_STORM":
 			res["extra_draw"] = 3
 			res["lightning"] = true
 			res["surge_kept"] = true
-			res["new_surge_mult"] = 0.8
-			res["label"] = "⚡ Blesk: +3 lízání a +0.8×!" if cs else "⚡ Thunder: +3 Draw & +0.8× Surge!"
+			res["new_surge_mult"] = 1.0
+			res["label"] = "⚡ Blesk: +3 lízání a ×1.5 výboj!" if cs else "⚡ Thunder: +3 Draw & ×1.5 Surge!"
 		"SPEC_MIRROR":
 			if allow_echo:
 				var echo_card: Variant = context.get("echo_card", null)
@@ -614,9 +625,9 @@ static func _apply_power_scoring(
 			res["lightning"] = true
 			res["label"] = "🔥 Fénix: +30 a Čistka" if cs else "🔥 Ash Phoenix: +30 Burn & Clear"
 		"SPEC_MIDAS":
-			res["bonus_gold"] = 14
-			res["chips"] = 24
-			res["label"] = "🪙 Midas: +24 b. & +14g!" if cs else "🪙 Midas Touch: +24 Chips & 2× ♦/Courts"
+			res["bonus_gold"] = 15
+			res["chips"] = 20
+			res["label"] = "🪙 Midas: +20 b. & +15g!" if cs else "🪙 Midas Touch: +20 & +15g!"
 		"SPEC_CHRONOS":
 			res["lightning"] = true
 			res["label"] = "⏳ Chronos: Tah navíc!" if cs else "⏳ Chronos Glass: Extra Turn!"
@@ -625,28 +636,24 @@ static func _apply_power_scoring(
 			res["lightning"] = true
 			res["label"] = "🎭 Šašek: Relikvie 2×!" if cs else "🎭 Tavern Jester: Relics 2×!"
 		"SPEC_HEX":
-			res["rival_drain"] = 18
+			res["rival_drain"] = 15
 			res["chips"] = 15
-			res["label"] = "☠ Stínový hex: -18 / +15" if cs else "☠ Shadow Hex: -18 Rival / +15"
+			res["label"] = "☠ Stínový hex: -15 / +15" if cs else "☠ Shadow Hex: -15 Rival / +15"
 		"SPEC_MAGNET":
 			res["label"] = "🧲 Magnet: Přitáhni pár!" if cs else "🧲 Rune Magnet: Pull Match Duo!"
 		"SPEC_SHIELD":
 			res["label"] = "🛡 Železná bašta: +2 Štíty!" if cs else "🛡 Iron Bastion: +2 Shields!"
 		"SPEC_GAMBLER":
-			var d_mult := 2.0
+			var d_mult := 3.0 if cnt >= 2 else 2.0
 			var roll_override := float(context.get("gambler_roll", 0.0))
 			if roll_override > 0.0:
 				d_mult = roll_override
-			elif not is_preview:
-				var rv := randf()
-				d_mult = 3.5 if rv < 0.22 else (2.0 if rv < 0.65 else 1.5)
 			res["x_mult"] = d_mult
-			if d_mult >= 2.0:
-				res["lightning"] = true
-			res["label"] = ("🎲 Kostky: ×%.1f!" if cs else "🎲 Loaded Dice: ×%.1f!") % d_mult
+			res["lightning"] = true
+			res["label"] = ("🎲 Kostky: ×%s!" if cs else "🎲 Loaded Dice: ×%s!") % _fmt_num(d_mult)
 		"SPEC_PLAGUE":
-			res["rival_drain"] = 14
-			res["label"] = "❄ Mráz: Omráčení & -14" if cs else "❄ Frost Blight: Stun & -14"
+			res["rival_drain"] = 15
+			res["label"] = "❄ Mráz: Omráčení & -15" if cs else "❄ Frost Blight: Stun & -15"
 		"SPEC_CROWN":
 			var courts := 0
 			for hc in current_hand:

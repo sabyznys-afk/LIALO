@@ -60,29 +60,29 @@ const CARD_CLASSES := {
 		"id": "MAGE", "name": "Runecaster", "name_cs": "Mág", "short_cls": "Mage", "short_cls_cs": "Mág", "badge": "MAGE", "badge_cs": "MÁG", "shader_id": 1,
 		"gold_bonus": 2, "max_charge": 2,
 		"col": Color(0.64, 0.44, 1.0), "cost": 26,
-		"desc": "Charges in hand (+1/round to 2/2). At 2/2: +65 pts, ×2.0 Mult, -15 Rival & +1 Card!",
-		"desc_cs": "Nabíjí se v ruce (+1/kolo do 2/2). Plná (2/2): +65 b., ×2.0, -15 soupeři a +1 karta!"
+		"desc": "Charges in hand (+1/round to 2/2). At 2/2: +20 pts, ×2.0 Mult, -12 Rival & +1 Card! (+5 pts uncharged).",
+		"desc_cs": "Nabíjí se v ruce (+1/kolo do 2/2). Plná (2/2): +20 b., ×2.0, -12 soupeři a +1 karta! (+5 b. nenabitá)."
 	},
 	"KNIGHT": {
 		"id": "KNIGHT", "name": "Mistblade", "name_cs": "Rytíř", "short_cls": "Knight", "short_cls_cs": "Rytíř", "badge": "KNIGHT", "badge_cs": "RYTÍŘ", "shader_id": 2,
 		"gold_bonus": 4, "max_charge": 0,
 		"col": Color(0.60, 0.88, 0.98), "cost": 24,
-		"desc": "Fast strike (+18 pts, +0.8×) hidden in Mist! Wrong guess forces Rival +1 Draw.",
-		"desc_cs": "Rychlý úder (+18 b., +0.8×) v mlze! Chybný tip donutí soupeře líznout +1 kartu."
+		"desc": "Fast strike (+10 pts, ×1.5) hidden in Mist! Wrong guess forces Rival +1 Draw.",
+		"desc_cs": "Rychlý úder (+10 b., ×1.5) v mlze! Chybný tip donutí soupeře líznout +1 kartu."
 	},
 	"MERCHANT": {
 		"id": "MERCHANT", "name": "Guildsman", "name_cs": "Kupec", "short_cls": "Merchant", "short_cls_cs": "Kupec", "badge": "GUILD", "badge_cs": "KUPEC", "shader_id": 3,
-		"gold_bonus": 16, "max_charge": 0,
+		"gold_bonus": 15, "max_charge": 0,
 		"col": Color(1.0, 0.82, 0.24), "cost": 22,
-		"desc": "Skips card power, but mints +16 Florins on play! Easy target for Thieves.",
-		"desc_cs": "Nemá bojovou schopnost, ale ihned vyrazí +16 Zlatých! Snadný cíl pro Zloděje."
+		"desc": "Skips card power, but grants +5 pts & +15 Florins on play! Easy target for Thieves.",
+		"desc_cs": "Nemá bojovou schopnost, ale dá +5 b. a +15 Zlatých! Snadný cíl pro Zloděje."
 	},
 	"THIEF": {
 		"id": "THIEF", "name": "Cutpurse", "name_cs": "Zloděj", "short_cls": "Thief", "short_cls_cs": "Zloděj", "badge": "THIEF", "badge_cs": "ZLODĚJ", "shader_id": 4,
 		"gold_bonus": 4, "max_charge": 0,
 		"col": Color(0.28, 0.90, 0.56), "cost": 28,
-		"desc": "Guess 2+ matching non-Mages in Rival's hand: steal 1 card & Rival draws +2!",
-		"desc_cs": "Tipni 2+ karty v ruce soupeře: ukradneš 1 kartu a soupeř lízne +2!"
+		"desc": "Shadow Cut (+10 pts). Guess 2+ matching non-Mages in Rival's hand: steal 1 card & Rival draws +2!",
+		"desc_cs": "Stínový řez (+10 b.). Tipni 2+ karty v ruce soupeře: ukradneš 1 kartu a soupeř lízne +2!"
 	},
 }
 
@@ -97,16 +97,16 @@ const POWER_CARDS := [
 		"pts": 22, "cost": 16, "rarity": "Uncommon", "rarity_cs": "Neobvyklá", "wild": false,
 		"accent": Color(0.92, 0.16, 0.26), "art_file": "SPEC_VAMPIRE.png",
 		"power_line": "Drain 15 pts from Rival", "power_line_cs": "Vysaje 15 b. soupeři",
-		"desc": "Steals 15 pts from Rival (×1.4× Mult if Hearts active).",
-		"desc_cs": "Sebere soupeři 15 bodů (×1.4× násobitel, pokud jedou Srdce)."
+		"desc": "Steals 15 pts from Rival (×1.5 Mult if Hearts active).",
+		"desc_cs": "Sebere soupeři 15 bodů (×1.5 násobitel, pokud jedou Srdce)."
 	},
 	{
 		"id": "SPEC_STORM", "name": "Thunder Strike", "name_cs": "Úder blesku", "short": "STORM", "short_cs": "BOUŘE", "suit": "ZELEN",
 		"pts": 25, "cost": 18, "rarity": "Rare", "rarity_cs": "Vzácná", "wild": false,
 		"accent": Color(0.32, 0.88, 1.0), "art_file": "SPEC_STORM.png",
-		"power_line": "+3 Draw & +0.8× Surge", "power_line_cs": "+3 lízání a +0.8× výboj",
-		"desc": "Rival draws +3 cards & next Combo gains +0.8×!",
-		"desc_cs": "Soupeř líže +3 karty a příští kombo získá +0.8×!"
+		"power_line": "+3 Draw & ×1.5 Surge", "power_line_cs": "+3 lízání a ×1.5 výboj",
+		"desc": "Rival draws +3 cards & next Combo gains ×1.5 Surge!",
+		"desc_cs": "Soupeř líže +3 karty a příští kombo získá ×1.5 výboj!"
 	},
 	{
 		"id": "SPEC_MIRROR", "name": "Twin Mirror", "name_cs": "Zrcadlo ozvěn", "short": "MIRROR", "short_cs": "ZRCADLO", "suit": "CERVEN",
@@ -142,11 +142,11 @@ const POWER_CARDS := [
 	},
 	{
 		"id": "SPEC_MIDAS", "name": "Midas Touch", "name_cs": "Midasův dotek", "short": "MIDAS", "short_cs": "MIDAS", "suit": "GULA",
-		"pts": 24, "cost": 18, "rarity": "Uncommon", "rarity_cs": "Neobvyklá", "wild": false,
+		"pts": 20, "cost": 18, "rarity": "Uncommon", "rarity_cs": "Neobvyklá", "wild": false,
 		"accent": Color(1.0, 0.86, 0.22), "art_file": "SPEC_MIDAS.png",
-		"power_line": "+14 Gold & 2× Bells", "power_line_cs": "+14 Zlatých & 2× Koule",
-		"desc": "Grants +14 Florins & doubles Bell/Court card points!",
-		"desc_cs": "Přidá +14 Zlatých a zdvojnásobí body Kulí a figur!"
+		"power_line": "+20 pts & +15 Gold", "power_line_cs": "+20 b. & +15 Zlatých",
+		"desc": "Grants +20 bonus pts & +15 Florins!",
+		"desc_cs": "Přidá +20 bonusových bodů a +15 Zlatých!"
 	},
 	{
 		"id": "SPEC_CHRONOS", "name": "Chronos Glass", "name_cs": "Presýpací hodiny", "short": "TIME", "short_cs": "ČAS", "suit": "GULA",
@@ -168,9 +168,9 @@ const POWER_CARDS := [
 		"id": "SPEC_HEX", "name": "Shadow Hex", "name_cs": "Kletba stínu", "short": "HEX", "short_cs": "KLETBA", "suit": "ZALUD",
 		"pts": 16, "cost": 14, "rarity": "Common", "rarity_cs": "Běžná", "wild": false,
 		"accent": Color(0.66, 0.28, 0.94), "art_file": "SPEC_HEX.png",
-		"power_line": "Rival -18 pts / +15 pts", "power_line_cs": "Soupeř -18 b. / +15 b.",
-		"desc": "Curses Rival for -18 pts & adds +15 bonus points.",
-		"desc_cs": "Prokleje soupeře (-18 b.) a přidá ti +15 bonusových bodů."
+		"power_line": "Rival -15 pts / +15 pts", "power_line_cs": "Soupeř -15 b. / +15 b.",
+		"desc": "Curses Rival for -15 pts & adds +15 bonus points.",
+		"desc_cs": "Prokleje soupeře (-15 b.) a přidá ti +15 bonusových bodů."
 	},
 	{
 		"id": "SPEC_MAGNET", "name": "Rune Magnet", "name_cs": "Runový magnet", "short": "MAGNET", "short_cs": "MAGNET", "suit": "GULA",
@@ -192,17 +192,17 @@ const POWER_CARDS := [
 		"id": "SPEC_GAMBLER", "name": "Loaded Dice", "name_cs": "Cinknuté kostky", "short": "DICE", "short_cs": "KOSTKY", "suit": "ZALUD",
 		"pts": 15, "cost": 17, "rarity": "Uncommon", "rarity_cs": "Neobvyklá", "wild": true,
 		"accent": Color(0.98, 0.62, 0.20), "art_file": "SPEC_GAMBLER.png",
-		"power_line": "Roll ×1.5 / ×2 / ×3.5", "power_line_cs": "Hod ×1.5 / ×2 / ×3.5",
-		"desc": "WILD: Rolls fate dice for ×1.5, ×2.0 or ×3.5 multiplier!",
-		"desc_cs": "DIVOKÁ: Hodí kostkami násobič ×1.5, ×2.0 nebo JACKPOT ×3.5!"
+		"power_line": "×2.0 Solo / ×3.0 Combo", "power_line_cs": "×2.0 Sólo / ×3.0 Kombo",
+		"desc": "WILD: Deterministic ×2.0 Mult solo, or ×3.0 Mult when played in a Combo!",
+		"desc_cs": "DIVOKÁ: Dává ×2.0 násobič sólo, nebo ×3.0 násobič v kombu!"
 	},
 	{
 		"id": "SPEC_PLAGUE", "name": "Frost Blight", "name_cs": "Mrazivá zhouba", "short": "FROST", "short_cs": "MRÁZ", "suit": "ZELEN",
 		"pts": 24, "cost": 17, "rarity": "Uncommon", "rarity_cs": "Neobvyklá", "wild": false,
 		"accent": Color(0.42, 0.92, 0.98), "art_file": "SPEC_PLAGUE.png",
-		"power_line": "Stun Rival & -14 pts", "power_line_cs": "Omráčí soupeře a -14 b.",
-		"desc": "Chills Rival (-14 pts) & stuns them for 1 turn!",
-		"desc_cs": "Zmrazí soupeře (-14 b.) a vynechá mu 1 tah!"
+		"power_line": "Stun Rival & -15 pts", "power_line_cs": "Omráčí soupeře a -15 b.",
+		"desc": "Chills Rival (-15 pts) & stuns them for 1 turn!",
+		"desc_cs": "Zmrazí soupeře (-15 b.) a vynechá mu 1 tah!"
 	},
 	{
 		"id": "SPEC_CROWN", "name": "Royal Decree", "name_cs": "Královský glejt", "short": "CROWN", "short_cs": "KORUNA", "suit": "GULA",
@@ -218,8 +218,8 @@ const RELICS := [
 	{
 		"id": "REL_CHAMOIS", "name": "Chamois Horn", "name_cs": "Kamzičí roh", "icon": "Horn", "cost": 20,
 		"category": "Chips", "category_cs": "Body", "col": Color(0.92, 0.72, 0.32),
-		"desc": "+25 Chips whenever a Clubs (♣) or Power Card scores.",
-		"desc_cs": "+25 bodů za každý Žalud (♣) nebo Mocnou kartu."
+		"desc": "+10 pts whenever a Clubs (♣) or Power Card scores.",
+		"desc_cs": "+10 bodů za každý Žalud (♣) nebo Mocnou kartu."
 	},
 	{
 		"id": "REL_FUJARA", "name": "Copper Fujara", "name_cs": "Měděná fujara", "icon": "Flute", "cost": 22,
@@ -229,9 +229,9 @@ const RELICS := [
 	},
 	{
 		"id": "REL_STORMCAP", "name": "Storm Capacitor", "name_cs": "Bouřková cívka", "icon": "Bolt", "cost": 25,
-		"category": "Flat Mult", "category_cs": "Násobitel", "col": Color(0.38, 0.90, 1.0),
-		"desc": "+3.5 Flat Mult & Lightning on every Pair+ Slam.",
-		"desc_cs": "+3.5× násobitel a blesk při každém kombu."
+		"category": "X-Mult", "category_cs": "×Násobič", "col": Color(0.38, 0.90, 1.0),
+		"desc": "×1.5 Mult & Lightning on every Combo (2+ cards).",
+		"desc_cs": "×1.5 násobitel a blesk při každém kombu (2+ karty)."
 	},
 	{
 		"id": "REL_KNUCKLE", "name": "Loaded Knucklebone", "name_cs": "Kouzelná kůstka", "icon": "Bone", "cost": 32,
@@ -254,8 +254,8 @@ const RELICS := [
 	{
 		"id": "REL_GREED", "name": "Merchant Scale", "name_cs": "Kupecké váhy", "icon": "Coin", "cost": 22,
 		"category": "Economy", "category_cs": "Zlato", "col": Color(1.0, 0.84, 0.20),
-		"desc": "+4 Florins per Bells (●) card & +15g on Victory.",
-		"desc_cs": "+4 Zlaté za každou Kouli (●) a +15g za vítězství."
+		"desc": "+5 Florins per Bells (●) card & +15g on Victory.",
+		"desc_cs": "+5 Zlatých za každou Kouli (●) a +15g za vítězství."
 	},
 	{
 		"id": "REL_ALEMBIC", "name": "Hellfire Still", "name_cs": "Alchymistická baňka", "icon": "Flask", "cost": 24,
@@ -266,8 +266,8 @@ const RELICS := [
 	{
 		"id": "REL_ROYAL", "name": "King's Signet", "name_cs": "Královská pečeť", "icon": "Ring", "cost": 26,
 		"category": "Chips", "category_cs": "Body", "col": Color(1.0, 0.88, 0.38),
-		"desc": "Court Cards (D/H/K/E) score +25 extra Chips.",
-		"desc_cs": "Všechny figury (Spodek, Svršek, Král, Eso) mají +25 bodů."
+		"desc": "Court Cards (D/H/K/E) score +10 extra pts.",
+		"desc_cs": "Všechny figury (Spodek, Svršek, Král, Eso) mají +10 bodů."
 	},
 	{
 		"id": "REL_CHRONO_P", "name": "Chrono Pendulum", "name_cs": "Kyvadlo času", "icon": "Clock", "cost": 25,
@@ -313,9 +313,9 @@ const RELICS := [
 	},
 	{
 		"id": "REL_CRIMSON_CHOIR", "name": "Crimson Choir", "name_cs": "Rudý chór", "icon": "Lyre", "cost": 24,
-		"category": "Flat Mult", "category_cs": "Násobitel", "col": Color(0.96, 0.28, 0.42),
-		"desc": "+5.0× Flat Mult when all played cards are ♥ or ●.",
-		"desc_cs": "+5.0× násobitel, pokud jsou všechny zahrané karty ♥ nebo ●."
+		"category": "X-Mult", "category_cs": "×Násobič", "col": Color(0.96, 0.28, 0.42),
+		"desc": "×1.5 Mult when all played cards are ♥ or ●.",
+		"desc_cs": "×1.5 násobitel, pokud jsou všechny zahrané karty ♥ nebo ●."
 	},
 	{
 		"id": "REL_GREEN_CANOPY", "name": "Highland Canopy", "name_cs": "Lesní koruna", "icon": "Leaf", "cost": 25,
@@ -377,20 +377,20 @@ const ALCHEMY_ITEMS := [
 	{
 		"id": "ALC_INFUSE_MAGE", "name": "Runecaster Tome", "name_cs": "Kniha Mága", "action": "infuse", "edition": "MAGE", "cost": 16,
 		"col": Color(0.64, 0.44, 1.0), "sub": "Class: Mage", "sub_cs": "Třída: Mág",
-		"desc": "Make 1 card MAGE: charges in hand (2/2) for +65 pts & ×2.0!",
-		"desc_cs": "Udělá z karty Mága: nabíjí se v ruce (2/2) na +65 b. a ×2.0!"
+		"desc": "Make 1 card MAGE: charges in hand (2/2) for +20 pts & ×2.0!",
+		"desc_cs": "Udělá z karty Mága: nabíjí se v ruce (2/2) na +20 b. a ×2.0!"
 	},
 	{
 		"id": "ALC_INFUSE_KNIGHT", "name": "Mistblade Banner", "name_cs": "Prapor Rytíře", "action": "infuse", "edition": "KNIGHT", "cost": 18,
 		"col": Color(0.60, 0.88, 0.98), "sub": "Class: Knight", "sub_cs": "Třída: Rytíř",
-		"desc": "Make 1 card KNIGHT: +18 pts, +0.8× & Battle Mist trap!",
-		"desc_cs": "Udělá z karty Rytíře: +18 b., +0.8× a mlžná past!"
+		"desc": "Make 1 card KNIGHT: +10 pts, ×1.5 & Battle Mist trap!",
+		"desc_cs": "Udělá z karty Rytíře: +10 b., ×1.5 a mlžná past!"
 	},
 	{
 		"id": "ALC_INFUSE_MERCHANT", "name": "Guildsman Charter", "name_cs": "Listina Kupce", "action": "infuse", "edition": "MERCHANT", "cost": 16,
 		"col": Color(1.0, 0.82, 0.24), "sub": "Class: Merchant", "sub_cs": "Třída: Kupec",
-		"desc": "Make 1 card MERCHANT: skips ability for +16 Florins on play!",
-		"desc_cs": "Udělá z karty Kupce: bez schopnosti, ale dá +16 Zlatých!"
+		"desc": "Make 1 card MERCHANT: skips ability for +5 pts & +15 Florins on play!",
+		"desc_cs": "Udělá z karty Kupce: bez schopnosti, ale dá +5 b. a +15 Zlatých!"
 	},
 	{
 		"id": "ALC_INFUSE_THIEF", "name": "Cutpurse Dagger", "name_cs": "Dýka Zloděje", "action": "infuse", "edition": "THIEF", "cost": 22,
