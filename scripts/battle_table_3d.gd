@@ -47,7 +47,7 @@ var _cached_quill_font: Font = null
 const SUIT_ASTRO_ANGLES := {"CERVEN": 0.0, "ZALUD": PI * 0.5, "ZELEN": PI, "GULA": PI * 1.5}
 var gfx_env: Environment
 var gfx_base_ambient_energy: float = 1.0
-var gfx_base_spot_energy: float = 6.2
+var gfx_base_spot_energy: float = 3.4
 var suit_pulse_age: float = 10.0
 var gfx_last_suit_id: String = ""
 var astrolabe_root: Node3D
@@ -283,6 +283,7 @@ var peek_hud_lbl: Label
 var stagger_callout_pill: PanelContainer
 var stagger_callout_lbl: Label
 var stagger_callout_tween: Tween
+var stagger_callout_ttl: float = 0.0
 var stagger_eq_row: HBoxContainer
 var stagger_eq_chips_lbl: Label
 var stagger_eq_mult_lbl: Label
@@ -417,6 +418,7 @@ var active_boss_desc: String = ""
 var redraws_left: int = 2
 var player_shields: int = 0
 var rival_cards_revealed_turns: int = 0
+var aces_played: int = 0
 var extra_player_turn: bool = false
 var deferred_ai_draw: int = 0
 var deferred_ai_skip: bool = false
@@ -538,6 +540,7 @@ var player_arm_right: Node3D
 var opp_hands_anchor: Node3D
 var opp_glove_left_mesh: Node3D
 var opp_glove_right_mesh: Node3D
+var _has_sculpted_opp_glb: bool = false
 var player_glove_left_mesh: Node3D
 var player_glove_right_mesh: Node3D
 var player_sword_root: Node3D
@@ -719,19 +722,20 @@ func _sync_heartbeat_hp_displays(animate_change: bool = true) -> void:
 func _position_rival_hp_heart(is_boss: bool) -> void:
 	if not is_instance_valid(rival_hp_heart):
 		return
-	var sz := 180.0 if is_boss else 148.0
+	var sz := 118.0 if is_boss else 96.0
 	rival_hp_heart.anchor_left = 1.0
 	rival_hp_heart.anchor_top = 0.0
 	rival_hp_heart.anchor_right = 1.0
 	rival_hp_heart.anchor_bottom = 0.0
-	rival_hp_heart.offset_left = -14.0 - sz
-	rival_hp_heart.offset_right = -14.0
-	rival_hp_heart.offset_top = 4.0 if is_boss else 8.0
-	rival_hp_heart.offset_bottom = rival_hp_heart.offset_top + sz
+	rival_hp_heart.offset_left = -18.0 - sz
+	rival_hp_heart.offset_right = -18.0
+	rival_hp_heart.offset_top = 92.0
+	rival_hp_heart.offset_bottom = 92.0 + sz
 	if is_instance_valid(rival_hud_grp):
-		var right_margin := sz + 22.0
-		rival_hud_grp.offset_right = -right_margin
-		rival_hud_grp.offset_left = -right_margin - 356.0
+		rival_hud_grp.offset_right = -14.0
+		rival_hud_grp.offset_left = -362.0
+		rival_hud_grp.offset_top = 10.0
+		rival_hud_grp.offset_bottom = 84.0
 
 func set_camera_view_mode(mode: CameraViewMode, play_fx: bool = false) -> void:
 	cam_view_mode = mode
@@ -1118,7 +1122,7 @@ func _setup_dark_atmosphere_and_lighting() -> void:
 	table_spot_light.position = Vector3(0.0, 2.80, 0.05)
 	table_spot_light.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
 	table_spot_light.light_color = Color(1.0, 0.84, 0.62)
-	table_spot_light.light_energy = 6.2
+	table_spot_light.light_energy = 3.4
 	table_spot_light.spot_range = 6.5
 	table_spot_light.spot_angle = 49.0
 	table_spot_light.spot_angle_attenuation = 1.9
@@ -1774,6 +1778,7 @@ func _build_sculpted_torso_mesh(w_chest: float, w_waist: float, w_hip: float, d_
 func _build_opponent_silhouette_for_era(era_id: String) -> void:
 	if not opp_silhouette_root:
 		return
+	_has_sculpted_opp_glb = false
 	for ch in opp_silhouette_root.get_children():
 		ch.queue_free()
 
@@ -2659,8 +2664,8 @@ func _update_gameplay_gfx(delta: float, t: float) -> void:
 		gfx_env.ambient_light_energy = lerpf(base_amb, gfx_base_ambient_energy * 0.18, dim_amt)
 	if is_instance_valid(table_spot_light):
 		var flick := 1.0 + overdrive_light_t * (0.08 * sin(t * 23.0) + 0.05 * sin(t * 37.0))
-		var base_e := lerpf(gfx_base_spot_energy, gfx_base_spot_energy * 1.55, overdrive_light_t) * flick
-		table_spot_light.light_energy = lerpf(base_e, gfx_base_spot_energy * 0.28, dim_amt)
+		var base_e := lerpf(gfx_base_spot_energy, gfx_base_spot_energy * 1.35, overdrive_light_t) * flick
+		table_spot_light.light_energy = minf(4.6, lerpf(base_e, gfx_base_spot_energy * 0.28, dim_amt))
 		var base_col := Color(1.0, 0.84, 0.62).lerp(Color(1.0, 0.66, 0.36), overdrive_light_t)
 		table_spot_light.light_color = base_col.lerp(dramatic_lighting_tint, dim_amt * 0.72)
 	if is_instance_valid(opp_fire_fx_root) and opp_fire_fx_root.visible:
@@ -2804,6 +2809,15 @@ func _draw_hud_frame(ov: Control) -> void:
 			ov.draw_circle(Vector2(ex, ey), 2.0 * (1.0 - u) + 0.5, Color(1.0, 0.55 + 0.3 * (1.0 - u), 0.15, (1.0 - u) * 0.72 * heat))
 		ov.draw_rect(r.grow(-1.0), Color(1.0, 0.5, 0.15, (0.35 + 0.25 * sin(t * 9.0)) * heat), false, 2.2)
 
+func _is_fancy_play_card(card: Dictionary, cnt: int = 1) -> bool:
+	var c_cls := Catalog.normalize_card_class(str(card.get("edition", "NORMAL")))
+	var pid := str(card.get("power_id", ""))
+	if c_cls in ["KNIGHT", "MAGE"] or pid.begins_with("SPEC_") or pid != "":
+		return true
+	if aces_played >= 3 or (cnt >= 3 and str(card.get("rank", "")) == "E"):
+		return true
+	return false
+
 func _spawn_signature_play_vfx(chosen_cards: Array[Dictionary], impact_pos: Vector3, cnt: int) -> Node3D:
 	if chosen_cards.is_empty():
 		return null
@@ -2814,9 +2828,18 @@ func _spawn_signature_play_vfx(chosen_cards: Array[Dictionary], impact_pos: Vect
 	var rival_pos := to_global(Vector3(0.0, 0.95, -1.05))
 	var player_pos := to_global(Vector3(0.0, 0.95, 0.85))
 	_trigger_suit_pulse(1.0 + 0.25 * float(cnt))
-	var blender_speed := clampf(1.0 / maxf(0.55, _pace(1.0)), 0.85, 1.55)
-	var b_card_fx := BlenderVfx.play_card_effect_anim(self, lead, impact_pos, rival_pos, cnt, blender_speed)
-	_register_blender_vfx(b_card_fx)
+	var has_fancy := false
+	for c_f in chosen_cards:
+		if _is_fancy_play_card(c_f, cnt):
+			has_fancy = true
+			break
+	var b_card_fx: Node3D = null
+	if has_fancy:
+		var blender_speed := clampf(1.0 / maxf(0.55, _pace(1.0)), 0.85, 1.55)
+		b_card_fx = BlenderVfx.play_card_effect_anim(self, lead, impact_pos, rival_pos, cnt, blender_speed)
+		_register_blender_vfx(b_card_fx)
+	else:
+		Fx.ring(self, impact_pos + Vector3(0, 0.012, 0), s_col, 0.34 + 0.08 * float(cnt), 0.36, 0.05, 1.4, 1.0)
 
 	# Camera micro-choreography: FOV punch + Dutch roll on multi-card slams
 	if cam_spring:
@@ -4191,16 +4214,33 @@ func _build_3d_card_node(card_data: Dictionary, face_up: bool, back_border_col: 
 	var rim := MeshInstance3D.new()
 	var rbox := BoxMesh.new()
 	var is_knight_plate := (face_up and ed_id == "KNIGHT")
-	rbox.size = Vector3(0.200 if is_knight_plate else 0.194, 0.290 if is_knight_plate else 0.284, 0.0072 if is_knight_plate else 0.004)
+	var is_mage_aura := (face_up and ed_id == "MAGE")
+	rbox.size = Vector3(0.200 if is_knight_plate else (0.202 if is_mage_aura else 0.194), 0.290 if is_knight_plate else (0.292 if is_mage_aura else 0.284), 0.0072 if is_knight_plate else (0.0055 if is_mage_aura else 0.004))
 	rim.mesh = rbox
 	rim.position = Vector3(0.0, 0.0, -0.0020 if is_knight_plate else 0.0)
-	var rim_col := Color(0.68, 0.78, 0.88) if is_knight_plate else (acc_col if (face_up and (is_power or shader_ed_id > 0)) else back_border_col)
-	var rim_emit := acc_col * (0.55 if ed_id == "MAGE" else 0.45) if (face_up and (is_power or shader_ed_id > 0)) else Color.BLACK
+	var rim_col := Color(0.68, 0.78, 0.88) if is_knight_plate else (Color(0.32, 0.72, 1.0) if is_mage_aura else (acc_col if (face_up and (is_power or shader_ed_id > 0)) else back_border_col))
+	var rim_emit := acc_col * (1.15 if is_mage_aura else 0.45) if (face_up and (is_power or shader_ed_id > 0)) else Color.BLACK
 	if is_knight_plate:
 		rim.material_override = Toon.pbr(rim_col, "", 0.20, 0.92, Vector2.ONE, Color(0.45, 0.78, 1.0), 0.35)
 	else:
 		rim.material_override = Toon.mat(rim_col, "", 0.0, Vector2.ONE, rim_emit)
 	card_root.add_child(rim)
+
+	if is_mage_aura and not is_mist_hidden:
+		var mage_halo := MeshInstance3D.new()
+		mage_halo.name = "MageArcaneRimHalo"
+		var hbox := BoxMesh.new()
+		hbox.size = Vector3(0.214, 0.306, 0.0025)
+		mage_halo.mesh = hbox
+		mage_halo.position = Vector3(0.0, 0.0, -0.0032)
+		var hmat := StandardMaterial3D.new()
+		hmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		hmat.albedo_color = Color(0.28, 0.68, 1.0, 0.42)
+		hmat.emission_enabled = true
+		hmat.emission = acc_col.lerp(Color(0.32, 0.74, 1.0), 0.5)
+		hmat.emission_energy_multiplier = 1.45
+		mage_halo.material_override = hmat
+		card_root.add_child(mage_halo)
 
 	if face_up and shader_ed_id > 0 and not is_mist_hidden:
 		Fx.attach_card_class_aura(card_root, shader_ed_id, acc_col)
@@ -4854,9 +4894,11 @@ func _show_stagger_callout(txt: String, col: Color, punch_scale: float = 1.14) -
 		return
 	if txt == "":
 		stagger_callout_pill.visible = false
+		stagger_callout_ttl = 0.0
 		return
 	if stagger_callout_tween and stagger_callout_tween.is_valid():
 		stagger_callout_tween.kill()
+	stagger_callout_ttl = 1.8
 	var sb := _make_plaque_style(Color(0.055, 0.042, 0.036, 0.95), col, 18)
 	sb.set_border_width_all(2)
 	sb.content_margin_left = 18; sb.content_margin_right = 18
@@ -4867,7 +4909,8 @@ func _show_stagger_callout(txt: String, col: Color, punch_scale: float = 1.14) -
 	var vp_w: float = get_viewport().get_visible_rect().size.x if get_viewport() else 1366.0
 	var pill_w := maxf(440.0, stagger_callout_pill.size.x)
 	var pill_x := clampf(vp_w * 0.5 - pill_w * 0.5, 498.0, maxf(498.0, vp_w - pill_w - 24.0))
-	stagger_callout_pill.position = Vector2(pill_x, 92.0)
+	var pill_y := 204.0 if (is_instance_valid(tutorial_ghost_center_panel) and tutorial_ghost_center_panel.visible) else 92.0
+	stagger_callout_pill.position = Vector2(pill_x, pill_y)
 	stagger_callout_pill.visible = true
 	stagger_callout_pill.modulate.a = 1.0
 	stagger_callout_pill.pivot_offset = stagger_callout_pill.size * 0.5
@@ -5144,15 +5187,7 @@ func _refresh_score_ledger_ui() -> void:
 		else:
 			score_delta_lbl.visible = false
 	if is_instance_valid(score_history_lbl):
-		if hud_score_revealed and not turn_score_history.is_empty():
-			var h_parts: PackedStringArray = []
-			var start_i := maxi(0, turn_score_history.size() - 4)
-			for hi in range(start_i, turn_score_history.size()):
-				h_parts.append("+%d" % turn_score_history[hi])
-			score_history_lbl.text = ("TAHY: " if opts_language == "cs" else "TURNS: ") + " • ".join(h_parts)
-			score_history_lbl.visible = true
-		else:
-			score_history_lbl.visible = false
+		score_history_lbl.visible = false
 	if not hud_score_revealed:
 		score_ledger_state_lbl.text = _tr("✦ SCORE LEDGER (HIDDEN)", "✦ ZÁPIS BODŮ (SKRYTO)")
 		score_ledger_eq_lbl.text = "---"
@@ -6151,6 +6186,11 @@ func _build_detailed_opponent_character(era_id: String, rim_col: Color = Color(1
 	var resolved_era := e if era_opp_map.has(e) else "stredovek"
 	var era_opp_glb := _load_glb_model(str(era_opp_map[resolved_era]), true)
 	if era_opp_glb != null:
+		_has_sculpted_opp_glb = true
+		if is_instance_valid(opp_glove_left_mesh):
+			opp_glove_left_mesh.visible = false
+		if is_instance_valid(opp_glove_right_mesh):
+			opp_glove_right_mesh.visible = false
 		era_opp_glb.name = "EraOpponentGLB_" + resolved_era
 		opp_silhouette_root.add_child(era_opp_glb)
 		_apply_subtle_outline_next_pass(era_opp_glb, 0.0040)
@@ -6979,10 +7019,10 @@ func _setup_minimal_overlay_hud() -> void:
 	player_hp_heart.anchor_top = 0.0
 	player_hp_heart.anchor_right = 0.0
 	player_hp_heart.anchor_bottom = 0.0
-	player_hp_heart.offset_left = 8
-	player_hp_heart.offset_top = 178
-	player_hp_heart.offset_right = 156
-	player_hp_heart.offset_bottom = 326
+	player_hp_heart.offset_left = 18
+	player_hp_heart.offset_top = 182
+	player_hp_heart.offset_right = 114
+	player_hp_heart.offset_bottom = 278
 	hud_root.add_child(player_hp_heart)
 	player_hp_heart.call("setup", _get_font(true), false, false)
 	player_hp_heart.call("set_hp_with_status", player_hp, player_max_hp, player_shields, "", false)
@@ -7280,9 +7320,9 @@ func _setup_minimal_overlay_hud() -> void:
 	rival_hud_grp.anchor_left = 1.0
 	rival_hud_grp.anchor_top = 0.0
 	rival_hud_grp.anchor_right = 1.0
-	rival_hud_grp.offset_left = -372
+	rival_hud_grp.offset_left = -362
 	rival_hud_grp.offset_top = 10
-	rival_hud_grp.offset_right = -16
+	rival_hud_grp.offset_right = -14
 	rival_hud_grp.offset_bottom = 84
 	rival_hud_grp.mouse_filter = Control.MOUSE_FILTER_PASS
 	hud_root.add_child(rival_hud_grp)
@@ -7863,7 +7903,7 @@ func _setup_minimal_overlay_hud() -> void:
 
 	# ZONE 2 RELIC SEAL RAIL: Directly beneath Wager / Veto row to the right of Player Heart (x: 166..640, y: 264..296)
 	relic_bar_hbox = HBoxContainer.new()
-	relic_bar_hbox.position = Vector2(166, 264)
+	relic_bar_hbox.position = Vector2(128, 224)
 	relic_bar_hbox.size = Vector2(474, 32)
 	relic_bar_hbox.add_theme_constant_override("separation", 5)
 	hud_root.add_child(relic_bar_hbox)
@@ -8652,6 +8692,7 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 	match_optimal_possible_slam = 0
 	match_optimal_move_desc = ""
 	match_turn_count = 0
+	aces_played = 0
 	current_round_num = 1
 	player_max_hp = DEFAULT_MAX_HP
 	ai_max_hp = DEFAULT_MAX_HP
@@ -9751,6 +9792,11 @@ func _animate_deal_pop_in() -> void:
 
 func _add_card_mesh_to_discard_pile(card_data: Dictionary) -> Node3D:
 	var c_node := _build_3d_card_node(card_data, true, Color(0.85, 0.68, 0.28))
+	for ch in c_node.get_children():
+		if ch is MeshInstance3D and (ch as MeshInstance3D).material_override is StandardMaterial3D:
+			var sm := (ch as MeshInstance3D).material_override as StandardMaterial3D
+			if sm.emission_enabled:
+				sm.emission_energy_multiplier = minf(sm.emission_energy_multiplier, 0.35)
 	var stack_h := float(mini(discard_pile.size(), 8)) * 0.0045
 	c_node.position = Vector3(randf_range(-0.012, 0.012), stack_h, randf_range(-0.012, 0.012))
 	c_node.rotation_degrees = Vector3(-90.0, randf_range(-12.0, 12.0), 0.0)
@@ -10114,6 +10160,20 @@ func _process(delta: float) -> void:
 
 	glove_lunge_boost = maxf(0.0, glove_lunge_boost - delta * 4.2)
 	wager_showcase_boost = maxf(0.0, wager_showcase_boost - delta * 1.35)
+	if turn_glance_timer > 0.0:
+		turn_glance_timer = maxf(0.0, turn_glance_timer - delta)
+	if stagger_callout_ttl > 0.0:
+		stagger_callout_ttl -= delta
+		if stagger_callout_ttl <= 0.0 and is_instance_valid(stagger_callout_pill) and stagger_callout_pill.visible:
+			stagger_callout_ttl = 0.0
+			if stagger_callout_tween and stagger_callout_tween.is_valid():
+				stagger_callout_tween.kill()
+			stagger_callout_tween = create_tween()
+			stagger_callout_tween.tween_property(stagger_callout_pill, "modulate:a", 0.0, 0.25)
+			stagger_callout_tween.tween_callback(func():
+				if is_instance_valid(stagger_callout_pill):
+					stagger_callout_pill.visible = false
+			)
 
 	_update_gameplay_gfx(delta, t)
 
@@ -10137,6 +10197,7 @@ func _process(delta: float) -> void:
 			var is_rival_items_view := (cam_view_mode == CameraViewMode.RIVAL_ITEMS) and not (tutorial_mode and tutorial_step == 0)
 			var is_items_view := is_player_items_view or is_rival_items_view or (cards_tucked and not (tutorial_mode and tutorial_step == 0))
 			var is_ghost_closeup := tutorial_mode and tutorial_step == 0
+			var is_top_down_view := (is_player_items_view or (turn_glance_timer > 0.0 and not is_rival_items_view)) and not is_ghost_closeup
 
 			# Natural persistent mouse-look (no RMB hold required):
 			# Mouse UP (ny < 0) pitches camera UP (+pitch); mouse DOWN (ny > 0) pitches DOWN (-pitch);
@@ -10156,11 +10217,11 @@ func _process(delta: float) -> void:
 			freelook_yaw = cam_look_yaw
 			freelook_pitch = cam_look_pitch
 
-			var pitch_offset := -5.5 if is_rival_items_view else (-11.0 if is_items_view else 0.5)
-			var target_pitch := 1.0 if is_ghost_closeup else clampf(base_cam_rot.x + pitch_offset + cam_look_pitch, -76.0, 40.0)
-			var target_yaw := 44.0 if is_ghost_closeup else clampf(cam_look_yaw, -76.0, 76.0)
-			var target_cam_pos := Vector3(-0.32, 1.50, 0.76) if is_ghost_closeup else (Vector3(0.0, 1.54, 1.04) if is_rival_items_view else (Vector3(0.04, 1.44, 1.12) if is_items_view else Vector3(0.0, 1.64, 1.48)))
-			var target_fov := 50.0 if is_ghost_closeup else (52.0 if is_rival_items_view else (54.0 if is_items_view else 59.0))
+			var pitch_offset := -5.5 if is_rival_items_view else 0.5
+			var target_pitch := 1.0 if is_ghost_closeup else (clampf(-74.0 + clampf(cam_look_pitch, -8.0, 8.0), -82.0, -66.0) if is_top_down_view else clampf(base_cam_rot.x + pitch_offset + cam_look_pitch, -76.0, 40.0))
+			var target_yaw := 44.0 if is_ghost_closeup else (clampf(cam_look_yaw * 0.25, -10.0, 10.0) if is_top_down_view else clampf(cam_look_yaw, -76.0, 76.0))
+			var target_cam_pos := Vector3(-0.32, 1.50, 0.76) if is_ghost_closeup else (Vector3(0.0, 1.54, 1.04) if is_rival_items_view else (Vector3(0.0, 2.52, 0.58) if is_top_down_view else Vector3(0.0, 1.68, 1.56)))
+			var target_fov := 58.0 if is_ghost_closeup else (60.0 if is_rival_items_view else (66.0 if is_top_down_view else 67.0))
 			cam.position = cam.position.lerp(target_cam_pos, 9.0 * delta)
 			cam.fov = lerpf(base_fov, target_fov, 8.5 * delta) + next_fov_kick
 			cam.rotation_degrees.x = lerpf(base_pitch, target_pitch, 10.0 * delta) + next_pitch_kick
@@ -10544,7 +10605,7 @@ func _process(delta: float) -> void:
 		o_left_x = clampf(opp_card_nodes[0].position.x - 0.085, -0.34, -0.13)
 		o_right_x = clampf(opp_card_nodes[opp_card_nodes.size() - 1].position.x + 0.085, 0.13, 0.34)
 	if is_instance_valid(opp_glove_left_mesh) and is_instance_valid(opp_glove_right_mesh):
-		var o_has_cards := not opp_card_nodes.is_empty()
+		var o_has_cards := (not opp_card_nodes.is_empty()) and (not _has_sculpted_opp_glb)
 		opp_glove_left_mesh.visible = o_has_cards
 		opp_glove_right_mesh.visible = o_has_cards
 		var o_lunge_z := sin(opp_play_anim_t * PI) * 0.11
@@ -11938,7 +11999,7 @@ func _sync_peek_ui_visibility() -> void:
 	if key_hint_lbl:
 		key_hint_lbl.visible = false
 	if is_instance_valid(item_review_bar):
-		var show_ir := (not cine_active) and (not intro_animating) and (not peddler_open) and (not shop_gate_open) and (not tutorial_mode) and is_player_turn and (not busy_animating) and (turn_stage == TurnStage.ITEM_REVIEW)
+		var show_ir := (not cine_active) and (not intro_animating) and (not peddler_open) and (not shop_gate_open) and (not tutorial_mode) and is_player_turn and (not busy_animating) and (turn_stage == TurnStage.ITEM_REVIEW) and not (is_instance_valid(view_toggle_btn) and view_toggle_btn.visible)
 		item_review_bar.visible = show_ir
 		if item_review_lbl:
 			item_review_lbl.text = _tr("✦ REVIEW TABLE ITEMS — CLICK TO USE OR", "✦ PROHLÉDNI ITEMY NA STOLE — KLIKNI NEBO")
@@ -12232,6 +12293,18 @@ func _play_player_cards_3d(play_indices: Array, chosen_suit: String) -> void:
 		pending_skip_turns = mini(2, pending_skip_turns + 1)
 		pending_ace_stun_bonus += int(score_res.get("ace_stun_bonus", 0))
 
+	if not tutorial_mode or tutorial_step >= 7:
+		var ace_cnt_in_play := 0
+		for c_ace in chosen_cards:
+			if str(c_ace.get("rank", "")) == "E":
+				ace_cnt_in_play += 1
+		if ace_cnt_in_play > 0:
+			aces_played += ace_cnt_in_play
+			if aces_played >= 3 and not tutorial_mode:
+				ai_hp = 0
+				_sync_heartbeat_hp_displays(true)
+				_spawn_score_popup(_tr("⚔ 3× ACE EXECUTION!", "⚔ POPRAVA 3× ESEM!"), Color(1.0, 0.28, 0.24), true)
+
 	if not tutorial_mode or tutorial_step >= 3:
 		if bool(score_res["surge_kept"]):
 			storm_surge_mult += float(score_res["new_surge_mult"])
@@ -12296,6 +12369,7 @@ func _play_player_cards_3d(play_indices: Array, chosen_suit: String) -> void:
 	# Step 1: Unzoomed Top-Down Table View — keep camera wide and open over the table so scoring is 100% readable!
 	emit_signal("play_sfx_requested", "card_draw")
 	cam_impact_active = false
+	turn_glance_timer = 1.15
 	set_camera_view_mode(CameraViewMode.TABLE_ITEMS, false)
 	if pending_seven_trap_bonus > 0 and pending_seven_banner_pill and pending_seven_banner_lbl:
 		pending_seven_banner_lbl.text = _tr("🃏 SEVEN ON TABLE: +7 PTS (Waiting for Rival...)", "🃏 SEDMA NA STOLE: +7 BODŮ (Čeká na soupeře...)")
@@ -12560,8 +12634,12 @@ func _execute_balatro_stagger_timeline(
 			var sc_cls := Catalog.normalize_card_class(str(sc_card.get("edition", "NORMAL")))
 			sword_fired_idxs[ci] = true
 			var sword_pos := (cnode.global_position if is_instance_valid(cnode) else impact_pos)
-			var sc_fx := SwordCardAnim.play_sword_card_score_anim(self, sc_card, cnode, true, sword_pos, running_tot, float(running_cnt), sc_cls == "KNIGHT")
-			_register_blender_vfx(sc_fx)
+			if _is_fancy_play_card(sc_card, cnt):
+				var sc_fx := SwordCardAnim.play_sword_card_score_anim(self, sc_card, cnode, true, sword_pos, running_tot, float(running_cnt), sc_cls == "KNIGHT")
+				_register_blender_vfx(sc_fx)
+			else:
+				var s_ring_col: Color = _get_suit_obj(str(sc_card.get("suit", active_suit_id))).get("col", Color(1.0, 0.8, 0.3))
+				Fx.ring(self, sword_pos + Vector3(0, 0.012, 0), s_ring_col, 0.30, 0.32, 0.04, 1.3, 1.0)
 			await get_tree().create_timer(_pace(0.32)).timeout
 			if token != _stagger_seq_token or not is_inside_tree() or not visible:
 				return
@@ -13289,10 +13367,14 @@ func _execute_ai_turn_body(my_ai_seq: int) -> void:
 			if is_instance_valid(t_inst):
 				t_inst.queue_free()
 			_add_card_mesh_to_discard_pile(c)
+			turn_glance_timer = 1.15
 			var is_rival_knight := (c_cls == "KNIGHT")
-			var is_rival_sword := true
-			var r_sword_fx := SwordCardAnim.play_sword_card_score_anim(self, c, null, false, target_pos, ai_pts, 1.0, is_rival_knight)
-			_register_blender_vfx(r_sword_fx)
+			var is_rival_sword := _is_fancy_play_card(c, 1)
+			if is_rival_sword:
+				var r_sword_fx := SwordCardAnim.play_sword_card_score_anim(self, c, null, false, target_pos, ai_pts, 1.0, is_rival_knight)
+				_register_blender_vfx(r_sword_fx)
+			else:
+				Fx.ring(self, target_pos + Vector3(0, 0.012, 0), s_col, 0.32, 0.35, 0.05, 1.3, 1.0)
 			if is_rival_knight and not tutorial_mode and not _check_win_or_redeal():
 				table_status_label3d.text = _tr("⚔ RIVAL KNIGHT! Memorize: %s %s before MIST rolls in!", "⚔ RYTÍŘ SOUPEŘE! Zapamatuj si: %s %s před MLHOU!") % [s_obj["sym"], _get_rank_name(str(c.get("rank", "")))]
 				_rebuild_all_3d_hands()
@@ -13566,9 +13648,12 @@ func _run_rival_turn_with_cinematic(my_ai_seq: int) -> void:
 			var s_obj := _get_suit_obj(c["suit"])
 			_spawn_impact_shockwave(card_world, s_obj["col"], 2.3)
 			var is_rival_knight := (c_cls == "KNIGHT")
-			var is_rival_sword := true
-			var r_sword_fx := SwordCardAnim.play_sword_card_score_anim(self, c, null, false, card_world, ai_pts, 1.0, is_rival_knight)
-			_register_blender_vfx(r_sword_fx)
+			var is_rival_sword := _is_fancy_play_card(c, 1)
+			if is_rival_sword:
+				var r_sword_fx := SwordCardAnim.play_sword_card_score_anim(self, c, null, false, card_world, ai_pts, 1.0, is_rival_knight)
+				_register_blender_vfx(r_sword_fx)
+			else:
+				Fx.ring(self, card_world + Vector3(0, 0.012, 0), s_obj["col"], 0.32, 0.35, 0.05, 1.3, 1.0)
 			var r_disp := _get_rank_name(str(c.get("rank", "")))
 			if is_rival_knight:
 				rival_knight_card = c
@@ -13588,6 +13673,8 @@ func _run_rival_turn_with_cinematic(my_ai_seq: int) -> void:
 		if my_cine_tok != _cinematic_seq_token or my_ai_seq != _ai_turn_seq or not is_inside_tree() or not visible:
 			return
 		_exit_cinematic_camera_lock(CameraViewMode.CARDS)
+		if action_kind == "play":
+			turn_glance_timer = 1.15
 		if not rival_knight_card.is_empty():
 			if not _check_win_or_redeal():
 				_open_mist_guess_modal(rival_knight_card)
