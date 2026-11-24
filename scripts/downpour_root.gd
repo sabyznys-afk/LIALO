@@ -1265,6 +1265,7 @@ func _build_roguelite_loadout_for_era(era: Dictionary, is_quick_showcase: bool =
 		return {
 			"custom_cards": q_cards,
 			"active_relics": q_rel,
+			"broken_relics": run_profile.get("broken_relics", []).duplicate(),
 			"table_relics": run_profile.get("table_relics", ["TRELIC_BLOOD_SEAL", "TRELIC_STAR_BOW"]).duplicate(),
 			"card_editions": q_ed,
 			"removed_cards": run_profile.get("removed_cards", []).duplicate(),
@@ -1302,6 +1303,7 @@ func _build_roguelite_loadout_for_era(era: Dictionary, is_quick_showcase: bool =
 	return {
 		"custom_cards": run_profile.get("custom_cards", []).duplicate(),
 		"active_relics": active_rel_clean,
+		"broken_relics": run_profile.get("broken_relics", []).duplicate(),
 		"table_relics": run_profile.get("table_relics", ["TRELIC_BLOOD_SEAL", "TRELIC_STAR_BOW"]).duplicate(),
 		"card_editions": run_profile.get("card_editions", {}).duplicate(),
 		"removed_cards": run_profile.get("removed_cards", []).duplicate(),
@@ -1319,12 +1321,22 @@ func _build_roguelite_loadout_for_era(era: Dictionary, is_quick_showcase: bool =
 		"language": str(game_options.get("language", "en")),
 	}
 
+func _sync_broken_relics_from_details(details: Dictionary) -> void:
+	if details.has("broken_relics") and details["broken_relics"] is Array:
+		var br_clean: Array = []
+		for br_v in details["broken_relics"]:
+			var br_s := str(br_v)
+			if br_s != "" and not (br_s in br_clean):
+				br_clean.append(br_s)
+		run_profile["broken_relics"] = br_clean
+
 func _on_match_won_details(details: Dictionary) -> void:
 	var earned := int(details.get("gold_earned", 40)) + int(details.get("duel_gold_delta", 0))
 	var e_id: String = str(details.get("era_id", "stredovek"))
 	run_profile["gold"] = maxi(0, int(run_profile.get("gold", 0)) + earned)
 	for tid_v in details.get("table_relics", []):
 		Catalog.grant_table_relic(run_profile, str(tid_v))
+	_sync_broken_relics_from_details(details)
 	run_profile["retry_blessing"] = 0
 	pending_post_loss_spoils.clear()
 	run_profile["total_wins"] = int(run_profile.get("total_wins", 0)) + 1
@@ -1337,6 +1349,10 @@ func _on_match_won_details(details: Dictionary) -> void:
 		for sk in d_scales.keys():
 			cur_scales[sk] = d_scales[sk]
 		run_profile["relic_scales"] = cur_scales
+
+	var st_map_pre: Dictionary = run_profile.get("era_stage", {})
+	var won_stage_idx := int(details.get("stage_idx", int(st_map_pre.get(e_id, 0))))
+	var is_tut_match := bool(details.get("is_tutorial", false)) or e_id == "tutorial"
 
 	var won_ante := int(details.get("endless_ante", 0))
 	if won_ante >= 1:
@@ -1369,6 +1385,10 @@ func _on_match_won_details(details: Dictionary) -> void:
 		run_profile["era_stage"] = st_map
 
 	last_victory_info = details.duplicate()
+	var new_unlocks: Array[Dictionary] = []
+	if not is_tut_match:
+		new_unlocks = Catalog.claim_stage_unlocks(run_profile, e_id, won_stage_idx, true)
+	last_victory_info["new_unlocks"] = new_unlocks
 	# Unlock up to 2 still-locked cards into player's Card Collection after each victory!
 	var lock_pool: Array[String] = []
 	var ul_now: Array = run_profile.get("unlocked_cards", Catalog.DEFAULT_UNLOCKED_CARDS)
@@ -1395,6 +1415,7 @@ func _on_match_lost_details(details: Dictionary) -> void:
 	run_profile["gold"] = maxi(0, int(run_profile.get("gold", 0)) + consolation_gold)
 	for tid_v in details.get("table_relics", []):
 		Catalog.grant_table_relic(run_profile, str(tid_v))
+	_sync_broken_relics_from_details(details)
 	var next_bless := clampi(int(run_profile.get("retry_blessing", 0)) + 1, 1, 3)
 	run_profile["retry_blessing"] = next_bless
 
@@ -2524,6 +2545,35 @@ func _build_collection_card_slot(entry: Dictionary) -> Control:
 		)
 		card_panel.add_child(chain_ctrl)
 
+	if bool(entry.get("mp_badge", false)):
+		var mp_vb := VBoxContainer.new()
+		mp_vb.size_flags_vertical = Control.SIZE_SHRINK_END
+		mp_vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mp_vb.add_theme_constant_override("separation", 1)
+		var mp_lbl := Label.new()
+		mp_lbl.text = _tr("Unlocked (MP Ready)" if unlocked else "Locked", "Odemčeno (MP)" if unlocked else "Zamčeno")
+		mp_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		mp_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mp_lbl.add_theme_font_override("font", _get_font(true))
+		mp_lbl.add_theme_font_size_override("font_size", 11)
+		mp_lbl.add_theme_color_override("font_color", Color(0.42, 1.0, 0.62) if unlocked else Color(0.98, 0.56, 0.36))
+		mp_lbl.add_theme_color_override("font_outline_color", Color(0.02, 0.02, 0.03))
+		mp_lbl.add_theme_constant_override("outline_size", 5)
+		mp_vb.add_child(mp_lbl)
+		var src_txt := str(entry.get("unlock_source", ""))
+		if src_txt != "":
+			var src_lbl := Label.new()
+			src_lbl.text = src_txt
+			src_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			src_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			src_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			src_lbl.add_theme_font_size_override("font_size", 10)
+			src_lbl.add_theme_color_override("font_color", Color(0.92, 0.86, 0.70))
+			src_lbl.add_theme_color_override("font_outline_color", Color(0.02, 0.02, 0.03))
+			src_lbl.add_theme_constant_override("outline_size", 4)
+			mp_vb.add_child(src_lbl)
+		card_panel.add_child(mp_vb)
+
 	var kill_hover_tw := func():
 		if card_panel.has_meta("hover_tw"):
 			var old_tw: Variant = card_panel.get_meta("hover_tw")
@@ -2774,7 +2824,12 @@ func _open_card_collection_detail(entry: Dictionary) -> void:
 		col_det_art.modulate = Color.WHITE if unlocked else Color(0.42, 0.42, 0.46, 0.95)
 	col_det_title.text = str(entry["title"])
 	col_det_sub.text = str(entry["sub"])
-	col_det_badge.text = ("✓ UNLOCKED IN COLLECTION" if not _is_cs() else "✓ ODEMČENO VE SBÍRCE") if unlocked else ("⛓ CHAINED (LOCKED) — Win campaign matches or visit Bazaar to unlock!" if not _is_cs() else "⛓ ZAMČENO V ŘETĚZECH — Vyhraj zápasy v kampani nebo navštiv Obchod!")
+	if bool(entry.get("mp_badge", false)):
+		var src_info := str(entry.get("unlock_source", ""))
+		var src_suffix := (" • " + src_info) if src_info != "" else ""
+		col_det_badge.text = (_tr("✓ Unlocked (MP Ready)", "✓ Odemčeno (MP)") if unlocked else _tr("⛓ Locked", "⛓ Zamčeno")) + src_suffix
+	else:
+		col_det_badge.text = ("✓ UNLOCKED IN COLLECTION" if not _is_cs() else "✓ ODEMČENO VE SBÍRCE") if unlocked else ("⛓ CHAINED (LOCKED) — Win campaign matches or visit Bazaar to unlock!" if not _is_cs() else "⛓ ZAMČENO V ŘETĚZECH — Vyhraj zápasy v kampani nebo navštiv Obchod!")
 	col_det_badge.add_theme_color_override("font_color", Color(0.46, 0.96, 0.62) if unlocked else Color(0.86, 0.62, 0.36))
 	col_det_desc.text = str(entry["desc"])
 	_open_animated_modal(collection_detail_modal)
@@ -2910,10 +2965,13 @@ func _rebuild_collection_view() -> void:
 		var pc := Catalog.get_power_card_loc(pid, lang)
 		var cls_id := Catalog.normalize_card_class(str(ce.get(pid, "NORMAL")))
 		var cls_d := Catalog.get_card_class_loc(cls_id, lang)
-		var is_ul := pid in ul_arr
+		var is_ul := Catalog.is_power_card_unlocked(run_profile, pid) or (pid in ul_arr)
+		var src_lbl := Catalog.get_unlock_source_label(pid, lang)
 		power_entries.append({
 			"key": pid,
 			"unlocked": is_ul,
+			"mp_badge": true,
+			"unlock_source": src_lbl,
 			"tex": card_face_cache.get(pid, null),
 			"col": pc["accent"],
 			"cap": "%s (+%d)" % [str(pc["short"]), int(pc["pts"])],
@@ -2993,13 +3051,16 @@ func _rebuild_collection_view() -> void:
 			if not card_face_cache.has("ARSENAL_" + tr_art) and ResourceLoader.exists(tr_art):
 				card_face_cache["ARSENAL_" + tr_art] = Toon.tex(tr_art)
 			var tr_loc := Catalog.get_table_relic_loc(tid, lang)
-			var is_own_tr := (tid in owned_tr)
+			var is_own_tr := Catalog.is_table_relic_unlocked(run_profile, tid) or (tid in owned_tr)
+			var src_tr := Catalog.get_unlock_source_label(tid, lang)
 			collection_grid.add_child(_build_collection_card_slot({
 				"key": tid,
 				"custom_kind": "table_relic",
 				"raw_data": tr_loc,
 				"unlocked": is_own_tr,
-				"equipped": is_own_tr,
+				"equipped": tid in owned_tr,
+				"mp_badge": true,
+				"unlock_source": src_tr,
 				"tex": null,
 				"col": tr_loc["col"],
 				"cap": "⛓ %dg" % int(tr_loc["cost"]),
@@ -3016,13 +3077,16 @@ func _rebuild_collection_view() -> void:
 			if not card_face_cache.has("ARSENAL_" + r_art) and ResourceLoader.exists(r_art):
 				card_face_cache["ARSENAL_" + r_art] = Toon.tex(r_art)
 			var r := Catalog.get_relic_loc(rid, lang)
-			var is_own := (rid in owned_rel)
+			var is_own := Catalog.is_relic_unlocked(run_profile, rid) or (rid in owned_rel)
+			var src_r := Catalog.get_unlock_source_label(rid, lang)
 			collection_grid.add_child(_build_collection_card_slot({
 				"key": rid,
 				"custom_kind": "relic",
 				"raw_data": r,
 				"unlocked": is_own,
-				"equipped": is_own,
+				"equipped": rid in owned_rel,
+				"mp_badge": true,
+				"unlock_source": src_r,
 				"tex": null,
 				"col": r["col"],
 				"cap": "⛓ %dg" % int(r["cost"]),
@@ -5764,6 +5828,53 @@ func _rebuild_shop_ui(after_win: bool = false) -> void:
 	for c in shop_items_box.get_children():
 		c.queue_free()
 
+	if after_win and not last_victory_info.is_empty():
+		var new_ul_raw: Variant = last_victory_info.get("new_unlocks", [])
+		if new_ul_raw is Array and not (new_ul_raw as Array).is_empty():
+			var ul_banner := PanelContainer.new()
+			var ul_sb := _make_modal_card_style(Color(0.08, 0.12, 0.16, 0.98), Color(0.36, 0.92, 0.68))
+			ul_sb.set_corner_radius_all(18)
+			ul_sb.content_margin_left = 18; ul_sb.content_margin_right = 18
+			ul_sb.content_margin_top = 12; ul_sb.content_margin_bottom = 12
+			ul_banner.add_theme_stylebox_override("panel", ul_sb)
+			var ul_vb := VBoxContainer.new()
+			ul_vb.add_theme_constant_override("separation", 6)
+			ul_banner.add_child(ul_vb)
+			var ul_hdr := Label.new()
+			ul_hdr.text = _tr("✦ NEW UNLOCK — USABLE IN CAMPAIGN & MULTIPLAYER", "✦ NOVÉ ODEMČENÍ — KAMPAŇ I MULTIPLAYER")
+			ul_hdr.add_theme_font_override("font", _get_font(true))
+			ul_hdr.add_theme_font_size_override("font_size", 17)
+			ul_hdr.add_theme_color_override("font_color", Color(0.46, 1.0, 0.72))
+			ul_vb.add_child(ul_hdr)
+			var ul_items_hb := HFlowContainer.new()
+			ul_items_hb.add_theme_constant_override("h_separation", 10)
+			ul_items_hb.add_theme_constant_override("v_separation", 6)
+			ul_vb.add_child(ul_items_hb)
+			for ul_entry_v in (new_ul_raw as Array):
+				if not (ul_entry_v is Dictionary):
+					continue
+				var ul_e: Dictionary = ul_entry_v
+				var uk := str(ul_e.get("kind", ""))
+				var u_name := str(ul_e.get("name_cs" if _is_cs() else "name", ul_e.get("id", "")))
+				var u_col: Color = ul_e.get("col", Color(1.0, 0.86, 0.34))
+				var kind_tag := ""
+				if uk == "power_card":
+					kind_tag = _tr("Power Card", "Mocná karta")
+				elif uk == "relic":
+					kind_tag = _tr("Relic", "Relikvie")
+				elif uk == "table_relic":
+					kind_tag = _tr("3D Table Relic", "3D Relikvie")
+				var pill := PanelContainer.new()
+				pill.add_theme_stylebox_override("panel", _make_pill_style(Color(0.06, 0.08, 0.11, 0.96), u_col, 3))
+				var plbl := Label.new()
+				plbl.text = "✦ %s (%s)" % [u_name, kind_tag]
+				plbl.add_theme_font_override("font", _get_font(true))
+				plbl.add_theme_font_size_override("font_size", 14)
+				plbl.add_theme_color_override("font_color", u_col.lightened(0.24))
+				pill.add_child(plbl)
+				ul_items_hb.add_child(pill)
+			shop_items_box.add_child(ul_banner)
+
 	if not Catalog.has_seen_unlock_tip(run_profile, "unlock_shop"):
 		var tip_card := PanelContainer.new()
 		var t_sb := _make_modal_card_style(Color(0.08, 0.14, 0.10, 0.96), Color(0.42, 0.94, 0.62))
@@ -6089,6 +6200,37 @@ func _confirm_sculpt_offer(offer_idx: int, entry: Dictionary) -> void:
 	_refresh_map_roguelite_hud()
 	_update_campaign_card(selected_era_idx)
 
+func _show_shop_toast(msg: String, col: Color = Color(0.46, 0.96, 0.62)) -> void:
+	if not shop_modal:
+		return
+	var old_t := shop_modal.get_node_or_null("ShopToastPill")
+	if old_t:
+		old_t.queue_free()
+	var toast := PanelContainer.new()
+	toast.name = "ShopToastPill"
+	toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	toast.z_index = 95
+	toast.add_theme_stylebox_override("panel", _make_pill_style(Color(0.06, 0.10, 0.08, 0.96), col, 4))
+	toast.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	toast.offset_top = 18
+	toast.offset_left = -220
+	toast.offset_right = 220
+	var lbl := Label.new()
+	lbl.text = msg
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_override("font", _get_font(true))
+	lbl.add_theme_font_size_override("font_size", 16)
+	lbl.add_theme_color_override("font_color", col.lightened(0.25))
+	toast.add_child(lbl)
+	shop_modal.add_child(toast)
+	var tw := toast.create_tween()
+	tw.tween_interval(1.9)
+	tw.tween_property(toast, "modulate:a", 0.0, 0.35)
+	tw.tween_callback(func():
+		if is_instance_valid(toast):
+			toast.queue_free()
+	)
+
 func _buy_shop_offer(idx: int) -> void:
 	if idx < 0 or idx >= shop_offers.size():
 		return
@@ -6110,22 +6252,29 @@ func _buy_shop_offer(idx: int) -> void:
 	run_profile["gold"] = g - cost
 	off["bought"] = true
 
+	var oid := str(off.get("id", ""))
 	if kind == "power_card":
 		var cc: Array = run_profile.get("custom_cards", [])
-		cc.append(str(off["id"]))
+		cc.append(oid)
 		run_profile["custom_cards"] = cc
-		Catalog.unlock_card(run_profile, str(off["id"]))
+		Catalog.unlock_card(run_profile, oid)
+		Catalog.unlock_power_card(run_profile, oid)
 	elif kind == "table_relic":
-		Catalog.grant_table_relic(run_profile, str(off["id"]))
+		Catalog.grant_table_relic(run_profile, oid)
+		Catalog.unlock_table_relic(run_profile, oid)
 	elif kind == "relic":
 		var ar: Array = run_profile.get("active_relics", [])
-		if not (str(off["id"]) in ar):
-			ar.append(str(off["id"]))
+		if not (oid in ar):
+			ar.append(oid)
 		run_profile["active_relics"] = ar
-		if str(off["id"]) == "REL_MERCHANT_LEDGER":
+		Catalog.unlock_relic(run_profile, oid)
+		if oid == "REL_MERCHANT_LEDGER":
 			var rs: Dictionary = run_profile.get("relic_scales", {})
 			rs["REL_MERCHANT_LEDGER"] = maxi(int(rs.get("REL_MERCHANT_LEDGER", 0)), int(run_profile.get("shop_rerolls", 0)) * 18)
 			run_profile["relic_scales"] = rs
+	elif kind == "repair_relic":
+		run_profile["broken_relics"] = []
+		_show_shop_toast(_tr("⚒ Relics Repaired & Restored!", "⚒ Relikvie opraveny a obnoveny!"), Color(0.98, 0.78, 0.34))
 	elif kind == "edition" or kind == "card_class":
 		var ce: Dictionary = run_profile.get("card_editions", {})
 		var cands := ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E", "CERVEN_K", "ZELEN_K", "GULA_K", "ZALUD_K", "CERVEN_7", "ZELEN_7", "GULA_7", "ZALUD_7"]
