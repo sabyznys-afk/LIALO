@@ -25,12 +25,12 @@ void fragment() {
 		COLOR = vec4(raw, 1.0);
 	} else if (print_mode == 3) {
 		// Liar's Bar / Buckshot Roulette Cinematic PBR Grade: crisp filmic contrast, warm tungsten highlights, smoky shadow vignette, ZERO hatching!
-		vec3 x = max(vec3(0.0), raw * 1.12);
+		vec3 x = max(vec3(0.0), raw * 0.94);
 		vec3 aces = clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), vec3(0.0), vec3(1.0));
 		float lum_raw = luma(raw);
 		// Warm candlelight shadow tint + subtle rim punch
-		vec3 warm_grade = mix(aces * vec3(0.95, 0.96, 1.04), aces * vec3(1.06, 1.01, 0.92), smoothstep(0.14, 0.68, lum_raw));
-		// Subtle optical bloom halo on hot flames / magic highlights
+		vec3 warm_grade = mix(aces * vec3(0.95, 0.96, 1.04), aces * vec3(1.04, 1.00, 0.92), smoothstep(0.14, 0.68, lum_raw));
+		// Subtle optical bloom halo on hot flames / magic highlights ONLY (keep white parchment cards crisp!)
 		vec2 b_px = SCREEN_PIXEL_SIZE * 2.5;
 		vec3 blur_hi = (
 			texture(SCREEN_TEXTURE, SCREEN_UV + vec2(b_px.x, 0.0)).rgb +
@@ -38,7 +38,7 @@ void fragment() {
 			texture(SCREEN_TEXTURE, SCREEN_UV + vec2(0.0, b_px.y)).rgb +
 			texture(SCREEN_TEXTURE, SCREEN_UV - vec2(0.0, b_px.y)).rgb
 		) * 0.25;
-		vec3 bloom = max(vec3(0.0), blur_hi - vec3(0.72)) * 0.42;
+		vec3 bloom = max(vec3(0.0), blur_hi - vec3(0.90)) * 0.18;
 		vec2 v_uv = SCREEN_UV - vec2(0.5);
 		float vig = smoothstep(0.44, 0.94, length(v_uv * vec2(1.18, 1.0)));
 		vec3 final_c = mix(warm_grade + bloom, vec3(0.024, 0.020, 0.018), vig * (vignette_strength * 0.92));

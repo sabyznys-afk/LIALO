@@ -47,14 +47,17 @@ void fragment() {
 	if (use_texture) {
 		float tint_mix = (is_back > 0.5) ? 0.04 : 0.14;
 		tex_c = texture(albedo_tex, uv) * vec4(mix(vec3(1.0), albedo.rgb, tint_mix), 1.0);
-		tex_c.rgb *= (is_back > 0.5) ? 0.90 : 0.82;
+		tex_c.rgb *= (is_back > 0.5) ? 0.84 : 0.72;
+		if (is_back <= 0.5) {
+			tex_c.rgb = pow(clamp(tex_c.rgb, vec3(0.0), vec3(1.0)), vec3(1.14));
+		}
 		tex_c.a = 1.0;
 	}
 
 	vec3 base = tex_c.rgb;
 	vec3 fx_emit = vec3(0.0);
-	float out_metallic = 0.08;
-	float out_roughness = 0.68;
+	float out_metallic = 0.04;
+	float out_roughness = 0.86;
 
 	float edge_x = min(uv.x, 1.0 - uv.x);
 	float edge_y = min(uv.y, 1.0 - uv.y);
@@ -91,11 +94,11 @@ void fragment() {
 		fx_emit += gold_leaf * hairline * (0.18 + sheen * 0.45);
 	} else {
 		// CARD FRONT MODE
-		fx_emit += vec3(1.0, 0.86, 0.55) * gild * 0.26;
+		fx_emit += vec3(1.0, 0.86, 0.55) * gild * 0.10;
 		base = mix(base, gold_leaf, hairline * 0.75);
-		fx_emit += gold_leaf * hairline * (0.10 + sheen * 0.55);
-		out_roughness = mix(0.82, 0.48, hairline);
-		out_metallic = hairline * 0.42;
+		fx_emit += gold_leaf * hairline * (0.06 + sheen * 0.35);
+		out_roughness = mix(0.88, 0.56, hairline);
+		out_metallic = hairline * 0.35;
 
 		// POWER CARDS: Stark high-contrast obsidian inner frame + flaring arcane pressure aura
 		if (is_power_card > 0.5) {

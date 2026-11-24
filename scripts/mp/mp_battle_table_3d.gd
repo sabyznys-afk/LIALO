@@ -21,10 +21,10 @@ const WOODCUT_POST_SHADER := preload("res://shaders/woodcut_post.gdshader")
 const FONT_DISPLAY_PATH := "res://assets/fonts/LialoDisplay.ttf"
 const FONT_BODY_PATH := "res://assets/fonts/LialoBody.ttf"
 
-const HAND_POS_UP := Vector3(0.0, 1.50, 0.91)
-const HAND_ROT_UP := Vector3(-44.0, 0.0, 0.0)
-const HAND_POS_TUCKED := Vector3(0.0, 0.85, 1.35)
-const HAND_ROT_TUCKED := Vector3(-56.0, 0.0, 0.0)
+const HAND_POS_UP := Vector3(0.0, 1.24, 1.00)
+const HAND_ROT_UP := Vector3(-24.0, 0.0, 0.0)
+const HAND_POS_TUCKED := Vector3(0.0, 0.72, 1.48)
+const HAND_ROT_TUCKED := Vector3(-54.0, 0.0, 0.0)
 const MAX_MP_ITEM_USES: int = 3
 
 const MP_ITEM_MESH_MAP := {
@@ -102,6 +102,12 @@ var hover_inspect_sub: Label
 var hover_inspect_desc: Label
 var suit_pick_modal: PanelContainer
 var _pending_wild_play_indices: Array[int] = []
+var _last_mp_round_num: int = -1
+var round_transition_overlay: Control = null
+var round_transition_ribbon: PanelContainer = null
+var round_transition_title_lbl: Label = null
+var round_transition_sub_lbl: Label = null
+var _round_transition_tween: Tween = null
 
 var public_state: Dictionary = {}
 var my_seat: int = 0
@@ -210,8 +216,8 @@ func _process(delta: float) -> void:
 	_cam_blend = lerpf(_cam_blend, 1.0 if use_top_down else 0.0, clampf(delta * 6.5, 0.0, 1.0))
 
 	if is_instance_valid(cam):
-		var base_pos := Vector3(0.0, 2.28, 1.18).lerp(Vector3(0.0, 2.75, 0.45), _cam_blend)
-		var base_pitch := lerpf(-54.0, -76.0, _cam_blend)
+		var base_pos := Vector3(0.0, 1.78, 1.48).lerp(Vector3(0.0, 2.68, 0.48), _cam_blend)
+		var base_pitch := lerpf(-31.0, -74.0, _cam_blend)
 		var base_fov := lerpf(70.0, 72.0, _cam_blend)
 		var sh := Vector3(randf_range(-1, 1), randf_range(-1, 1), 0.0) * cam_kick_shake * 0.025
 		cam.position = base_pos + cam_spring.pos_offset + sh
@@ -373,23 +379,23 @@ func _build_3d_tavern() -> void:
 	e.background_color = Color(0.08, 0.055, 0.04)
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color(0.42, 0.33, 0.25)
-	e.ambient_light_energy = 1.05
+	e.ambient_light_energy = 0.62
 	e.glow_enabled = true
-	e.glow_intensity = 0.72
+	e.glow_intensity = 0.28
 	env.environment = e
 	add_child(env)
 
 	var key_light := OmniLight3D.new()
 	key_light.position = Vector3(0.0, 2.75, 0.10)
-	key_light.light_color = Color(1.0, 0.84, 0.58)
-	key_light.light_energy = 3.1
+	key_light.light_color = Color(1.0, 0.87, 0.66)
+	key_light.light_energy = 1.55
 	key_light.omni_range = 8.0
 	add_child(key_light)
 
 	var rim_light := OmniLight3D.new()
 	rim_light.position = Vector3(0.0, 2.2, -3.2)
 	rim_light.light_color = Color(0.95, 0.68, 0.38)
-	rim_light.light_energy = 1.9
+	rim_light.light_energy = 1.05
 	rim_light.omni_range = 7.5
 	add_child(rim_light)
 
@@ -501,7 +507,7 @@ func _build_3d_tavern() -> void:
 		var l_omni := OmniLight3D.new()
 		l_omni.position = lpos
 		l_omni.light_color = Color(1.0, 0.72, 0.36)
-		l_omni.light_energy = 1.65
+		l_omni.light_energy = 0.85
 		l_omni.omni_range = 6.2
 		add_child(l_omni)
 
@@ -1052,6 +1058,58 @@ func _build_hud() -> void:
 	vbtn.pressed.connect(func(): exit_mp_requested.emit())
 	vvb.add_child(vbtn)
 
+	# End-of-Round / Next-Round Cinematic Ribbon Overlay
+	round_transition_overlay = Control.new()
+	round_transition_overlay.name = "MpRoundTransitionOverlay"
+	round_transition_overlay.anchor_left = 0.0
+	round_transition_overlay.anchor_top = 0.0
+	round_transition_overlay.anchor_right = 1.0
+	round_transition_overlay.anchor_bottom = 1.0
+	round_transition_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	round_transition_overlay.visible = false
+	round_transition_overlay.z_index = 40
+	hud_root.add_child(round_transition_overlay)
+
+	round_transition_ribbon = PanelContainer.new()
+	round_transition_ribbon.anchor_left = 0.5
+	round_transition_ribbon.anchor_right = 0.5
+	round_transition_ribbon.anchor_top = 0.34
+	round_transition_ribbon.anchor_bottom = 0.34
+	round_transition_ribbon.offset_left = -310.0
+	round_transition_ribbon.offset_right = 310.0
+	round_transition_ribbon.offset_top = -62.0
+	round_transition_ribbon.offset_bottom = 62.0
+	round_transition_ribbon.pivot_offset = Vector2(310.0, 62.0)
+	round_transition_ribbon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	round_transition_ribbon.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.08, 0.055, 0.035, 0.94), Color(0.95, 0.76, 0.30, 0.96), 3, 14, 18))
+	round_transition_overlay.add_child(round_transition_ribbon)
+
+	var rtvb := VBoxContainer.new()
+	rtvb.alignment = BoxContainer.ALIGNMENT_CENTER
+	rtvb.add_theme_constant_override("separation", 4)
+	rtvb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	round_transition_ribbon.add_child(rtvb)
+
+	round_transition_title_lbl = Label.new()
+	round_transition_title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_apply_font(round_transition_title_lbl, true)
+	round_transition_title_lbl.add_theme_font_size_override("font_size", 30)
+	round_transition_title_lbl.add_theme_color_override("font_color", Color(1.0, 0.89, 0.48))
+	round_transition_title_lbl.add_theme_color_override("font_outline_color", Color(0.10, 0.04, 0.02, 1.0))
+	round_transition_title_lbl.add_theme_constant_override("outline_size", 6)
+	round_transition_title_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rtvb.add_child(round_transition_title_lbl)
+
+	round_transition_sub_lbl = Label.new()
+	round_transition_sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_apply_font(round_transition_sub_lbl, false)
+	round_transition_sub_lbl.add_theme_font_size_override("font_size", 16)
+	round_transition_sub_lbl.add_theme_color_override("font_color", Color(0.95, 0.90, 0.80))
+	round_transition_sub_lbl.add_theme_color_override("font_outline_color", Color(0.08, 0.04, 0.02, 1.0))
+	round_transition_sub_lbl.add_theme_constant_override("outline_size", 3)
+	round_transition_sub_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rtvb.add_child(round_transition_sub_lbl)
+
 	add_child(hud_layer)
 
 
@@ -1071,8 +1129,15 @@ func _on_public_state(state: Dictionary) -> void:
 		suit_beacon_lbl.modulate = s_obj["col"]
 
 	var stack_txt := ("  •  🩸 TAX +%d" % int(state.get("pending_draw_stack", 0))) if int(state.get("pending_draw_stack", 0)) > 0 else ""
+	var r_now := int(state.get("round_num", 1))
 	if is_instance_valid(status_info_lbl):
-		status_info_lbl.text = "%s %s  •  Round %d%s" % [s_obj["sym"], s_obj["name"], int(state.get("round_num", 1)), stack_txt]
+		status_info_lbl.text = "%s %s  •  Round %d%s" % [s_obj["sym"], s_obj["name"], r_now, stack_txt]
+	if _last_mp_round_num < 0:
+		_last_mp_round_num = r_now
+	elif r_now > _last_mp_round_num:
+		var prev_r := _last_mp_round_num
+		_last_mp_round_num = r_now
+		_play_mp_round_transition_anim(prev_r, r_now)
 	if is_instance_valid(center_banner_lbl) and _toast_timer <= 0.0:
 		center_banner_lbl.text = str(state.get("banner", ""))
 
@@ -1157,6 +1222,35 @@ func _on_public_state(state: Dictionary) -> void:
 	if not _mp_intro_showcase_done and not seats_arr.is_empty():
 		_mp_intro_showcase_done = true
 		_play_mp_table_items_intro_showcase()
+
+
+func _play_mp_round_transition_anim(finished_r: int, next_r: int) -> void:
+	if not is_instance_valid(round_transition_overlay) or not is_instance_valid(round_transition_ribbon):
+		return
+	if is_instance_valid(_round_transition_tween) and _round_transition_tween.is_valid():
+		_round_transition_tween.kill()
+	round_transition_title_lbl.text = "ROUND %d COMPLETE  ->  ROUND %d" % [finished_r, next_r]
+	round_transition_sub_lbl.text = "New Hand  •  Tavern Arena Resets"
+	round_transition_overlay.visible = true
+	round_transition_overlay.modulate = Color(1, 1, 1, 0)
+	round_transition_ribbon.scale = Vector2(0.84, 0.84)
+	if is_inside_tree():
+		var center := global_position + Vector3(0.0, 0.90, 0.0)
+		Fx.ring(self, center, Color(0.98, 0.78, 0.28), 0.72, 0.65, 0.08, 2.8, 8.0)
+		Fx.gold_flakes(self, center + Vector3(0.0, 0.14, 0.0), 34, 1.3)
+		play_sfx_requested.emit("anim_combo_slam")
+		cam_kick_shake = maxf(cam_kick_shake, 0.35)
+		_round_transition_tween = create_tween()
+		_round_transition_tween.tween_property(round_transition_overlay, "modulate:a", 1.0, 0.24).set_ease(Tween.EASE_OUT)
+		_round_transition_tween.parallel().tween_property(round_transition_ribbon, "scale", Vector2(1.03, 1.03), 0.26).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		_round_transition_tween.tween_property(round_transition_ribbon, "scale", Vector2(1.0, 1.0), 0.16)
+		_round_transition_tween.tween_interval(1.25)
+		_round_transition_tween.tween_property(round_transition_overlay, "modulate:a", 0.0, 0.42).set_ease(Tween.EASE_IN)
+		_round_transition_tween.parallel().tween_property(round_transition_ribbon, "scale", Vector2(0.95, 0.95), 0.42)
+		_round_transition_tween.tween_callback(func():
+			if is_instance_valid(round_transition_overlay):
+				round_transition_overlay.visible = false
+		)
 
 
 func _on_private_hand(s_idx: int, hand: Array, items: Array, meta: Dictionary) -> void:

@@ -46,8 +46,8 @@ var _cached_quill_font: Font = null
 # --- Gameplay graphics overhaul state ---
 const SUIT_ASTRO_ANGLES := {"CERVEN": 0.0, "ZALUD": PI * 0.5, "ZELEN": PI, "GULA": PI * 1.5}
 var gfx_env: Environment
-var gfx_base_ambient_energy: float = 1.0
-var gfx_base_spot_energy: float = 3.4
+var gfx_base_ambient_energy: float = 0.72
+var gfx_base_spot_energy: float = 1.65
 var suit_pulse_age: float = 10.0
 var gfx_last_suit_id: String = ""
 var astrolabe_root: Node3D
@@ -183,6 +183,12 @@ var tutorial_ghost_ok_flash: float = 0.0
 var wheel_canvas: Control
 var wheel_lap_lbl: Label
 var round_counter_lbl: Label
+var round_transition_overlay: Control
+var round_transition_ribbon: PanelContainer
+var round_transition_sub_lbl: Label
+var round_transition_main_lbl: Label
+var round_transition_pips_lbl: Label
+var round_transition_tween: Tween
 var settings_icon_btn: Button
 var card_guide_btn: Button
 var card_guide_modal: Control
@@ -230,10 +236,10 @@ var wager_showcase_boost: float = 0.0
 var key_hint_lbl: Label
 
 # Celé 3D karty v ruke jasne čitateľné nad stolom + [SPACE] náhľad (~12% horný okraj dole)
-const HAND_POS_UP := Vector3(0.0, 1.50, 0.91)
-const HAND_ROT_UP := Vector3(-44.0, 0.0, 0.0)
-const HAND_POS_TUCKED := Vector3(0.0, 0.85, 1.35)
-const HAND_ROT_TUCKED := Vector3(-56.0, 0.0, 0.0)
+const HAND_POS_UP := Vector3(0.0, 1.24, 1.00)
+const HAND_ROT_UP := Vector3(-24.0, 0.0, 0.0)
+const HAND_POS_TUCKED := Vector3(0.0, 0.72, 1.48)
+const HAND_ROT_TUCKED := Vector3(-54.0, 0.0, 0.0)
 
 var rmb_down: bool = false
 var rmb_drag_dist: float = 0.0
@@ -1242,19 +1248,19 @@ func _setup_dark_atmosphere_and_lighting() -> void:
 	table_spot_light = SpotLight3D.new()
 	table_spot_light.position = Vector3(0.0, 2.80, 0.05)
 	table_spot_light.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-	table_spot_light.light_color = Color(1.0, 0.84, 0.62)
-	table_spot_light.light_energy = 3.4
+	table_spot_light.light_color = Color(1.0, 0.87, 0.70)
+	table_spot_light.light_energy = 1.65
 	table_spot_light.spot_range = 6.5
 	table_spot_light.spot_angle = 49.0
 	table_spot_light.spot_angle_attenuation = 1.9
 	table_spot_light.shadow_enabled = true
 	add_child(table_spot_light)
 
-	# Podsvietenie rúk hráča — pri tvojom ťahu sa zosvetlí, aby si hneď videl, kedy hráš!
+	# Podsvietenie rúk hráča — jemné teplé osvetlenie bez prepálenia kariet
 	player_hand_light = OmniLight3D.new()
-	player_hand_light.position = Vector3(0.0, 1.48, 1.12)
+	player_hand_light.position = Vector3(0.0, 1.38, 1.22)
 	player_hand_light.light_color = Color(0.98, 0.90, 0.78)
-	player_hand_light.light_energy = 1.65
+	player_hand_light.light_energy = 0.55
 	player_hand_light.omni_range = 2.3
 	add_child(player_hand_light)
 
@@ -2785,8 +2791,8 @@ func _update_gameplay_gfx(delta: float, t: float) -> void:
 		gfx_env.ambient_light_energy = lerpf(base_amb, gfx_base_ambient_energy * 0.18, dim_amt)
 	if is_instance_valid(table_spot_light):
 		var flick := 1.0 + overdrive_light_t * (0.08 * sin(t * 23.0) + 0.05 * sin(t * 37.0))
-		var base_e := lerpf(gfx_base_spot_energy, gfx_base_spot_energy * 1.35, overdrive_light_t) * flick
-		table_spot_light.light_energy = minf(4.6, lerpf(base_e, gfx_base_spot_energy * 0.28, dim_amt))
+		var base_e := lerpf(gfx_base_spot_energy, gfx_base_spot_energy * 1.28, overdrive_light_t) * flick
+		table_spot_light.light_energy = minf(2.4, lerpf(base_e, gfx_base_spot_energy * 0.28, dim_amt))
 		var base_col := Color(1.0, 0.84, 0.62).lerp(Color(1.0, 0.66, 0.36), overdrive_light_t)
 		table_spot_light.light_color = base_col.lerp(dramatic_lighting_tint, dim_amt * 0.72)
 	if is_instance_valid(opp_fire_fx_root) and opp_fire_fx_root.visible:
@@ -2954,13 +2960,8 @@ func _spawn_signature_play_vfx(chosen_cards: Array[Dictionary], impact_pos: Vect
 		if _is_fancy_play_card(c_f, cnt):
 			has_fancy = true
 			break
-	var b_card_fx: Node3D = null
-	if has_fancy:
-		var blender_speed := clampf(1.0 / maxf(0.55, _pace(1.0)), 0.85, 1.55)
-		b_card_fx = BlenderVfx.play_card_effect_anim(self, lead, impact_pos, rival_pos, cnt, blender_speed)
-		_register_blender_vfx(b_card_fx)
-	else:
-		Fx.ring(self, impact_pos + Vector3(0, 0.012, 0), s_col, 0.34 + 0.08 * float(cnt), 0.36, 0.05, 1.4, 1.0)
+	var b_card_fx: Node3D = SwordCardAnim.play_ancient_circle_sigil(self, lead, impact_pos)
+	_register_blender_vfx(b_card_fx)
 
 	# Camera micro-choreography: FOV punch + Dutch roll on multi-card slams
 	if cam_spring:
@@ -5033,11 +5034,9 @@ func _show_stagger_callout(txt: String, col: Color, punch_scale: float = 1.14) -
 	stagger_callout_pill.add_theme_stylebox_override("panel", sb)
 	stagger_callout_lbl.text = txt
 	stagger_callout_lbl.add_theme_color_override("font_color", col.lightened(0.28))
-	var vp_w: float = get_viewport().get_visible_rect().size.x if get_viewport() else 1366.0
-	var pill_w := maxf(440.0, stagger_callout_pill.size.x)
-	var pill_x := clampf(vp_w * 0.5 - pill_w * 0.5, 498.0, maxf(498.0, vp_w - pill_w - 24.0))
-	var pill_y := 204.0 if (is_instance_valid(tutorial_ghost_center_panel) and tutorial_ghost_center_panel.visible) else 92.0
-	stagger_callout_pill.position = Vector2(pill_x, pill_y)
+	var pill_w := maxf(304.0, stagger_callout_pill.size.x)
+	stagger_callout_pill.position = Vector2(162.0, 166.0)
+	stagger_callout_pill.custom_minimum_size = Vector2(304, 58)
 	stagger_callout_pill.visible = true
 	stagger_callout_pill.modulate.a = 1.0
 	stagger_callout_pill.pivot_offset = stagger_callout_pill.size * 0.5
@@ -5525,11 +5524,12 @@ func _spawn_score_popup(txt: String, col: Color, is_player: bool) -> void:
 	lbl.pivot_offset = Vector2(230.0, 28.0)
 	var vp_w: float = get_viewport().get_visible_rect().size.x
 	var vp_h: float = get_viewport().get_visible_rect().size.y
-	# Place score callouts on the LEFT and RIGHT flanks of the table so the center pile stays 100% unobstructed!
+	# Place earned-points callout right beneath BODY / combo score block on top-left!
 	if is_player:
-		score_popup_side_toggle = not score_popup_side_toggle
-		var side_x := 36.0 if score_popup_side_toggle else maxf(480.0, vp_w - 496.0)
-		lbl.position = Vector2(side_x, clampf(vp_h * 0.36, 230.0, 310.0))
+		lbl.size = Vector2(304.0, 52.0)
+		lbl.pivot_offset = Vector2(152.0, 26.0)
+		lbl.add_theme_font_size_override("font_size", 24)
+		lbl.position = Vector2(162.0, 174.0)
 		_active_popup_lbl = lbl
 	else:
 		lbl.position = Vector2(maxf(480.0, vp_w - 496.0), 156.0)
@@ -7242,9 +7242,15 @@ func _setup_minimal_overlay_hud() -> void:
 	hud_root.add_child(bottom_left_status_pill)
 
 	carry_out_pill = PanelContainer.new()
-	carry_out_pill.position = Vector2(166, 182)
-	carry_out_pill.custom_minimum_size = Vector2(184, 36)
-	carry_out_pill.size = Vector2(184, 36)
+	carry_out_pill.anchor_left = 0.0
+	carry_out_pill.anchor_top = 1.0
+	carry_out_pill.anchor_right = 0.0
+	carry_out_pill.anchor_bottom = 1.0
+	carry_out_pill.offset_left = 232
+	carry_out_pill.offset_top = -90
+	carry_out_pill.offset_right = 424
+	carry_out_pill.offset_bottom = -54
+	carry_out_pill.custom_minimum_size = Vector2(192, 36)
 	carry_out_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	carry_out_pill.add_theme_stylebox_override("panel", _make_tex_panel_style("ui_carry_plaque_3d.png", 0, 0))
 	var carry_ctrl := Control.new()
@@ -8108,10 +8114,10 @@ func _setup_minimal_overlay_hud() -> void:
 	pending_seven_banner_pill.add_child(pending_seven_banner_lbl)
 	hud_root.add_child(pending_seven_banner_pill)
 
-	# CENTER-ARENA LIVE SCORING THEATRE (2-Row Readable Equation Showcase)
+	# EARNED-POINTS THEATRE UNDER TOP-LEFT BODY SCORE BLOCK
 	stagger_callout_pill = PanelContainer.new()
-	stagger_callout_pill.position = Vector2(502, 92)
-	stagger_callout_pill.custom_minimum_size = Vector2(440, 64)
+	stagger_callout_pill.position = Vector2(162, 166)
+	stagger_callout_pill.custom_minimum_size = Vector2(304, 58)
 	stagger_callout_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stagger_callout_pill.visible = false
 	var sc_sb := _make_plaque_style(Color(0.055, 0.042, 0.036, 0.95), Color(1.0, 0.84, 0.34), 18)
@@ -9232,6 +9238,8 @@ func _perform_opening_veto_hand() -> void:
 	_rebuild_all_3d_hands()
 	_animate_deal_pop_in()
 	_refresh_table_labels()
+	if not tutorial_mode:
+		_check_battle_unlock_tips()
 
 func _perform_opening_veto_duel() -> void:
 	if tutorial_mode:
@@ -9309,6 +9317,8 @@ func _deal_tutorial_round() -> void:
 	_rebuild_all_3d_hands()
 	_animate_deal_pop_in()
 	_refresh_table_labels()
+	if not tutorial_mode:
+		_check_battle_unlock_tips()
 
 func set_duel_wager(w_type: String, silent: bool = false) -> void:
 	if w_type == "GOLD" and player_available_gold < wager_gold_amount and not tutorial_mode:
@@ -9999,6 +10009,8 @@ func _deal_new_3d_round() -> void:
 	_rebuild_all_3d_hands()
 	_animate_deal_pop_in()
 	_refresh_table_labels()
+	if not tutorial_mode:
+		_check_battle_unlock_tips()
 
 func _animate_deal_pop_in() -> void:
 	for i in range(player_card_nodes.size()):
@@ -10429,7 +10441,7 @@ func _process(delta: float) -> void:
 			freelook_yaw = 0.0
 			freelook_pitch = 0.0
 
-			var target_pitch := 1.0 if is_ghost_closeup else (-26.0 if is_rival_items_view else (-76.0 if is_top_down_view else -54.0))
+			var target_pitch := 1.0 if is_ghost_closeup else (-22.0 if is_rival_items_view else (-74.0 if is_top_down_view else -31.0))
 			var target_yaw := 44.0 if is_ghost_closeup else 0.0
 			if active_player_count > 2 and not is_player_turn and not is_ghost_closeup and not intro_animating and not tutorial_mode:
 				var vp_fl := get_viewport().get_visible_rect().size
@@ -10441,7 +10453,7 @@ func _process(delta: float) -> void:
 					freelook_pitch = clampf(-ny_fl * 22.0, -24.0, 24.0)
 					target_yaw += freelook_yaw
 					target_pitch = clampf(target_pitch + freelook_pitch, -82.0, -8.0)
-			var target_cam_pos := Vector3(-0.32, 1.50, 0.76) if is_ghost_closeup else (Vector3(0.0, 1.54, 1.04) if is_rival_items_view else (Vector3(0.0, 2.75, 0.45) if is_top_down_view else Vector3(0.0, 2.28, 1.18)))
+			var target_cam_pos := Vector3(-0.32, 1.50, 0.76) if is_ghost_closeup else (Vector3(0.0, 1.54, 1.04) if is_rival_items_view else (Vector3(0.0, 2.68, 0.48) if is_top_down_view else Vector3(0.0, 1.78, 1.48)))
 			var target_fov := 62.0 if is_ghost_closeup else (64.0 if is_rival_items_view else 72.0)
 			cam.position = cam.position.lerp(target_cam_pos, 9.0 * delta)
 			cam.fov = lerpf(base_fov, target_fov, 8.5 * delta) + next_fov_kick
@@ -10836,10 +10848,10 @@ func _process(delta: float) -> void:
 		_animate_3d_hand_rig(opp_glove_right_mesh, t + 2.1, o_grip, o_flick * 0.5, o_pinch, o_drum, delta)
 
 	if player_hand_light:
-		var target_hl := 0.72 if (is_player_turn and not busy_animating) else 0.36
+		var target_hl := 0.52 if (is_player_turn and not busy_animating) else 0.26
 		player_hand_light.light_energy = lerpf(player_hand_light.light_energy, target_hl, 7.0 * delta)
 	if table_spot_light:
-		var target_sl := 6.5 if (cards_tucked or wager_showcase_boost > 0.1) else (5.6 if (is_player_turn and not busy_animating) else 4.6)
+		var target_sl := 1.90 if (cards_tucked or wager_showcase_boost > 0.1) else (1.72 if (is_player_turn and not busy_animating) else 1.35)
 		table_spot_light.light_energy = lerpf(table_spot_light.light_energy, target_sl, 5.5 * delta)
 	if hearth_fire_light:
 		hearth_fire_light.light_energy = 2.6 + sin(t * 11.0) * 0.35 + cos(t * 17.5) * 0.22
@@ -10932,7 +10944,7 @@ func _process(delta: float) -> void:
 			var db_sc := 1.0 + sin(t * 5.2) * 0.08
 			draw_deck_beacon.scale = Vector3(db_sc, 1.0, db_sc)
 	if is_instance_valid(item_review_light):
-		var target_irl_energy := 2.4 if cam_view_mode == CameraViewMode.RIVAL_ITEMS else (2.1 if (cam_view_mode == CameraViewMode.TABLE_ITEMS or turn_stage == TurnStage.ITEM_REVIEW) else 0.0)
+		var target_irl_energy := 0.65 if cam_view_mode == CameraViewMode.RIVAL_ITEMS else (0.50 if (cam_view_mode == CameraViewMode.TABLE_ITEMS or turn_stage == TurnStage.ITEM_REVIEW) else 0.0)
 		var target_irl_pos := Vector3(0.30, 1.38, -0.44) if cam_view_mode == CameraViewMode.RIVAL_ITEMS else Vector3(0.16, 1.38, 0.30)
 		item_review_light.light_energy = lerpf(item_review_light.light_energy, target_irl_energy, 7.5 * delta)
 		item_review_light.position = item_review_light.position.lerp(target_irl_pos, 8.0 * delta)
@@ -11385,6 +11397,8 @@ func _redraw_staged_cards() -> void:
 	_rebuild_all_3d_hands()
 	_animate_deal_pop_in()
 	_refresh_table_labels()
+	if not tutorial_mode:
+		_check_battle_unlock_tips()
 
 func _get_active_bet_summary() -> String:
 	if active_wager_type == "SWORD":
@@ -12859,13 +12873,9 @@ func _execute_balatro_stagger_timeline(
 			var sc_cls := Catalog.normalize_card_class(str(sc_card.get("edition", "NORMAL")))
 			sword_fired_idxs[ci] = true
 			var sword_pos := (cnode.global_position if is_instance_valid(cnode) else impact_pos)
-			if _is_fancy_play_card(sc_card, cnt):
-				var sc_fx := SwordCardAnim.play_sword_card_score_anim(self, sc_card, cnode, true, sword_pos, running_tot, float(running_cnt), sc_cls == "KNIGHT")
-				_register_blender_vfx(sc_fx)
-			else:
-				var s_ring_col: Color = _get_suit_obj(str(sc_card.get("suit", active_suit_id))).get("col", Color(1.0, 0.8, 0.3))
-				Fx.ring(self, sword_pos + Vector3(0, 0.012, 0), s_ring_col, 0.30, 0.32, 0.04, 1.3, 1.0)
-			await get_tree().create_timer(_pace(0.32)).timeout
+			var sc_fx := SwordCardAnim.play_sword_card_score_anim(self, sc_card, cnode, true, sword_pos, running_tot, float(running_cnt), sc_cls == "KNIGHT")
+			_register_blender_vfx(sc_fx)
+			await get_tree().create_timer(_pace(0.55)).timeout
 			if token != _stagger_seq_token or not is_inside_tree() or not visible:
 				return
 		elif ci == 0 and cnt == 1 and sword_fired_idxs.has(0):
@@ -13197,6 +13207,8 @@ func _player_draw_from_3d_deck() -> void:
 		table_status_label3d.text = _tr("Frozen by Rival's Ace! (%d turn(s) lock)" % (pending_skip_turns + 1), "Zmrazen soupeřovým Esem! (%d tah(y) stop)" % (pending_skip_turns + 1))
 		_rebuild_all_3d_hands()
 		_refresh_table_labels()
+		if not tutorial_mode:
+			_check_battle_unlock_tips()
 		_start_ai_3d_turn()
 		return
 
@@ -13231,6 +13243,8 @@ func _player_draw_from_3d_deck() -> void:
 		table_status_label3d.text = _tr("Drew +%d penalty cards." % cnt, "Lízl jsi +%d trestných karet." % cnt) if was_penalty else _tr("Drew a card from deck.", "Lízl jsi kartu z balíčku.")
 		_rebuild_all_3d_hands()
 		_refresh_table_labels()
+		if not tutorial_mode:
+			_check_battle_unlock_tips()
 		_start_ai_3d_turn()
 	)
 
@@ -13341,7 +13355,7 @@ func _activate_magic_puf_3d() -> void:
 				_refresh_table_labels()
 		)
 
-	var throw_rig := BlenderVfx.play_hellfire_phial_throw(self, coaster_global, target_global, pm, on_phial_impact, on_phial_finish)
+	var throw_rig := SwordCardAnim.play_ignis_2d_anim(self, coaster_global, target_global, pm, on_phial_impact, on_phial_finish)
 	_register_blender_vfx(throw_rig)
 	if throw_rig == null:
 		magic_puf_bottle.visible = true
@@ -13594,33 +13608,28 @@ func _execute_ai_turn_body(my_ai_seq: int) -> void:
 			_add_card_mesh_to_discard_pile(c)
 			turn_glance_timer = 1.15
 			var is_rival_knight := (c_cls == "KNIGHT")
-			var is_rival_sword := _is_fancy_play_card(c, 1)
-			if is_rival_sword:
-				var r_sword_fx := SwordCardAnim.play_sword_card_score_anim(self, c, null, false, target_pos, ai_pts, 1.0, is_rival_knight)
-				_register_blender_vfx(r_sword_fx)
-			else:
-				Fx.ring(self, target_pos + Vector3(0, 0.012, 0), s_col, 0.32, 0.35, 0.05, 1.3, 1.0)
+			var r_sword_fx := SwordCardAnim.play_sword_card_score_anim(self, c, null, false, target_pos, ai_pts, 1.0, is_rival_knight)
+			_register_blender_vfx(r_sword_fx)
 			if is_rival_knight and not tutorial_mode and not _check_win_or_redeal():
 				table_status_label3d.text = _tr("⚔ RIVAL KNIGHT! Memorize: %s %s before MIST rolls in!", "⚔ RYTÍŘ SOUPEŘE! Zapamatuj si: %s %s před MLHOU!") % [s_obj["sym"], _get_rank_name(str(c.get("rank", "")))]
 				_rebuild_all_3d_hands()
-				get_tree().create_timer(_pace(1.35)).timeout.connect(func():
+				get_tree().create_timer(_pace(1.45)).timeout.connect(func():
 					if my_ai_seq == _ai_turn_seq and is_inside_tree() and visible and not tutorial_mode:
 						_open_mist_guess_modal(c)
 				)
 				return
-			if is_rival_sword:
-				_rebuild_all_3d_hands()
-				get_tree().create_timer(_pace(0.95)).timeout.connect(func():
-					if my_ai_seq != _ai_turn_seq or not is_inside_tree() or not visible:
-						return
-					var r_disp := _get_rank_name(str(c.get("rank", "")))
-					if cards_points_revealed:
-						table_status_label3d.text = _tr("Rival played: %s %s (+%s pts)", "Soupeř zahrál: %s %s (+%s b.)") % [s_obj["sym"], r_disp, _format_pts_ui(ai_pts)]
-					else:
-						table_status_label3d.text = _tr("Rival played: %s %s", "Soupeř zahrál: %s %s") % [s_obj["sym"], r_disp]
-					_finish_ai_3d_turn()
-				)
-				return
+			_rebuild_all_3d_hands()
+			get_tree().create_timer(_pace(1.35)).timeout.connect(func():
+				if my_ai_seq != _ai_turn_seq or not is_inside_tree() or not visible:
+					return
+				var r_disp := _get_rank_name(str(c.get("rank", "")))
+				if cards_points_revealed:
+					table_status_label3d.text = _tr("Rival played: %s %s (+%s pts)", "Soupeř zahrál: %s %s (+%s b.)") % [s_obj["sym"], r_disp, _format_pts_ui(ai_pts)]
+				else:
+					table_status_label3d.text = _tr("Rival played: %s %s", "Soupeř zahrál: %s %s") % [s_obj["sym"], r_disp]
+				_finish_ai_3d_turn()
+			)
+			return
 			var r_disp2 := _get_rank_name(str(c.get("rank", "")))
 			if cards_points_revealed:
 				table_status_label3d.text = _tr("Rival played: %s %s (+%s pts)", "Soupeř zahrál: %s %s (+%s b.)") % [s_obj["sym"], r_disp2, _format_pts_ui(ai_pts)]
@@ -13873,12 +13882,8 @@ func _run_rival_turn_with_cinematic(my_ai_seq: int) -> void:
 			var s_obj := _get_suit_obj(c["suit"])
 			_spawn_impact_shockwave(card_world, s_obj["col"], 2.3)
 			var is_rival_knight := (c_cls == "KNIGHT")
-			var is_rival_sword := _is_fancy_play_card(c, 1)
-			if is_rival_sword:
-				var r_sword_fx := SwordCardAnim.play_sword_card_score_anim(self, c, null, false, card_world, ai_pts, 1.0, is_rival_knight)
-				_register_blender_vfx(r_sword_fx)
-			else:
-				Fx.ring(self, card_world + Vector3(0, 0.012, 0), s_obj["col"], 0.32, 0.35, 0.05, 1.3, 1.0)
+			var r_sword_fx := SwordCardAnim.play_sword_card_score_anim(self, c, null, false, card_world, ai_pts, 1.0, is_rival_knight)
+			_register_blender_vfx(r_sword_fx)
 			var r_disp := _get_rank_name(str(c.get("rank", "")))
 			if is_rival_knight:
 				rival_knight_card = c
@@ -15355,6 +15360,7 @@ func _check_win_or_redeal() -> bool:
 
 	if player_hand.is_empty() or ai_hand.is_empty():
 		var finished_r := current_round_num
+		var p_won_r := player_hand.is_empty()
 		current_round_num = mini(MAX_MATCH_ROUNDS, current_round_num + 1)
 		emit_signal("play_sfx_requested", "card_shuffle")
 		_deal_new_3d_round()
@@ -15362,11 +15368,49 @@ func _check_win_or_redeal() -> bool:
 		is_player_turn = true
 		_rebuild_all_3d_hands()
 		_refresh_table_labels()
+		_play_round_transition_anim(finished_r, current_round_num, p_won_r)
 		if not tutorial_mode and finished_r % 3 == 0:
 			_open_shop_gate_prompt()
 		elif not tutorial_mode:
 			_begin_player_item_review_stage(true)
 	return false
+
+func _play_round_transition_anim(finished_r: int, next_r: int, player_won_round: bool) -> void:
+	if is_instance_valid(round_counter_lbl):
+		round_counter_lbl.pivot_offset = round_counter_lbl.size * 0.5
+		var rtw := round_counter_lbl.create_tween()
+		rtw.tween_property(round_counter_lbl, "scale", Vector2(1.55, 1.55), 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		rtw.tween_property(round_counter_lbl, "scale", Vector2.ONE, 0.34).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	var center_gp := discard_pile_root.global_position if is_instance_valid(discard_pile_root) else to_global(Vector3(0.0, 0.85, 0.0))
+	var acol := Color(1.0, 0.86, 0.34) if player_won_round else Color(0.96, 0.42, 0.32)
+	Fx.ring(self, center_gp + Vector3(0, 0.03, 0), acol, 1.25, 0.65, 0.12, 2.4, 10.0)
+	Fx.gold_flakes(self, center_gp + Vector3(0, 0.12, 0), 34, 1.25)
+	_trigger_screen_juice(acol, 0.55, 0.52, 0.32)
+	if not is_instance_valid(round_transition_overlay) or not is_instance_valid(round_transition_ribbon):
+		return
+	var pips := ""
+	for pi in range(1, MAX_MATCH_ROUNDS + 1):
+		pips += ("● " if pi <= next_r else "○ ")
+	round_transition_sub_lbl.text = _tr("✦ ROUND %d COMPLETE ✦" % finished_r, "✦ %d. KOLO DOKONČENO ✦" % finished_r)
+	round_transition_sub_lbl.add_theme_color_override("font_color", Color(0.48, 0.96, 0.66) if player_won_round else Color(1.0, 0.58, 0.44))
+	round_transition_main_lbl.text = _tr("⚔ ROUND %d / %d ⚔" % [next_r, MAX_MATCH_ROUNDS], "⚔ %d. / %d KOLO ⚔" % [next_r, MAX_MATCH_ROUNDS])
+	round_transition_pips_lbl.text = pips.strip_edges()
+	round_transition_overlay.visible = true
+	round_transition_overlay.modulate.a = 0.0
+	round_transition_ribbon.pivot_offset = round_transition_ribbon.size * 0.5
+	round_transition_ribbon.scale = Vector2(0.08, 0.72)
+	if round_transition_tween and round_transition_tween.is_valid():
+		round_transition_tween.kill()
+	round_transition_tween = create_tween()
+	round_transition_tween.set_parallel(true)
+	round_transition_tween.tween_property(round_transition_overlay, "modulate:a", 1.0, 0.20)
+	round_transition_tween.tween_property(round_transition_ribbon, "scale", Vector2.ONE, 0.34).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	round_transition_tween.chain().tween_interval(1.25)
+	round_transition_tween.chain().tween_property(round_transition_overlay, "modulate:a", 0.0, 0.38)
+	round_transition_tween.chain().tween_callback(func():
+		if is_instance_valid(round_transition_overlay):
+			round_transition_overlay.visible = false
+	)
 
 func _refresh_table_labels() -> void:
 	var s_obj := _get_suit_obj(active_suit_id)
@@ -15711,7 +15755,24 @@ func _setup_unlock_tip_banner() -> void:
 
 	var btn_row := HBoxContainer.new()
 	btn_row.alignment = BoxContainer.ALIGNMENT_END
+	btn_row.add_theme_constant_override("separation", 8)
 	vb.add_child(btn_row)
+	var skip_all_btn := Button.new()
+	skip_all_btn.name = "UnlockTipSkipAllBtn"
+	skip_all_btn.text = _tr("Skip All", "Přeskočit vše")
+	skip_all_btn.custom_minimum_size = Vector2(118, 30)
+	skip_all_btn.add_theme_font_override("font", _get_font(true))
+	skip_all_btn.add_theme_font_size_override("font_size", 12)
+	_style_action_button(skip_all_btn, Color(0.20, 0.12, 0.10, 0.94), Color(0.84, 0.56, 0.34), 10)
+	skip_all_btn.pressed.connect(func():
+		for q_it in _unlock_tip_queue:
+			var qid := str(q_it.get("id", ""))
+			if qid != "":
+				Catalog.mark_unlock_tip_seen(active_run_profile, qid)
+		_unlock_tip_queue.clear()
+		_dismiss_unlock_tip()
+	)
+	btn_row.add_child(skip_all_btn)
 	unlock_tip_btn = Button.new()
 	unlock_tip_btn.text = _tr("Got it [SPACE]", "Rozumím [SPACE]")
 	unlock_tip_btn.custom_minimum_size = Vector2(148, 30)
@@ -15753,7 +15814,7 @@ func _present_unlock_tip(tip_data: Dictionary) -> void:
 	var sb := unlock_tip_panel.get_theme_stylebox("panel") as StyleBoxFlat
 	if sb:
 		sb.border_color = acol
-	unlock_tip_title_lbl.text = _tr(str(tip_data["title_en"]), str(tip_data["title_cs"]))
+	unlock_tip_title_lbl.text = _tr(str(tip_data["title_en"]), str(tip_data["title_cs"])) + ((" (%d left)" % _unlock_tip_queue.size()) if (opts_language != "cs" and not _unlock_tip_queue.is_empty()) else ((" (%d další)" % _unlock_tip_queue.size()) if not _unlock_tip_queue.is_empty() else ""))
 	unlock_tip_title_lbl.add_theme_color_override("font_color", acol)
 	unlock_tip_body_lbl.text = _tr(str(tip_data["body_en"]), str(tip_data["body_cs"]))
 	unlock_tip_btn.text = _tr("Got it [SPACE]", "Rozumím [SPACE]")
@@ -15788,21 +15849,26 @@ func _check_battle_unlock_tips() -> void:
 		_try_show_unlock_tip(
 			"unlock_table_relic",
 			"✦ TABLETOP RELICS", "✦ STOLNÍ RELIKVIE",
-			"3D Relics sit on the left side of the table! Press [TAB] to inspect them or click active ones for bonuses.",
-			"3D Relikvie leží vlevo na stole! Klávesou [TAB] si je prohlédni a aktivuj jejich bonusy.",
+			"3D Relics sit on the table! Press [TAB] to inspect them or click active ones for bonuses (max 3 uses!).",
+			"3D Relikvie leží na stole! Klávesou [TAB] si je prohlédni a aktivuj bonusy (max 3 použití!).",
 			Color(0.46, 0.88, 1.0)
 		)
-	var seen_spec := false
 	for hc in player_hand:
 		var pid := str(hc.get("power_id", ""))
-		if pid != "" and not seen_spec:
-			seen_spec = true
+		if pid != "":
+			var pc_en := Catalog.get_power_card_loc(pid, "en")
+			var pc_cs := Catalog.get_power_card_loc(pid, "cs")
+			var nm_en := str(pc_en.get("name", pid))
+			var nm_cs := str(pc_cs.get("name", pid))
+			var d_en := str(pc_en.get("desc", pc_en.get("power_line", "Special Power Card!")))
+			var d_cs := str(pc_cs.get("desc", pc_cs.get("power_line", "Speciální Mocná karta!")))
+			var pcol: Color = hc.get("accent", pc_en.get("accent", Color(1.0, 0.38, 0.52)))
 			_try_show_unlock_tip(
-				"unlock_special_card",
-				"✦ SPECIAL POWER CARD", "✦ SPECIÁLNÍ MOCNÁ KARTA",
-				"Special Power Cards unleash unique tactical effects and dramatic combos when played!",
-				"Speciální Mocné karty spouští unikátní taktické efekty a silná komba!",
-				Color(1.0, 0.38, 0.52)
+				"unlock_spec_" + pid,
+				"✦ " + nm_en.to_upper(), "✦ " + nm_cs.to_upper(),
+				d_en,
+				d_cs,
+				pcol
 			)
 		var ed := Catalog.normalize_card_class(str(hc.get("edition", "NORMAL")))
 		match ed:
@@ -15816,6 +15882,10 @@ func _check_battle_unlock_tips() -> void:
 				_try_show_unlock_tip("unlock_edition_thief", "✦ THIEF EDITION CARD", "✦ EDICE ZLODĚJ", "Thief cards siphon points or steal tempo directly from your Rival!", "Karty Zloděje kradou body nebo tempo přímo od soupeře!", Color(0.86, 0.48, 1.0))
 		var r := str(hc.get("rank", ""))
 		match r:
+			"7":
+				_try_show_unlock_tip("unlock_rank_7", "✦ SEVEN (7) — BLOOD TAX +2", "✦ SEDMA (7) — KRVAVÁ DAŇ +2", "Forces the Rival to draw +2 cards (stacks +2/+4/+6 if countered with another 7)!", "Přinutí soupeře líznout +2 karty (řetězí se +2/+4/+6, pokud ji přebije další 7)!", Color(1.0, 0.34, 0.28))
+			"8":
+				_try_show_unlock_tip("unlock_rank_8", "✦ EIGHT (8) — COMBO CHAIN", "✦ OSMA (8) — ŘETĚZOVÉ KOMBO", "Right-click multiple 8s in your hand to stage & slam a massive multi-card combo!", "Pravým tlačítkem naklikni více Osmiček v ruce a zahraj drtivé kombo!", Color(0.36, 0.88, 1.0))
 			"9":
 				_try_show_unlock_tip("unlock_rank_9", "✦ NINE (9) — ARCANE CHARGE", "✦ DEVÍTKA (9) — MAGICKÉ NABITÍ", "Playing a 9 charges all Mage cards in your hand and grants +1 Redraw!", "Zahrání Devítky (9) nabije všechny karty Mága v ruce a přidá +1 Výměnu (Redraw)!", Color(0.44, 0.86, 1.0))
 			"10":
@@ -15926,6 +15996,65 @@ func _setup_card_guide_modal() -> void:
 	scroll.add_child(card_guide_scroll_vb)
 
 	hud_root.add_child(card_guide_modal)
+	_setup_round_transition_overlay()
+
+func _setup_round_transition_overlay() -> void:
+	round_transition_overlay = Control.new()
+	round_transition_overlay.name = "RoundTransitionOverlay"
+	round_transition_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	round_transition_overlay.z_index = 36
+	round_transition_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	round_transition_overlay.visible = false
+
+	round_transition_ribbon = PanelContainer.new()
+	round_transition_ribbon.anchor_left = 0.5
+	round_transition_ribbon.anchor_top = 0.5
+	round_transition_ribbon.anchor_right = 0.5
+	round_transition_ribbon.anchor_bottom = 0.5
+	round_transition_ribbon.offset_left = -270
+	round_transition_ribbon.offset_top = -68
+	round_transition_ribbon.offset_right = 270
+	round_transition_ribbon.offset_bottom = 68
+	round_transition_ribbon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := _make_plaque_style(Color(0.06, 0.042, 0.032, 0.96), Color(0.96, 0.78, 0.32, 0.96), 16)
+	sb.set_border_width_all(3)
+	sb.content_margin_left = 26; sb.content_margin_right = 26
+	sb.content_margin_top = 14; sb.content_margin_bottom = 14
+	round_transition_ribbon.add_theme_stylebox_override("panel", sb)
+	round_transition_overlay.add_child(round_transition_ribbon)
+
+	var rvb := VBoxContainer.new()
+	rvb.alignment = BoxContainer.ALIGNMENT_CENTER
+	rvb.add_theme_constant_override("separation", 4)
+	rvb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	round_transition_ribbon.add_child(rvb)
+
+	round_transition_sub_lbl = Label.new()
+	round_transition_sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	round_transition_sub_lbl.add_theme_font_override("font", _get_font(true))
+	round_transition_sub_lbl.add_theme_font_size_override("font_size", 15)
+	round_transition_sub_lbl.add_theme_color_override("font_color", Color(0.54, 0.96, 0.68))
+	round_transition_sub_lbl.add_theme_color_override("font_outline_color", Color(0.03, 0.02, 0.01))
+	round_transition_sub_lbl.add_theme_constant_override("outline_size", 5)
+	rvb.add_child(round_transition_sub_lbl)
+
+	round_transition_main_lbl = Label.new()
+	round_transition_main_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	round_transition_main_lbl.add_theme_font_override("font", _get_font(true))
+	round_transition_main_lbl.add_theme_font_size_override("font_size", 32)
+	round_transition_main_lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.44))
+	round_transition_main_lbl.add_theme_color_override("font_outline_color", Color(0.04, 0.02, 0.01))
+	round_transition_main_lbl.add_theme_constant_override("outline_size", 8)
+	rvb.add_child(round_transition_main_lbl)
+
+	round_transition_pips_lbl = Label.new()
+	round_transition_pips_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	round_transition_pips_lbl.add_theme_font_override("font", _get_font(true))
+	round_transition_pips_lbl.add_theme_font_size_override("font_size", 14)
+	round_transition_pips_lbl.add_theme_color_override("font_color", Color(0.95, 0.80, 0.36))
+	rvb.add_child(round_transition_pips_lbl)
+
+	hud_root.add_child(round_transition_overlay)
 
 func _add_guide_section_header(parent_vb: VBoxContainer, title_txt: String, accent: Color) -> void:
 	var lbl := Label.new()

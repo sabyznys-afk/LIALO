@@ -177,8 +177,8 @@ func _run_tests() -> void:
 			bt._update_stagger_equation_theatre(68, 1.8, 1.5, 184, 2, 4, "xmult")
 			if bt.stagger_eq_mult_lbl.text != "1.8":
 				_fail("Expected stagger_eq_mult_lbl.text == '1.8', got '%s'" % bt.stagger_eq_mult_lbl.text)
-			if bt.stagger_callout_pill.position.x < 490.0:
-				_fail("stagger_callout_pill overlaps left player_hud_grp: x=%.1f" % bt.stagger_callout_pill.position.x)
+			if bt.stagger_callout_pill.position.y < 158.0:
+				_fail("stagger_callout_pill overlaps top-left BODY score block: y=%.1f" % bt.stagger_callout_pill.position.y)
 		var sig_cards: Array[Dictionary] = [{"rank": "7", "suit": "CERVEN", "edition": "MAGE"}]
 		bt._spawn_signature_play_vfx(sig_cards, bt.discard_pile_root.global_position, 2)
 		bt.player_score = 50

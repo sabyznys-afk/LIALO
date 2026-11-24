@@ -18,6 +18,8 @@ const TEX_WEAPON_DAGGER := "res://assets/vfx/sword_card/weapon_dagger.png"
 const TEX_WEAPON_MACE := "res://assets/vfx/sword_card/weapon_mace.png"
 const TEX_WEAPON_SPEAR := "res://assets/vfx/sword_card/weapon_spear.png"
 const TEX_WEAPON_SHIELD := "res://assets/vfx/sword_card/weapon_shield.png"
+const TEX_IGNIS_PHIAL := "res://assets/vfx/sword_card/ignis_phial_2d.png"
+const TEX_IGNIS_SIGIL := "res://assets/vfx/sword_card/ignis_flame_sigil_2d.png"
 const TEX_SLASH_SHEET := "res://assets/vfx/sword_card/slash_cel_sheet.png"
 const TEX_MIST_SHEET := "res://assets/vfx/sword_card/mist_veil_sheet.png"
 const TEX_IMPACT_SHEET := "res://assets/vfx/sword_card/impact_sigil_sheet.png"
@@ -159,6 +161,35 @@ static func play_sword_card_mp_strike(
 		_sfx_cleave_mist if use_mist else _sfx_cleave_royal,
 		tray_local
 	)
+	return rig
+
+
+static func play_ancient_circle_sigil(table_node: Node3D, card_data: Dictionary, impact_pos: Vector3) -> Node3D:
+	if not is_instance_valid(table_node) or not table_node.is_inside_tree():
+		return null
+	_ensure_assets()
+	var rig := _AncientCircleRig.new()
+	rig.name = "SwordCardAncientSigil"
+	table_node.add_child(rig)
+	rig.setup(table_node.to_local(impact_pos), card_data, _shader_cel)
+	return rig
+
+
+static func play_ignis_2d_anim(
+	table_node: Node3D,
+	start_pos: Vector3,
+	target_pos: Vector3,
+	pace_mult: float,
+	on_impact_cb: Callable,
+	on_finish_cb: Callable
+) -> Node3D:
+	if not is_instance_valid(table_node) or not table_node.is_inside_tree():
+		return null
+	_ensure_assets()
+	var rig := _Ignis2DVfxRig.new()
+	rig.name = "SwordCardIgnis2DRig"
+	table_node.add_child(rig)
+	rig.setup(table_node.to_local(start_pos), table_node.to_local(target_pos), pace_mult, _shader_cel, _shader_blade, on_impact_cb, on_finish_cb)
 	return rig
 
 
@@ -314,7 +345,8 @@ class _SwordVfxRig extends Node3D:
 	var _hitstop_done := false
 	var _cleave_fired := false
 	var _impact_fired := false
-	const TOTAL_DUR := 1.26
+	const ANIM_TIME_SCALE := 0.56
+	const TOTAL_DUR := 2.45
 
 	var _sword_pivot: Node3D
 	var _blade_mesh: MeshInstance3D
@@ -456,16 +488,16 @@ class _SwordVfxRig extends Node3D:
 		add_child(_flash_light)
 
 		# 2. Carved Table Impact Rune Sigils (flat on felt -> symmetric +Z and -Z view)
-		_sigil_outer_mat = _make_cel_mat(tex_sigil, Vector2(4.0, 4.0), 1.35, 1.8)
-		_sigil_outer = _make_quad_node("ImpactSigilOuter", 0.94 * _power_scale, 0.94 * _power_scale, _sigil_outer_mat, 1)
+		_sigil_outer_mat = _make_cel_mat(tex_sigil, Vector2(4.0, 4.0), 1.65, 1.8)
+		_sigil_outer = _make_quad_node("ImpactSigilOuter", 1.12 * _power_scale, 1.12 * _power_scale, _sigil_outer_mat, 1)
 		_sigil_outer.position = attack_center + Vector3(0.0, 0.005, 0.0)
 		_sigil_outer.rotation_degrees = Vector3(-90.0, 12.0 if _attacker_is_player else 192.0, 0.0)
 		_sigil_outer.scale = Vector3.ONE * 0.01
 		add_child(_sigil_outer)
 
-		_sigil_inner_mat = _make_cel_mat(tex_sigil, Vector2(4.0, 4.0), 2.15, 4.7)
+		_sigil_inner_mat = _make_cel_mat(tex_sigil, Vector2(4.0, 4.0), 2.35, 4.7)
 		_sigil_inner_mat.set_shader_parameter("flip_x", 1.0)
-		_sigil_inner = _make_quad_node("ImpactSigilInner", 0.62 * _power_scale, 0.62 * _power_scale, _sigil_inner_mat, 2)
+		_sigil_inner = _make_quad_node("ImpactSigilInner", 0.76 * _power_scale, 0.76 * _power_scale, _sigil_inner_mat, 2)
 		_sigil_inner.position = attack_center + Vector3(0.0, 0.009, 0.0)
 		_sigil_inner.rotation_degrees = Vector3(-90.0, -24.0 if _attacker_is_player else 156.0, 0.0)
 		_sigil_inner.scale = Vector3.ONE * 0.01
@@ -740,13 +772,13 @@ class _SwordVfxRig extends Node3D:
 			_slash_canopy_mat.set_shader_parameter("flash_white", 0.72)
 			return
 		else:
-			_anim_t += dt
+			_anim_t += dt * ANIM_TIME_SCALE
 
 		_update_sword_blade(_anim_t)
 		_update_slashes(_anim_t)
 		_update_sigil_and_mist(_anim_t)
-		_update_sparks(dt)
-		_update_score_orbs(dt)
+		_update_sparks(dt * ANIM_TIME_SCALE)
+		_update_score_orbs(dt * ANIM_TIME_SCALE)
 		_update_light(_anim_t)
 
 	func _set_weapon_mats(opacity_v: float, dissolve_v: float, flash_v: float, sheen_v: float, rune_v: float) -> void:
@@ -804,7 +836,7 @@ class _SwordVfxRig extends Node3D:
 					_set_weapon_mats(1.0, 0.0, sin(u * PI) * 0.56, -1.0, 2.35)
 					if not _hitstop_done and u >= 0.58:
 						_hitstop_done = true
-						_hitstop_left = 0.045
+						_hitstop_left = 0.085
 				elif t < 0.80:
 					var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
 					var vib := exp(-u * 9.5) * sin(u * 42.0) * 4.5
@@ -838,7 +870,7 @@ class _SwordVfxRig extends Node3D:
 					_set_weapon_mats(1.0, 0.0, sin(u * PI) * 0.65, -1.0, 3.1)
 					if not _hitstop_done and u >= 0.72:
 						_hitstop_done = true
-						_hitstop_left = 0.045
+						_hitstop_left = 0.085
 				elif t < 0.80:
 					var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
 					var vib := exp(-u * 10.0) * sin(u * 40.0) * 3.0
@@ -882,7 +914,7 @@ class _SwordVfxRig extends Node3D:
 					_set_weapon_mats(1.0, 0.0, sin(u * PI) * 0.58, -1.0, 2.45)
 					if not _hitstop_done and u >= 0.58:
 						_hitstop_done = true
-						_hitstop_left = 0.045
+						_hitstop_left = 0.085
 				elif t < 0.80:
 					var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
 					var vib := exp(-u * 11.0) * sin(u * 48.0) * 4.0
@@ -922,7 +954,7 @@ class _SwordVfxRig extends Node3D:
 					_set_weapon_mats(1.0, 0.0, sin(u * PI) * 0.62, -1.0, 2.6)
 					if not _hitstop_done and u >= 0.72:
 						_hitstop_done = true
-						_hitstop_left = 0.050
+						_hitstop_left = 0.085
 				elif t < 0.80:
 					var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
 					var vib := exp(-u * 9.0) * sin(u * 38.0) * 5.0
@@ -956,7 +988,7 @@ class _SwordVfxRig extends Node3D:
 					_set_weapon_mats(1.0, 0.0, sin(u * PI) * 0.65, -1.0, 3.0)
 					if not _hitstop_done and u >= 0.72:
 						_hitstop_done = true
-						_hitstop_left = 0.055
+						_hitstop_left = 0.085
 				elif t < 0.80:
 					var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
 					var vib := exp(-u * 10.5) * sin(u * 52.0) * 3.5
@@ -990,7 +1022,7 @@ class _SwordVfxRig extends Node3D:
 					_set_weapon_mats(1.0, 0.0, sin(u * PI) * 0.62, -1.0, 2.8)
 					if not _hitstop_done and u >= 0.72:
 						_hitstop_done = true
-						_hitstop_left = 0.045
+						_hitstop_left = 0.085
 				elif t < 0.80:
 					var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
 					var vib := exp(-u * 10.0) * sin(u * 38.0) * 3.0
@@ -1036,7 +1068,7 @@ class _SwordVfxRig extends Node3D:
 					_set_weapon_mats(1.0, 0.0, sin(u * PI) * 0.52, -1.0, 2.2)
 					if not _hitstop_done and u >= 0.56:
 						_hitstop_done = true
-						_hitstop_left = 0.045
+						_hitstop_left = 0.085
 				elif t < 0.80:
 					var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
 					var vib := exp(-u * 10.5) * sin(u * 46.0) * 4.2
@@ -1203,3 +1235,298 @@ class _SwordVfxRig extends Node3D:
 		var spring = table.get("cam_spring")
 		if spring != null and spring.has_method("trigger_score_recoil"):
 			spring.trigger_score_recoil(35, 1.4, 0.55 if _attacker_is_player else 0.42)
+
+
+class _AncientCircleRig extends Node3D:
+	var _t := 0.0
+	const DUR := 1.65
+	var _outer: MeshInstance3D
+	var _inner: MeshInstance3D
+	var _outer_mat: ShaderMaterial
+	var _inner_mat: ShaderMaterial
+
+	func setup(local_pos: Vector3, card_data: Dictionary, cel_shader: Shader) -> void:
+		var sigil_tex := Toon.tex(TEX_IMPACT_SHEET)
+		var cls := str(card_data.get("edition", card_data.get("card_class", "NORMAL"))).to_upper()
+		var suit := str(card_data.get("suit", "CERVEN")).to_upper()
+		var col := Color(1.0, 0.78, 0.30)
+		var royal := 1.0
+		if cls == "MAGE":
+			col = Color(0.45, 0.88, 1.0)
+			royal = 0.0
+		elif cls == "KNIGHT":
+			col = Color(0.32, 0.92, 1.0)
+			royal = 0.0
+		elif cls == "THIEF":
+			col = Color(0.28, 0.96, 0.58)
+		elif suit == "CERVEN":
+			col = Color(1.0, 0.36, 0.24)
+		elif suit == "ZELEN":
+			col = Color(0.32, 0.92, 0.48)
+
+		position = Vector3(local_pos.x, maxf(local_pos.y, 0.822) + 0.006, local_pos.z)
+
+		_outer_mat = _build_cel(cel_shader, sigil_tex, col, royal, 1.9, 2.2)
+		_outer = _build_quad("AncientOuterRing", 0.92, 0.92, _outer_mat, 1)
+		_outer.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+		add_child(_outer)
+
+		_inner_mat = _build_cel(cel_shader, sigil_tex, col.lightened(0.22), royal, 2.4, 5.1)
+		_inner_mat.set_shader_parameter("flip_x", 1.0)
+		_inner = _build_quad("AncientInnerRing", 0.58, 0.58, _inner_mat, 2)
+		_inner.position.y = 0.004
+		_inner.rotation_degrees = Vector3(-90.0, 18.0, 0.0)
+		add_child(_inner)
+
+	func _build_cel(sh: Shader, tex: Texture2D, glow_c: Color, royal: float, gs: float, bs: float) -> ShaderMaterial:
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.set_shader_parameter("sprite_sheet", tex)
+		m.set_shader_parameter("grid_size", Vector2(4.0, 4.0))
+		m.set_shader_parameter("frame_index", 0.0)
+		m.set_shader_parameter("tint_col", Color(1.0, 0.96, 0.90, 1.0))
+		m.set_shader_parameter("glow_col", glow_c)
+		m.set_shader_parameter("glow_strength", gs)
+		m.set_shader_parameter("royal_shift", royal)
+		m.set_shader_parameter("boil_seed", bs)
+		m.set_shader_parameter("opacity", 1.0)
+		return m
+
+	func _build_quad(n: String, w: float, h: float, m: Material, sort_i: int) -> MeshInstance3D:
+		var mi := MeshInstance3D.new()
+		mi.name = n
+		var q := QuadMesh.new(); q.size = Vector2(w, h)
+		mi.mesh = q
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.sorting_offset = float(sort_i) * 0.04
+		return mi
+
+	func _process(delta: float) -> void:
+		_t += minf(delta, 0.05)
+		if _t >= DUR:
+			queue_free()
+			return
+		var u := clampf(_t / DUR, 0.0, 1.0)
+		var pop := 1.0 - pow(1.0 - minf(1.0, u * 4.5), 3.0)
+		var fade := clampf((u - 0.65) / 0.35, 0.0, 1.0)
+		_outer.scale = Vector3.ONE * lerpf(0.24, 1.08, pop)
+		_outer.rotation_degrees.y += delta * 28.0
+		_outer_mat.set_shader_parameter("frame_index", minf(15.0, u * 15.5))
+		_outer_mat.set_shader_parameter("dissolve", fade)
+		_outer_mat.set_shader_parameter("opacity", 1.0 - fade)
+
+		_inner.scale = Vector3.ONE * lerpf(0.18, 0.95, pop)
+		_inner.rotation_degrees.y -= delta * 52.0
+		_inner_mat.set_shader_parameter("frame_index", minf(15.0, u * 16.5 + 1.0))
+		_inner_mat.set_shader_parameter("dissolve", fade)
+		_inner_mat.set_shader_parameter("opacity", 1.0 - fade)
+
+
+class _Ignis2DVfxRig extends Node3D:
+	var _t := 0.0
+	var _dur := 2.75
+	var _pace := 1.0
+	var _start := Vector3.ZERO
+	var _target := Vector3.ZERO
+	var _impact_called := false
+	var _finish_called := false
+	var _on_impact: Callable
+	var _on_finish: Callable
+
+	var _phial_pivot: Node3D
+	var _phial_mat: ShaderMaterial
+	var _phial_shadow_mat: ShaderMaterial
+	var _launch_sigil: MeshInstance3D
+	var _launch_sigil_mat: ShaderMaterial
+	var _impact_sigil: MeshInstance3D
+	var _impact_sigil_mat: ShaderMaterial
+	var _rune_ring: MeshInstance3D
+	var _rune_ring_mat: ShaderMaterial
+	var _slash_burst: MeshInstance3D
+	var _slash_burst_mat: ShaderMaterial
+	var _light: OmniLight3D
+
+	func setup(
+		start_local: Vector3,
+		target_local: Vector3,
+		pace_mult: float,
+		cel_shader: Shader,
+		blade_shader: Shader,
+		on_impact_cb: Callable,
+		on_finish_cb: Callable
+	) -> void:
+		_start = start_local + Vector3(0.0, 0.08, 0.0)
+		_target = target_local
+		_pace = clampf(pace_mult, 0.65, 2.0)
+		_dur = 2.75 * _pace
+		_on_impact = on_impact_cb
+		_on_finish = on_finish_cb
+
+		var phial_tex := SwordCardAnimator._load_weapon_tex(TEX_IGNIS_PHIAL)
+		var ignis_sig_tex := SwordCardAnimator._load_weapon_tex(TEX_IGNIS_SIGIL)
+		var cel_sig_tex := Toon.tex(TEX_IMPACT_SHEET)
+		var slash_tex := Toon.tex(TEX_SLASH_SHEET)
+
+		_light = OmniLight3D.new()
+		_light.position = _start + Vector3(0.0, 0.3, 0.0)
+		_light.light_color = Color(1.0, 0.48, 0.14)
+		_light.light_energy = 1.6
+		_light.omni_range = 3.2
+		add_child(_light)
+
+		# Launch 2D hand-drawn ancient fire sigil under coaster
+		_launch_sigil_mat = ShaderMaterial.new()
+		_launch_sigil_mat.shader = blade_shader
+		_launch_sigil_mat.set_shader_parameter("blade_tex", ignis_sig_tex)
+		_launch_sigil_mat.set_shader_parameter("tint_col", Color(1.0, 0.92, 0.80, 1.0))
+		_launch_sigil_mat.set_shader_parameter("glow_col", Color(1.0, 0.42, 0.10, 1.0))
+		_launch_sigil_mat.set_shader_parameter("rune_glow", 2.2)
+		_launch_sigil_mat.set_shader_parameter("opacity", 1.0)
+		_launch_sigil = _mk_quad("IgnisLaunchSigil", 0.56, 0.56, _launch_sigil_mat, 2)
+		_launch_sigil.position = start_local + Vector3(0.0, 0.02, 0.0)
+		_launch_sigil.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+		add_child(_launch_sigil)
+
+		# Hero 2D woodcut IGNIS Phial cutout
+		_phial_pivot = Node3D.new()
+		_phial_pivot.name = "IgnisPhial2DPivot"
+		_phial_pivot.position = _start
+		add_child(_phial_pivot)
+
+		var aspect := 0.75
+		if phial_tex != null and phial_tex.get_size().y > 1.0:
+			aspect = phial_tex.get_size().x / phial_tex.get_size().y
+		var ph := 0.42
+		var pw := ph * aspect
+
+		_phial_mat = ShaderMaterial.new()
+		_phial_mat.shader = blade_shader
+		_phial_mat.set_shader_parameter("blade_tex", phial_tex)
+		_phial_mat.set_shader_parameter("tint_col", Color(1.0, 0.96, 0.90, 1.0))
+		_phial_mat.set_shader_parameter("glow_col", Color(1.0, 0.45, 0.12, 1.0))
+		_phial_mat.set_shader_parameter("rune_glow", 1.85)
+		_phial_mat.set_shader_parameter("opacity", 1.0)
+		var pm := _mk_quad("IgnisPhialMain", pw, ph, _phial_mat, 6)
+		_phial_pivot.add_child(pm)
+
+		_phial_shadow_mat = ShaderMaterial.new()
+		_phial_shadow_mat.shader = blade_shader
+		_phial_shadow_mat.set_shader_parameter("blade_tex", phial_tex)
+		_phial_shadow_mat.set_shader_parameter("tint_col", Color(0.08, 0.04, 0.03, 0.9))
+		_phial_shadow_mat.set_shader_parameter("glow_col", Color(0.05, 0.02, 0.02, 1.0))
+		_phial_shadow_mat.set_shader_parameter("rune_glow", 0.0)
+		_phial_shadow_mat.set_shader_parameter("sheen_strength", 0.0)
+		_phial_shadow_mat.set_shader_parameter("opacity", 0.9)
+		var ps := _mk_quad("IgnisPhialInk", pw * 1.03, ph * 1.02, _phial_shadow_mat, 5)
+		ps.position = Vector3(0.005, -0.005, -0.006)
+		_phial_pivot.add_child(ps)
+
+		# Impact massive 2D hand-drawn fire mandala + rune rings
+		_impact_sigil_mat = _launch_sigil_mat.duplicate() as ShaderMaterial
+		_impact_sigil_mat.set_shader_parameter("opacity", 0.0)
+		_impact_sigil = _mk_quad("IgnisImpactMandala", 1.45, 1.45, _impact_sigil_mat, 4)
+		_impact_sigil.position = _target + Vector3(0.0, 0.10, 0.0)
+		_impact_sigil.rotation_degrees = Vector3(-18.0, 0.0, 0.0)
+		_impact_sigil.visible = false
+		add_child(_impact_sigil)
+
+		_rune_ring_mat = ShaderMaterial.new()
+		_rune_ring_mat.shader = cel_shader
+		_rune_ring_mat.set_shader_parameter("sprite_sheet", cel_sig_tex)
+		_rune_ring_mat.set_shader_parameter("grid_size", Vector2(4.0, 4.0))
+		_rune_ring_mat.set_shader_parameter("frame_index", 0.0)
+		_rune_ring_mat.set_shader_parameter("tint_col", Color(1.0, 0.90, 0.75, 1.0))
+		_rune_ring_mat.set_shader_parameter("glow_col", Color(1.0, 0.36, 0.10, 1.0))
+		_rune_ring_mat.set_shader_parameter("glow_strength", 2.5)
+		_rune_ring_mat.set_shader_parameter("royal_shift", 1.0)
+		_rune_ring_mat.set_shader_parameter("opacity", 0.0)
+		_rune_ring = _mk_quad("IgnisRuneCircle", 1.55, 1.55, _rune_ring_mat, 3)
+		_rune_ring.position = Vector3(_target.x, 0.84, _target.z)
+		_rune_ring.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+		_rune_ring.visible = false
+		add_child(_rune_ring)
+
+		_slash_burst_mat = ShaderMaterial.new()
+		_slash_burst_mat.shader = cel_shader
+		_slash_burst_mat.set_shader_parameter("sprite_sheet", slash_tex)
+		_slash_burst_mat.set_shader_parameter("grid_size", Vector2(6.0, 4.0))
+		_slash_burst_mat.set_shader_parameter("tint_col", Color(1.0, 0.86, 0.62, 1.0))
+		_slash_burst_mat.set_shader_parameter("glow_col", Color(1.0, 0.38, 0.10, 1.0))
+		_slash_burst_mat.set_shader_parameter("glow_strength", 2.4)
+		_slash_burst_mat.set_shader_parameter("royal_shift", 1.0)
+		_slash_burst = _mk_quad("IgnisSlashFire", 1.35, 1.35, _slash_burst_mat, 7)
+		_slash_burst.position = _target + Vector3(0.0, 0.22, 0.0)
+		_slash_burst.rotation_degrees = Vector3(-20.0, 22.0, 0.0)
+		_slash_burst.visible = false
+		add_child(_slash_burst)
+
+	func _mk_quad(n: String, w: float, h: float, m: Material, sort_i: int) -> MeshInstance3D:
+		var mi := MeshInstance3D.new()
+		mi.name = n
+		var q := QuadMesh.new(); q.size = Vector2(w, h)
+		mi.mesh = q
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.sorting_offset = float(sort_i) * 0.04
+		return mi
+
+	func _process(delta: float) -> void:
+		_t += minf(delta, 0.05)
+		var nt := _t / maxf(0.25, _pace)
+		if nt < 0.62:
+			# Beat 1: Rise from table coaster & ignite
+			var u := clampf(nt / 0.62, 0.0, 1.0)
+			var eo := 1.0 - pow(1.0 - u, 3.0)
+			_phial_pivot.position = _start + Vector3(0.0, lerpf(0.0, 0.42, eo), 0.0)
+			_phial_pivot.rotation_degrees = Vector3(0.0, 18.0, sin(u * PI * 3.0) * 14.0)
+			_phial_pivot.scale = Vector3.ONE * lerpf(0.35, 1.15, eo)
+			_launch_sigil.scale = Vector3.ONE * lerpf(0.25, 1.25, eo)
+			_launch_sigil.rotation_degrees.y += delta * 65.0
+			_light.global_position = _phial_pivot.global_position
+		elif nt < 1.32:
+			# Beat 2: High parabolic throw tumbling across the table toward rival!
+			var u := clampf((nt - 0.62) / 0.70, 0.0, 1.0)
+			var mid := (_start + Vector3(0.0, 0.42, 0.0)).lerp(_target, u)
+			mid.y += sin(u * PI) * 0.62
+			_phial_pivot.position = mid
+			_phial_pivot.rotation_degrees = Vector3(lerpf(0.0, -25.0, u), 18.0, -u * 540.0)
+			_phial_pivot.scale = Vector3.ONE * lerpf(1.15, 1.28, u)
+			var sig_fade := 1.0 - clampf(u * 2.2, 0.0, 1.0)
+			_launch_sigil_mat.set_shader_parameter("opacity", sig_fade)
+			_light.global_position = _phial_pivot.global_position
+		elif nt < 2.25:
+			# Beat 3: Explosive 2D hand-drawn fire mandala + cel flames
+			if not _impact_called:
+				_impact_called = true
+				_phial_pivot.visible = false
+				_launch_sigil.visible = false
+				_impact_sigil.visible = true
+				_rune_ring.visible = true
+				_slash_burst.visible = true
+				if _on_impact.is_valid():
+					_on_impact.call()
+			var u := clampf((nt - 1.32) / 0.93, 0.0, 1.0)
+			var pop := 1.0 - pow(1.0 - minf(1.0, u * 4.0), 3.0)
+			_impact_sigil.scale = Vector3.ONE * lerpf(0.30, 1.38, pop)
+			_impact_sigil.rotation_degrees.z += delta * 58.0
+			_impact_sigil_mat.set_shader_parameter("opacity", clampf((1.0 - u) * 2.2, 0.0, 1.0))
+			_impact_sigil_mat.set_shader_parameter("dissolve", clampf((u - 0.58) / 0.42, 0.0, 1.0))
+
+			_rune_ring.scale = Vector3.ONE * lerpf(0.25, 1.30, pop)
+			_rune_ring.rotation_degrees.y -= delta * 75.0
+			_rune_ring_mat.set_shader_parameter("frame_index", minf(15.0, u * 16.0))
+			_rune_ring_mat.set_shader_parameter("opacity", 1.0)
+			_rune_ring_mat.set_shader_parameter("dissolve", clampf((u - 0.62) / 0.38, 0.0, 1.0))
+
+			_slash_burst.scale = Vector3.ONE * lerpf(0.75, 1.40, u)
+			_slash_burst_mat.set_shader_parameter("frame_index", minf(23.0, u * 23.0))
+			_slash_burst_mat.set_shader_parameter("opacity", clampf((1.0 - u) * 2.4, 0.0, 1.0))
+			_light.global_position = _target + Vector3(0.0, 0.35, 0.0)
+			_light.light_energy = lerpf(4.8, 0.4, u)
+		else:
+			if not _finish_called:
+				_finish_called = true
+				if _on_finish.is_valid():
+					_on_finish.call()
+			queue_free()
