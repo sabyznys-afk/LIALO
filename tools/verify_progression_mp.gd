@@ -5,6 +5,9 @@ const MpConfig = preload("res://scripts/mp/mp_config.gd")
 const MpAuthority = preload("res://scripts/mp/mp_authority.gd")
 const MpLobbyOverlay = preload("res://scripts/mp/mp_lobby_overlay.gd")
 const MpNetwork = preload("res://scripts/mp/mp_network.gd")
+const MpHistory = preload("res://scripts/mp/mp_history.gd")
+const MpBattleTable3D = preload("res://scripts/mp/mp_battle_table_3d.gd")
+const TavernBuilder = preload("res://scripts/battle/tavern_scene_builder.gd")
 const TableRelicMgr = preload("res://scripts/battle/table_relic_manager.gd")
 
 var _failures: Array[String] = []
@@ -174,14 +177,53 @@ func _run_all() -> void:
 	_assert(eff == ["REL_GREED"], "Broken relic filtered from effective passive relics")
 	print("  OK 6: TableRelicManager Overcharge & broken passive filtering verified")
 
-	# 7. MP protocol version & host address discovery
+	# 7. MP protocol version & host address discovery (including VPN ips)
 	_assert(MpConfig.MP_PROTOCOL_VERSION != "", "MP_PROTOCOL_VERSION must be non-empty")
 	_assert(MpConfig.is_test_mp_available(), "MP must be available in exported and debug builds")
 	var net := MpNetwork.new()
 	var addrs: Dictionary = net.get_host_network_addresses()
 	_assert(addrs.has("lan_ips"), "get_host_network_addresses returns lan_ips")
+	_assert(addrs.has("vpn_ips") and addrs.has("vpn_ip"), "get_host_network_addresses returns vpn_ips & vpn_ip")
 	net.free()
-	print("  OK 7: MP_PROTOCOL_VERSION (%s) & host address helper verified" % MpConfig.MP_PROTOCOL_VERSION)
+	print("  OK 7: MP_PROTOCOL_VERSION (%s) & VPN/LAN address helper verified" % MpConfig.MP_PROTOCOL_VERSION)
+
+	# 8. MpHistory persistence, TavernSceneBuilder, & client seat rebuild regression
+	var tmp_hist := "user://test_mp_history_tmp.json"
+	if FileAccess.file_exists(tmp_hist):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp_hist))
+	MpHistory.save_prefs({"player_name": "ArnyTest", "last_ip": "26.43.4.115", "last_port": 24780}, tmp_hist)
+	MpHistory.record_opponent("Simon", "26.31.132.116", 24780, true, "CHAR_MONARCH", 1, tmp_hist)
+	MpHistory.record_opponent("Simon", "26.31.132.116", 24780, true, "CHAR_MONARCH", -1, tmp_hist)
+	var loaded_h := MpHistory.load_data(tmp_hist)
+	_assert(str(loaded_h.get("player_name", "")) == "ArnyTest", "MpHistory saved player_name")
+	var rec_arr: Array = MpHistory.get_recent_players(tmp_hist)
+	_assert(rec_arr.size() == 1 and int(rec_arr[0]["wins"]) == 1 and int(rec_arr[0]["losses"]) == 1, "MpHistory W-L record updated")
+	MpHistory.remove_opponent("Simon", "26.31.132.116", tmp_hist)
+	_assert(MpHistory.get_recent_players(tmp_hist).is_empty(), "MpHistory remove_opponent cleared list")
+	if FileAccess.file_exists(tmp_hist):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp_hist))
+
+	var tb_root := Node3D.new()
+	var tb := TavernBuilder.new()
+	tb.build(tb_root, "stredovek", Vector2.ZERO)
+	tb.animate_ambient(0.016, 1.0, "CERVEN", true, false)
+	tb_root.free()
+
+	var mp_arena := MpBattleTable3D.new()
+	root.add_child(mp_arena)
+	var test_seats := [
+		{"seat_idx": 0, "peer_id": 1, "name": "Host", "is_bot": false, "alive": true, "hp": 120, "max_hp": 120, "shields": 15, "gold": 25, "hand_count": 6, "deck_count": 20, "mist_cloaked": false, "revealed_cards": [], "ghost_cd": 0.0, "character_id": "CHAR_GUILLOTINE", "sword_skin": "SWORD_RUNE", "color": Color.CYAN},
+		{"seat_idx": 1, "peer_id": 2, "name": "Client", "is_bot": false, "alive": true, "hp": 120, "max_hp": 120, "shields": 15, "gold": 25, "hand_count": 6, "deck_count": 20, "mist_cloaked": false, "revealed_cards": [], "ghost_cd": 0.0, "character_id": "CHAR_MONARCH", "sword_skin": "SWORD_GILDED", "color": Color.GOLD},
+	]
+	mp_arena._on_public_state({"seats": test_seats, "turn_seat": 0, "active_suit": "CERVEN", "round_num": 1, "discard_count": 1, "top_card": {"suit": "CERVEN", "rank": "8"}, "pending_draw_stack": 0, "pending_parry": {}, "banner": "", "match_over": false})
+	mp_arena._on_private_hand(1, [], [], {})
+	_assert(mp_arena._built_my_seat == 1, "Client seat rebuild updated _built_my_seat == 1")
+	var sn1: Dictionary = mp_arena.seat_nodes.get(1, {})
+	var sn0: Dictionary = mp_arena.seat_nodes.get(0, {})
+	_assert(not sn1.is_empty() and not (sn1["avatar"] as Node3D).visible and (sn1["avatar"] as Node3D).get_child_count() == 0, "Local client seat has zero visible avatar mesh")
+	_assert(not sn0.is_empty() and (sn0["root"] as Node3D).position.z < 0.0 and (sn0["avatar"] as Node3D).visible, "Host seat placed opposite with visible avatar")
+	mp_arena.free()
+	print("  OK 8: MpHistory, TavernSceneBuilder & client-seat camera clearance verified")
 
 	if _failures.is_empty():
 		print("=== VERIFY PROGRESSION & MP: ALL CHECKS PASSED ===")

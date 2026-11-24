@@ -117,6 +117,7 @@ var active_bgm_key: String = ""
 var music_enabled: bool = true # Active across Lialo Lobby, Map & In-Game Battle (paused automatically when unfocused).
 var window_focused: bool = true
 var _splash_audio_pending: bool = false
+var mp_entry: Node = null
 var intro_handdrawn_tex: Texture2D
 var lobby_handdrawn_tex: Texture2D
 var lobby_king_sheet_tex: Texture2D
@@ -2071,6 +2072,7 @@ func _build_main_menu() -> void:
 	if MpConfig.is_test_mp_available():
 		var mp_dev := MpDevEntry.new()
 		mp_dev.name = "MpDevEntry"
+		mp_entry = mp_dev
 		add_child(mp_dev)
 		mp_dev.attach(self, menu_control)
 
@@ -3282,15 +3284,19 @@ func _populate_menu_signs() -> void:
 			_play_sfx("ui_click")
 			_open_collection_modal(0)
 	))
+	var mp_unlocked := MpConfig.is_test_mp_available()
 	sub_row.add_child(_create_wooden_sign(
 		"VÍCE HRÁČŮ" if cs else "MULTIPLAYER",
 		2,
-		true,
+		not mp_unlocked,
 		Vector2(268, 82),
 		32.0,
 		20,
-		false,
-		func(): pass
+		mp_unlocked,
+		func():
+			var entry: Node = mp_entry if is_instance_valid(mp_entry) else get_node_or_null("MpDevEntry")
+			if is_instance_valid(entry) and entry.has_method("open_lobby"):
+				entry.call("open_lobby")
 	))
 	sub_row.add_child(_create_wooden_sign(
 		"RYCHLÁ HRA" if cs else "SKIRMISH",

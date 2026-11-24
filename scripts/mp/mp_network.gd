@@ -6,6 +6,7 @@ extends Node
 
 const Config = preload("res://scripts/mp/mp_config.gd")
 const AuthorityScript = preload("res://scripts/mp/mp_authority.gd")
+const History = preload("res://scripts/mp/mp_history.gd")
 
 signal lobby_updated(seats: Array, settings: Dictionary)
 signal status_changed(msg: String, is_err: bool)
@@ -16,6 +17,9 @@ signal vfx_event_received(evt: Dictionary)
 signal match_ended(winner_seat: int, summary: Dictionary)
 signal session_closed(reason: String)
 signal host_network_ready(info: Dictionary)
+signal rematch_state_updated(state: Dictionary)
+signal returned_to_lobby()
+signal lobby_chat_received(sender_name: String, text: String)
 
 const CONNECT_TIMEOUT_SEC := 10.0
 
@@ -28,11 +32,16 @@ var local_name: String = "Duelist"
 var local_deck_cfg: Dictionary = {"archetype_id": "GUILLOTINE_ACES", "extra_aces": 4}
 
 var lobby_seats: Array = []
-var room_settings: Dictionary = {"rule_mode": Config.RULE_CAMPAIGN_VAULT}
+var room_settings: Dictionary = {"rule_mode": Config.RULE_CAMPAIGN_VAULT, "vista_era": "stredovek"}
 var authority: AuthorityScript = null
 var _bot_seq: int = 1
 var last_public_state: Dictionary = {}
 var last_private_packet: Dictionary = {}
+var last_connected_ip: String = "127.0.0.1"
+var last_connected_port: int = Config.DEFAULT_PORT
+var peer_remote_ips: Dictionary = {}
+var rematch_votes: Dictionary = {}
+var rematch_state: Dictionary = {}
 
 var _is_connecting: bool = false
 var _connect_elapsed: float = 0.0
@@ -109,10 +118,11 @@ func host_room(port: int, player_name: String, deck_cfg: Dictionary) -> Error:
 
 func join_room(ip: String, port: int, player_name: String, deck_cfg: Dictionary) -> Error:
 	leave_room(false)
+	var clean_ip := ip.strip_edges()
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_client(ip.strip_edges(), port)
+	var err := peer.create_client(clean_ip, port)
 	if err != OK:
-		status_changed.emit("Could not connect to %s:%d (err %d)" % [ip, port, err], true)
+		status_changed.emit("Could not connect to %s:%d (err %d)" % [clean_ip, port, err], true)
 		return err
 
 	multiplayer.multiplayer_peer = peer
@@ -123,11 +133,13 @@ func join_room(ip: String, port: int, player_name: String, deck_cfg: Dictionary)
 	in_match = false
 	_is_connecting = true
 	_connect_elapsed = 0.0
+	last_connected_ip = clean_ip
+	last_connected_port = port
 	local_name = player_name.strip_edges()
 	if local_name.is_empty():
 		local_name = "Challenger"
 	local_deck_cfg = deck_cfg.duplicate(true)
-	status_changed.emit("Connecting to %s:%d..." % [ip, port], false)
+	status_changed.emit("Connecting to %s:%d..." % [clean_ip, port], false)
 	return OK
 
 
@@ -144,6 +156,9 @@ func leave_room(notify: bool = true) -> void:
 	in_session = false
 	in_match = false
 	lobby_seats.clear()
+	peer_remote_ips.clear()
+	rematch_votes.clear()
+	rematch_state.clear()
 	my_seat_idx = 0
 	last_public_state.clear()
 	last_private_packet.clear()
@@ -153,6 +168,7 @@ func leave_room(notify: bool = true) -> void:
 
 func get_host_network_addresses() -> Dictionary:
 	var lan_ips: Array[String] = []
+	var vpn_ips: Array[String] = []
 	for raw_addr in IP.get_local_addresses():
 		var addr := str(raw_addr).strip_edges()
 		if ":" in addr:
@@ -162,9 +178,20 @@ func get_host_network_addresses() -> Dictionary:
 			continue
 		var a := int(parts[0])
 		var b := int(parts[1])
+		var is_vpn := (a == 26) or (a == 100 and b >= 64 and b <= 127)
 		var is_lan := (a == 192 and b == 168) or (a == 10) or (a == 172 and b >= 16 and b <= 31)
-		if is_lan and not (addr in lan_ips):
+		if is_vpn and not (addr in vpn_ips):
+			vpn_ips.append(addr)
+		elif is_lan and not (addr in lan_ips):
 			lan_ips.append(addr)
+
+	var primary_vpn := ""
+	for vip in vpn_ips:
+		if vip.begins_with("26."):
+			primary_vpn = vip
+			break
+	if primary_vpn.is_empty() and not vpn_ips.is_empty():
+		primary_vpn = vpn_ips[0]
 
 	var primary_lan := "127.0.0.1"
 	for ip_s in lan_ips:
@@ -176,6 +203,8 @@ func get_host_network_addresses() -> Dictionary:
 
 	return {
 		"port": _host_port,
+		"vpn_ip": primary_vpn,
+		"vpn_ips": vpn_ips,
 		"lan_ip": primary_lan,
 		"lan_ips": lan_ips,
 		"public_ip": _upnp_external_ip,
@@ -286,6 +315,43 @@ func set_rule_mode(mode_id: String) -> void:
 	_broadcast_lobby()
 
 
+func set_vista_era(era_id: String) -> void:
+	if not is_host:
+		return
+	room_settings["vista_era"] = era_id
+	_broadcast_lobby()
+
+
+func send_rematch_vote(want_rematch: bool) -> void:
+	if not in_session:
+		return
+	_rpc_rematch_vote.rpc_id(1, want_rematch)
+
+
+func request_return_to_lobby() -> void:
+	if not is_host or not in_session:
+		return
+	in_match = false
+	authority = null
+	rematch_votes.clear()
+	rematch_state.clear()
+	last_public_state.clear()
+	last_private_packet.clear()
+	for s in lobby_seats:
+		s["ready"] = true if (int(s["peer_id"]) == 1 or bool(s["is_bot"])) else false
+	_rpc_return_to_lobby.rpc()
+	_broadcast_lobby()
+
+
+func send_lobby_chat(msg: String) -> void:
+	if not in_session:
+		return
+	var clean := msg.strip_edges().substr(0, 120)
+	if clean.is_empty():
+		return
+	_rpc_lobby_chat.rpc_id(1, clean)
+
+
 func add_test_bot() -> void:
 	if not is_host or lobby_seats.size() >= Config.MAX_PLAYERS:
 		return
@@ -360,7 +426,10 @@ func start_match() -> void:
 	for s in lobby_seats:
 		s["deck_cfg"] = Config.sanitize_deck_cfg(s.get("deck_cfg", {}), rmode)
 
+	rematch_votes.clear()
+	rematch_state.clear()
 	in_match = true
+	_rpc_sync_rematch_state.rpc({})
 	_rpc_begin_match.rpc()
 	authority.setup_match(lobby_seats, room_settings)
 
@@ -447,6 +516,10 @@ func _on_server_disconnected() -> void:
 
 func _on_peer_connected(id: int) -> void:
 	if is_host:
+		if multiplayer.multiplayer_peer is ENetMultiplayerPeer:
+			var ep := (multiplayer.multiplayer_peer as ENetMultiplayerPeer).get_peer(id)
+			if ep != null:
+				peer_remote_ips[id] = ep.get_remote_address()
 		status_changed.emit("Peer #%d connected..." % id, false)
 
 
@@ -660,4 +733,95 @@ func _rpc_version_mismatch(host_ver: String, client_ver: String) -> void:
 @rpc("authority", "call_local", "reliable")
 func _rpc_end_match(winner_seat: int, summary: Dictionary) -> void:
 	in_match = false
+	var seats_arr: Array = summary.get("seats", [])
+	var local_won := 1 if winner_seat == my_seat_idx else -1
+	for s in seats_arr:
+		if not (s is Dictionary):
+			continue
+		var sd := s as Dictionary
+		if int(sd.get("seat_idx", -1)) == my_seat_idx or bool(sd.get("is_bot", false)):
+			continue
+		var opp_name := str(sd.get("name", ""))
+		var opp_char := str(sd.get("character_id", ""))
+		if is_host:
+			var pid := int(sd.get("peer_id", 0))
+			var rip := str(peer_remote_ips.get(pid, ""))
+			History.record_opponent(opp_name, rip, _host_port, false, opp_char, local_won)
+		else:
+			var host_seat := int(sd.get("seat_idx", -1)) == 0
+			History.record_opponent(opp_name, last_connected_ip if host_seat else "", last_connected_port, host_seat, opp_char, local_won)
 	match_ended.emit(winner_seat, summary)
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_rematch_vote(want_rematch: bool) -> void:
+	if not multiplayer.is_server() or not in_session:
+		return
+	var sender := _sender_peer()
+	rematch_votes[sender] = want_rematch
+	var total_humans := 0
+	var ready_count := 0
+	var voter_names: Array[String] = []
+	var req_name := ""
+	for s in lobby_seats:
+		if bool(s.get("is_bot", false)):
+			continue
+		total_humans += 1
+		var pid := int(s.get("peer_id", 0))
+		if bool(rematch_votes.get(pid, false)):
+			ready_count += 1
+			var sname := str(s.get("name", "Player"))
+			voter_names.append(sname)
+			if pid == sender and want_rematch:
+				req_name = sname
+	var voted_peers: Array = []
+	for k_p in rematch_votes.keys():
+		if bool(rematch_votes[k_p]):
+			voted_peers.append(int(k_p))
+	var state := {
+		"ready_count": ready_count,
+		"total_humans": total_humans,
+		"voter_names": voter_names,
+		"requester_name": req_name,
+		"voted_peers": voted_peers,
+	}
+	_rpc_sync_rematch_state.rpc(state)
+	if total_humans > 0 and ready_count >= total_humans:
+		call_deferred("start_match")
+
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_sync_rematch_state(state: Dictionary) -> void:
+	rematch_state = state.duplicate(true)
+	rematch_state_updated.emit(rematch_state)
+
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_return_to_lobby() -> void:
+	in_match = false
+	rematch_votes.clear()
+	rematch_state.clear()
+	last_public_state.clear()
+	last_private_packet.clear()
+	returned_to_lobby.emit()
+
+
+@rpc("any_peer", "call_local", "reliable")
+func _rpc_lobby_chat(msg: String) -> void:
+	if not multiplayer.is_server() or not in_session:
+		return
+	var clean := msg.strip_edges().substr(0, 120)
+	if clean.is_empty():
+		return
+	var sender := _sender_peer()
+	var sname := "Player"
+	for s in lobby_seats:
+		if int(s.get("peer_id", 0)) == sender:
+			sname = str(s.get("name", "Player"))
+			break
+	_rpc_deliver_lobby_chat.rpc(sname, clean)
+
+
+@rpc("authority", "call_local", "reliable")
+func _rpc_deliver_lobby_chat(sender_name: String, text: String) -> void:
+	lobby_chat_received.emit(sender_name, text)

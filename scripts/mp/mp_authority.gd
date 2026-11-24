@@ -1183,6 +1183,7 @@ func _build_public_seats() -> Array:
 		var mist := int(s["mist_turns"]) > 0
 		out.append({
 			"seat_idx": int(s["seat_idx"]),
+			"peer_id": int(s["peer_id"]),
 			"name": str(s["name"]),
 			"is_bot": bool(s["is_bot"]),
 			"archetype_name": str(s["archetype_name"]),

@@ -1,8 +1,9 @@
 class_name MpDevEntry
 extends Node
 
-## Experimental Dev-Only Coordinator for 2-4P Multiplayer Test Mode.
-## Isolated completely from singleplayer Campaign / Skirmish / BattleTable3D.
+## Multiplayer Tavern Coordinator (2-4P).
+## Manages MpNetwork, MpLobbyOverlay, and MpBattleTable3D cleanly while keeping
+## singleplayer Campaign / BattleTable3D isolated.
 
 const Config = preload("res://scripts/mp/mp_config.gd")
 const NetScript = preload("res://scripts/mp/mp_network.gd")
@@ -15,7 +16,6 @@ var _mp_net: Node = null
 var _lobby_layer: CanvasLayer = null
 var _lobby: Control = null
 var _arena: Node3D = null
-var _dev_btn: Button = null
 
 
 func attach(downpour_root: Node, menu_control: Control) -> void:
@@ -28,38 +28,15 @@ func attach(downpour_root: Node, menu_control: Control) -> void:
 	_mp_net.name = "MpNetwork"
 	_root.add_child(_mp_net)
 	_mp_net.match_started.connect(_on_match_started)
+	if _mp_net.has_signal("returned_to_lobby"):
+		_mp_net.returned_to_lobby.connect(_return_arena_to_lobby_keep_session)
 	_mp_net.session_closed.connect(func(_reason: String):
 		if is_instance_valid(_arena):
 			_exit_arena_to_lobby()
 	)
 
-	_build_dev_menu_button()
 	if "--mp-test" in OS.get_cmdline_args():
 		call_deferred("_auto_open_mp_test")
-
-
-func _build_dev_menu_button() -> void:
-	if not is_instance_valid(_menu_ctrl):
-		return
-	_dev_btn = Button.new()
-	_dev_btn.name = "MpDevTestBtn"
-	_dev_btn.text = "⚗ MP TEST (2–4P) [DEV]"
-	_dev_btn.tooltip_text = "Experimental 2-4 Player Tavern Brawl test mode (hidden in release builds)"
-	_dev_btn.anchor_left = 0.0
-	_dev_btn.anchor_top = 0.0
-	_dev_btn.offset_left = 216
-	_dev_btn.offset_top = 14
-	_dev_btn.offset_right = 432
-	_dev_btn.offset_bottom = 54
-	_dev_btn.add_theme_font_size_override("font_size", 14)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.28, 0.14, 0.08, 0.92)
-	sb.border_color = Color(0.98, 0.72, 0.24, 0.95)
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(6)
-	_dev_btn.add_theme_stylebox_override("normal", sb)
-	_dev_btn.pressed.connect(open_lobby)
-	_menu_ctrl.add_child(_dev_btn)
 
 
 func _auto_open_mp_test() -> void:
@@ -119,6 +96,8 @@ func _on_match_started(_init: Dictionary) -> void:
 		if is_instance_valid(_root) and _root.has_method("_play_sfx"):
 			_root.call("_play_sfx", sn, -5.0, randf_range(0.96, 1.04))
 	)
+	if _arena.has_signal("return_to_lobby_requested"):
+		_arena.return_to_lobby_requested.connect(_return_arena_to_lobby_keep_session)
 	_arena.exit_mp_requested.connect(func():
 		if _mp_net and _mp_net.in_session:
 			_mp_net.leave_room(false)
@@ -132,6 +111,19 @@ func _on_match_started(_init: Dictionary) -> void:
 	_root.add_child(_arena)
 	if is_instance_valid(_arena.woodcut_mat) and _root:
 		_arena.woodcut_mat.set_shader_parameter("print_mode", int(_root.get("woodcut_mode")))
+	if is_instance_valid(_root) and _root.has_method("_play_bgm"):
+		_root.call("_play_bgm", "battle", true)
+
+
+func _return_arena_to_lobby_keep_session() -> void:
+	if is_instance_valid(_arena):
+		_arena.queue_free()
+		_arena = null
+	if is_instance_valid(_menu_ctrl):
+		_menu_ctrl.visible = true
+	if is_instance_valid(_root) and _root.has_method("_play_bgm"):
+		_root.call("_play_bgm", "lobby", false)
+	open_lobby()
 
 
 func _exit_arena_to_lobby() -> void:
@@ -140,6 +132,8 @@ func _exit_arena_to_lobby() -> void:
 		_arena = null
 	if is_instance_valid(_menu_ctrl):
 		_menu_ctrl.visible = true
+	if is_instance_valid(_root) and _root.has_method("_play_bgm"):
+		_root.call("_play_bgm", "lobby", false)
 	open_lobby()
 
 

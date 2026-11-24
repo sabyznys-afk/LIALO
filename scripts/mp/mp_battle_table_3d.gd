@@ -14,6 +14,8 @@ const BlenderVfx = preload("res://scripts/blender_vfx_animator.gd")
 const RelicMesh = preload("res://scripts/relic_mesh_factory.gd")
 const HeartbeatHpScript = preload("res://scripts/heartbeat_hp_display.gd")
 const Config = preload("res://scripts/mp/mp_config.gd")
+const TavernBuilder = preload("res://scripts/battle/tavern_scene_builder.gd")
+const History = preload("res://scripts/mp/mp_history.gd")
 
 const CARD_FX_SHADER := preload("res://shaders/card_fx.gdshader")
 const TABLE_INLAY_SHADER := preload("res://shaders/table_cloth.gdshader")
@@ -39,6 +41,7 @@ const MP_ITEM_MESH_MAP := {
 }
 
 signal exit_mp_requested
+signal return_to_lobby_requested
 signal play_sfx_requested(sname: String)
 signal open_options_requested
 
@@ -74,6 +77,19 @@ var ghost_panel: PanelContainer
 var ghost_cd_lbl: Label
 var victory_panel: PanelContainer
 var victory_lbl: Label
+var victory_stats_lbl: Label
+var rematch_status_lbl: Label
+var rematch_btn: Button
+var lobby_keep_btn: Button
+var _rematch_voted: bool = false
+var _rematch_pulse_t: float = 0.0
+var _rematch_other_waiting: bool = false
+
+var tavern_env: TavernBuilder = null
+var hovered_tavern_prop: String = ""
+var _local_deck_root: Node3D = null
+var _local_deck_lbl: Label3D = null
+var _built_my_seat: int = -1
 
 # Campaign-parity FPP 3D hand, tabletop OP items & Campaign HUD
 var player_hand_anchor: Node3D
@@ -154,6 +170,8 @@ func _ready() -> void:
 	var opts := Catalog.load_options()
 	_freelook_enabled = bool(opts.get("mp_freelook_enabled", true))
 	_freelook_sensitivity = clampf(float(opts.get("mp_freelook_sensitivity", 1.0)), 0.4, 2.0)
+	if mp_net != null:
+		my_seat = int(mp_net.my_seat_idx)
 	_ensure_fonts()
 	_build_3d_tavern()
 	_setup_mp_fpp_hand()
@@ -163,6 +181,8 @@ func _ready() -> void:
 		mp_net.private_hand_received.connect(_on_private_hand)
 		mp_net.vfx_event_received.connect(_on_vfx_event)
 		mp_net.match_ended.connect(_on_match_ended)
+		if mp_net.has_signal("rematch_state_updated"):
+			mp_net.rematch_state_updated.connect(_on_rematch_state_updated)
 		if not mp_net.last_public_state.is_empty():
 			_on_public_state(mp_net.last_public_state)
 		if not mp_net.last_private_packet.is_empty():
@@ -231,6 +251,16 @@ func _process(delta: float) -> void:
 		_top_down_auto_timer = maxf(0.0, _top_down_auto_timer - delta)
 	var use_top_down := top_down_manual or (_top_down_auto_timer > 0.0)
 	_cam_blend = lerpf(_cam_blend, 1.0 if use_top_down else 0.0, clampf(delta * 6.5, 0.0, 1.0))
+
+	if tavern_env != null:
+		var act_s := str(public_state.get("active_suit", "CERVEN"))
+		tavern_env.animate_ambient(delta, _mp_anim_t, act_s, (active_turn_seat == my_seat) and i_am_alive and not match_over, use_top_down)
+
+	if _rematch_other_waiting and is_instance_valid(rematch_btn) and is_instance_valid(victory_panel) and victory_panel.visible:
+		_rematch_pulse_t += delta
+		var sc := 1.0 + sin(_rematch_pulse_t * 5.0) * 0.04
+		rematch_btn.pivot_offset = rematch_btn.size * 0.5
+		rematch_btn.scale = Vector2(sc, sc)
 
 	if is_instance_valid(cam):
 		var base_pos := Vector3(0.0, 1.78, 1.48).lerp(Vector3(0.0, 2.68, 0.48), _cam_blend)
@@ -369,6 +399,9 @@ func _unhandled_input(event: InputEvent) -> void:
 					play_sfx_requested.emit("btn_wooden_slam")
 					mp_net.send_draw_card()
 				return
+			if hovered_tavern_prop != "":
+				_trigger_mp_tavern_prop(hovered_tavern_prop)
+				return
 			if hovered_card_idx >= 0 and hovered_card_idx < my_hand.size() and not top_down_manual:
 				if my_turn:
 					_handle_mp_card_left_click(hovered_card_idx)
@@ -403,162 +436,33 @@ func _try_click_3d_seat(screen_pos: Vector2) -> void:
 # ---------------------------------------------------------------------------
 
 func _build_3d_tavern() -> void:
-	var env := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color(0.08, 0.055, 0.04)
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.42, 0.33, 0.25)
-	e.ambient_light_energy = 0.62
-	e.glow_enabled = true
-	e.glow_intensity = 0.28
-	env.environment = e
-	add_child(env)
+	tavern_env = TavernBuilder.new()
+	var vista_era := "stredovek"
+	if mp_net != null:
+		vista_era = str(mp_net.room_settings.get("vista_era", "stredovek"))
+	else:
+		vista_era = str(History.load_data().get("last_vista_era", "stredovek"))
+	tavern_env.build(self, vista_era, Vector2(0.0, 0.0))
 
-	var key_light := OmniLight3D.new()
-	key_light.position = Vector3(0.0, 2.75, 0.10)
-	key_light.light_color = Color(1.0, 0.87, 0.66)
-	key_light.light_energy = 1.55
-	key_light.omni_range = 8.0
-	add_child(key_light)
-
-	var rim_light := OmniLight3D.new()
-	rim_light.position = Vector3(0.0, 2.2, -3.2)
-	rim_light.light_color = Color(0.95, 0.68, 0.38)
-	rim_light.light_energy = 1.05
-	rim_light.omni_range = 7.5
-	add_child(rim_light)
-
-	# Oak Round Tavern Table (wider r = 1.56m for comfortable 2-4 player circle)
-	var table_wood := MeshInstance3D.new()
-	var t_cyl := CylinderMesh.new()
-	t_cyl.top_radius = 1.64; t_cyl.bottom_radius = 1.56; t_cyl.height = 0.10; t_cyl.radial_segments = 48
-	table_wood.mesh = t_cyl
-	table_wood.position = Vector3(0.0, 0.765, 0.0)
-	table_wood.material_override = Toon.mat(Color(0.24, 0.15, 0.09), "res://assets/table/wood.png", 0.0, Vector2(2.0, 2.0))
-	add_child(table_wood)
-
-	var felt := MeshInstance3D.new()
-	var f_cyl := CylinderMesh.new()
-	f_cyl.top_radius = 1.48; f_cyl.bottom_radius = 1.48; f_cyl.height = 0.014; f_cyl.radial_segments = 48
-	felt.mesh = f_cyl
-	felt.position = Vector3(0.0, 0.812, 0.0)
-	var f_mat := ShaderMaterial.new()
-	f_mat.shader = TABLE_INLAY_SHADER
-	f_mat.set_shader_parameter("base_color", Color(0.09, 0.15, 0.13))
-	f_mat.set_shader_parameter("accent_color", Color(0.76, 0.58, 0.24))
-	felt.material_override = f_mat
-	add_child(felt)
-
-	# Tavern Floor + Warm Stone/Timber Medieval Room Enclosure
-	var floor_m := MeshInstance3D.new()
-	var fl_p := PlaneMesh.new(); fl_p.size = Vector2(14.0, 14.0)
-	floor_m.mesh = fl_p
-	floor_m.material_override = Toon.mat(Color(0.18, 0.15, 0.14), "res://assets/table/stone_floor.png", 0.0, Vector2(5.0, 5.0))
-	add_child(floor_m)
-
-	var stone_wall_mat := Toon.mat(Color(0.24, 0.21, 0.19), "res://assets/table/stone_floor.png", 0.0, Vector2(3.5, 2.0))
-	var beam_mat := Toon.mat(Color(0.22, 0.14, 0.08), "res://assets/table/wood.png", 0.0, Vector2(2.5, 1.5))
-	var wainscot_mat := Toon.mat(Color(0.17, 0.10, 0.06), "res://assets/table/wood.png", 0.0, Vector2(3.5, 1.0))
-
-	# 4 enclosing stone walls + oak wainscoting + ceiling
-	for wspec in [
-		{"pos": Vector3(0.0, 2.5, -5.2), "sz": Vector3(11.0, 5.0, 0.35)},
-		{"pos": Vector3(0.0, 2.5, 5.2), "sz": Vector3(11.0, 5.0, 0.35)},
-		{"pos": Vector3(-5.2, 2.5, 0.0), "sz": Vector3(0.35, 5.0, 10.6)},
-		{"pos": Vector3(5.2, 2.5, 0.0), "sz": Vector3(0.35, 5.0, 10.6)},
-	]:
-		var wm := MeshInstance3D.new()
-		var wb := BoxMesh.new(); wb.size = wspec["sz"]
-		wm.mesh = wb; wm.position = wspec["pos"]; wm.material_override = stone_wall_mat
-		add_child(wm)
-
-	for wainscoting_spec in [
-		{"pos": Vector3(0.0, 0.58, -4.96), "sz": Vector3(10.2, 1.16, 0.12)},
-		{"pos": Vector3(-4.96, 0.58, 0.0), "sz": Vector3(0.12, 1.16, 10.0)},
-		{"pos": Vector3(4.96, 0.58, 0.0), "sz": Vector3(0.12, 1.16, 10.0)},
-	]:
-		var wsm := MeshInstance3D.new()
-		var wsb := BoxMesh.new(); wsb.size = wainscoting_spec["sz"]
-		wsm.mesh = wsb; wsm.position = wainscoting_spec["pos"]; wsm.material_override = wainscot_mat
-		add_child(wsm)
-
-	# Timber pillars & overhead ceiling crossbeams
-	for px in [-3.8, 3.8]:
-		for pz in [-4.8, 0.0, 4.8]:
-			var pil := MeshInstance3D.new()
-			var pb := BoxMesh.new(); pb.size = Vector3(0.34, 4.8, 0.34)
-			pil.mesh = pb; pil.position = Vector3(px, 2.4, pz); pil.material_override = beam_mat
-			add_child(pil)
-
-	for bz in [-3.6, -1.2, 1.2, 3.6]:
-		var cbeam := MeshInstance3D.new()
-		var cb := BoxMesh.new(); cb.size = Vector3(10.6, 0.28, 0.30)
-		cbeam.mesh = cb; cbeam.position = Vector3(0.0, 4.45, bz); cbeam.material_override = beam_mat
-		add_child(cbeam)
-
-	var ceiling := MeshInstance3D.new()
-	var cplane := BoxMesh.new(); cplane.size = Vector3(11.2, 0.2, 11.2)
-	ceiling.mesh = cplane; ceiling.position = Vector3(0.0, 4.75, 0.0); ceiling.material_override = beam_mat
-	add_child(ceiling)
-
-	# Tavern Banners along the walls behind opponents
-	var banner_colors := [Color(0.54, 0.12, 0.14), Color(0.14, 0.30, 0.22), Color(0.46, 0.32, 0.10)]
-	var banner_positions := [
-		{"pos": Vector3(-2.1, 2.75, -4.92), "rot": 0.0, "col": banner_colors[0]},
-		{"pos": Vector3(0.0, 2.85, -4.92), "rot": 0.0, "col": banner_colors[2]},
-		{"pos": Vector3(2.1, 2.75, -4.92), "rot": 0.0, "col": banner_colors[1]},
-		{"pos": Vector3(-4.92, 2.75, -1.8), "rot": 90.0, "col": banner_colors[0]},
-		{"pos": Vector3(4.92, 2.75, -1.8), "rot": -90.0, "col": banner_colors[1]},
-	]
-	for bspec in banner_positions:
-		var ban_root := Node3D.new()
-		ban_root.position = bspec["pos"]
-		ban_root.rotation_degrees.y = float(bspec["rot"])
-		var cloth := MeshInstance3D.new()
-		var cm := BoxMesh.new(); cm.size = Vector3(0.76, 1.45, 0.03)
-		cloth.mesh = cm
-		cloth.material_override = Toon.mat(bspec["col"])
-		ban_root.add_child(cloth)
-		var rod := MeshInstance3D.new()
-		var rm := CylinderMesh.new(); rm.top_radius = 0.03; rm.bottom_radius = 0.03; rm.height = 0.92
-		rod.mesh = rm; rod.position = Vector3(0.0, 0.74, 0.02); rod.rotation_degrees.z = 90.0
-		rod.material_override = Toon.mat(Color(0.78, 0.58, 0.22))
-		ban_root.add_child(rod)
-		add_child(ban_root)
-
-	# Warm Tavern Wall Lanterns (glowing sconces + warm OmniLight3D fill behind opponents)
-	for lpos in [Vector3(-3.2, 2.25, -4.65), Vector3(3.2, 2.25, -4.65), Vector3(-4.65, 2.25, 0.2), Vector3(4.65, 2.25, 0.2)]:
-		var lan_bulb := MeshInstance3D.new()
-		var lm := SphereMesh.new(); lm.radius = 0.09
-		lan_bulb.mesh = lm; lan_bulb.position = lpos
-		lan_bulb.material_override = Toon.mat(Color(1.0, 0.80, 0.42), "", 0.0, Vector2.ONE, Color(1.0, 0.65, 0.22) * 2.2)
-		add_child(lan_bulb)
-		var l_omni := OmniLight3D.new()
-		l_omni.position = lpos
-		l_omni.light_color = Color(1.0, 0.72, 0.36)
-		l_omni.light_energy = 0.85
-		l_omni.omni_range = 6.2
-		add_child(l_omni)
-
-	# Center Discard Anchor & Suit Indicator
+	# Center Discard Anchor & Suit Indicator (Campaign-aligned)
 	discard_pile_root = Node3D.new()
-	discard_pile_root.position = Vector3(0.0, 0.822, 0.0)
+	discard_pile_root.position = Vector3(0.0, 0.820, 0.0)
+	discard_pile_root.scale = Vector3(1.32, 1.32, 1.32)
 	add_child(discard_pile_root)
 
 	suit_beacon_lbl = Label3D.new()
-	suit_beacon_lbl.position = Vector3(0.0, 0.90, -0.26)
-	suit_beacon_lbl.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-	suit_beacon_lbl.font_size = 54
+	suit_beacon_lbl.position = Vector3(0.0, 0.84, -0.44)
+	suit_beacon_lbl.rotation_degrees = Vector3(-78.0, 0.0, 0.0)
+	suit_beacon_lbl.font_size = 24
 	suit_beacon_lbl.outline_size = 6
-	suit_beacon_lbl.pixel_size = 0.0022
+	suit_beacon_lbl.pixel_size = 0.0020
 	suit_beacon_lbl.text = "♥"
 	add_child(suit_beacon_lbl)
 
 	cam = Camera3D.new()
-	cam.fov = 60.0
-	cam.position = Vector3(0.0, 2.08, 1.98)
-	cam.rotation_degrees = Vector3(-25.0, 0.0, 0.0)
+	cam.fov = 72.0
+	cam.position = Vector3(0.0, 1.78, 1.48)
+	cam.rotation_degrees = Vector3(-31.0, 0.0, 0.0)
 	add_child(cam)
 	cam.current = true
 
@@ -570,7 +474,11 @@ func _build_3d_tavern() -> void:
 	wc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	woodcut_mat = ShaderMaterial.new()
 	woodcut_mat.shader = WOODCUT_POST_SHADER
-	woodcut_mat.set_shader_parameter("print_mode", 3)
+	var opts := Catalog.load_options()
+	woodcut_mat.set_shader_parameter("print_mode", int(opts.get("visual_mode", 3)))
+	woodcut_mat.set_shader_parameter("edge_strength", 0.62)
+	woodcut_mat.set_shader_parameter("hatch_strength", 0.38)
+	woodcut_mat.set_shader_parameter("vignette_strength", 0.48)
 	wc.material = woodcut_mat
 	woodcut_layer.add_child(wc)
 	add_child(woodcut_layer)
@@ -598,19 +506,26 @@ func _seat_world_pos(abs_seat: int, radius: float = 1.05) -> Vector3:
 
 
 func _rebuild_seats_if_needed(seats_arr: Array) -> void:
-	if _built_seat_count == seats_arr.size():
+	if _built_seat_count == seats_arr.size() and _built_my_seat == my_seat:
 		return
 	for k in seat_nodes.keys():
 		var rn: Node3D = seat_nodes[k].get("root")
 		if is_instance_valid(rn):
 			rn.queue_free()
 	seat_nodes.clear()
+	if is_instance_valid(_local_deck_root):
+		_local_deck_root.queue_free()
+		_local_deck_root = null
+	_local_deck_lbl = null
 	_built_seat_count = seats_arr.size()
+	_built_my_seat = my_seat
 
 	for s in seats_arr:
 		var si := int(s["seat_idx"])
+		var is_local := (si == my_seat)
 		var ang := _seat_angle_rad(si)
-		var pos_local := Vector3(sin(ang) * 1.06, 0.822, cos(ang) * 1.06)
+		var seat_r := 1.06 if is_local else 1.22
+		var pos_local := Vector3(sin(ang) * seat_r, 0.822, cos(ang) * seat_r)
 
 		var sroot := Node3D.new()
 		sroot.name = "MpSeat_%d" % si
@@ -640,15 +555,51 @@ func _rebuild_seats_if_needed(seats_arr: Array) -> void:
 		}
 		var seat_back_p := str(deck_back_map.get(char_id, "res://assets/table/card_back.png"))
 
-		# Personal Draw Deck stack to the right of the player (with character's signature card back!)
 		var deck_m := MeshInstance3D.new()
-		var dbox := BoxMesh.new(); dbox.size = Vector3(0.14, 0.055, 0.20)
-		deck_m.mesh = dbox
-		deck_m.position = Vector3(0.28, 0.028, 0.06)
-		deck_m.material_override = Toon.mat(Color(0.94, 0.92, 0.88), seat_back_p)
-		sroot.add_child(deck_m)
+		if is_local:
+			# Campaign-parity local draw deck shoe on left side of table
+			_local_deck_root = Node3D.new()
+			_local_deck_root.name = "MpLocalDeckRoot"
+			_local_deck_root.position = Vector3(-0.46, 0.815, 0.04)
+			add_child(_local_deck_root)
+			var deck_glb := tavern_env._load_glb_model("res://assets/models/deck_shoe.glb", true) if tavern_env != null else null
+			if deck_glb != null:
+				deck_glb.name = "DeckShoeGLB"
+				var top_mat := Toon.pbr(Color(0.96, 0.94, 0.90), seat_back_p, 0.56, 0.04)
+				tavern_env._apply_mat_by_mesh_name(deck_glb, {"decktopcard": top_mat})
+				_local_deck_root.add_child(deck_glb)
+			var dbox := BoxMesh.new(); dbox.size = Vector3(0.18, 0.055, 0.26)
+			deck_m.mesh = dbox
+			deck_m.position = Vector3(0.0, 0.032, 0.0)
+			deck_m.material_override = Toon.mat(Color(0.96, 0.94, 0.90), seat_back_p)
+			deck_m.visible = (deck_glb == null)
+			_local_deck_root.add_child(deck_m)
+			_local_deck_lbl = Label3D.new()
+			_local_deck_lbl.text = "DECK"
+			_local_deck_lbl.font = _font_display
+			_local_deck_lbl.font_size = 18
+			_local_deck_lbl.outline_size = 5
+			_local_deck_lbl.pixel_size = 0.0016
+			_local_deck_lbl.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+			_local_deck_lbl.position = Vector3(0.0, 0.074, 0.0)
+			_local_deck_root.add_child(_local_deck_lbl)
+			var da := Area3D.new()
+			da.name = "MpDrawDeckArea"
+			da.set_meta("mp_draw_deck", true)
+			var dcs := CollisionShape3D.new()
+			var dcol_box := BoxShape3D.new()
+			dcol_box.size = Vector3(0.25, 0.14, 0.34)
+			dcs.shape = dcol_box
+			da.add_child(dcs)
+			_local_deck_root.add_child(da)
+		else:
+			var dbox_opp := BoxMesh.new(); dbox_opp.size = Vector3(0.14, 0.055, 0.20)
+			deck_m.mesh = dbox_opp
+			deck_m.position = Vector3(0.28, 0.028, -0.06)
+			deck_m.material_override = Toon.mat(Color(0.94, 0.92, 0.88), seat_back_p)
+			sroot.add_child(deck_m)
 
-		# Seat's Sculpted Blender PBR 3D Sword on the left (or tucked neatly on felt to the right for local player!)
+		# Seat's Sculpted Blender PBR 3D Sword (Campaign right-hand table slot for local player)
 		var sw_skin_id := str(s.get("sword_skin", "SWORD_RUNE"))
 		var sw_skin := Catalog.get_sword_skin(sw_skin_id)
 		var sword_p := RelicMesh.build_sword_3d_mesh(sw_skin_id, sw_skin)
@@ -660,19 +611,20 @@ func _rebuild_seats_if_needed(seats_arr: Array) -> void:
 			blade_m.material_override = Toon.mat(sw_skin.get("col", Color(0.75, 0.82, 0.90)))
 			sword_p.add_child(blade_m)
 		else:
-			sword_p.scale = Vector3(0.64, 0.64, 0.64)
-		sword_p.position = Vector3(0.46, 0.022, -0.34) if si == my_seat else Vector3(-0.27, 0.024, 0.02)
-		sword_p.rotation_degrees = Vector3(0.0, 18.0 if si == my_seat else -8.0, 0.0)
+			sword_p.scale = Vector3(0.84, 0.84, 0.84) if is_local else Vector3(0.64, 0.64, 0.64)
+		sword_p.position = Vector3(1.02, 0.0, -0.84) if is_local else Vector3(-0.30, 0.024, -0.04)
+		sword_p.rotation_degrees = Vector3(0.0, 16.0 if is_local else -8.0, 0.0)
 		sroot.add_child(sword_p)
 
-		# Sculpted Blender 5.3 Multiplayer Character Avatar + Dedicated Card-Hold Grip Anchor
+		# IMPORTANT: Never instantiate an avatar mesh on my_seat! Keeps camera view 100% clear of hoods/helmets.
 		var avatar := Node3D.new()
 		avatar.name = "MpAvatar_%d" % si
-		avatar.position = Vector3(0.0, 0.0, 0.34)
-		avatar.rotation_degrees = Vector3(0.0, 180.0, 0.0) # Face inward toward center of tavern table (-Z in seat local)
-		var char_rig := _load_mp_character_glb(char_id, scol)
-		avatar.add_child(char_rig)
-		avatar.visible = (si != my_seat)
+		avatar.position = Vector3(0.0, 0.0, 0.28)
+		avatar.rotation_degrees = Vector3(0.0, 180.0, 0.0)
+		avatar.visible = not is_local
+		if not is_local:
+			var char_rig := _load_mp_character_glb(char_id, scol)
+			avatar.add_child(char_rig)
 		sroot.add_child(avatar)
 
 		var torso_piv := avatar.find_child("TorsoPivot", true, false) as Node3D
@@ -686,20 +638,19 @@ func _rebuild_seats_if_needed(seats_arr: Array) -> void:
 		hand_grp.name = "MpHandGrip_%d" % si
 		if is_instance_valid(hand_l_hold) and is_instance_valid(hand_r_hold):
 			var mid_local := (avatar.to_local(hand_l_hold.global_position) + avatar.to_local(hand_r_hold.global_position)) * 0.5
-			# Convert from avatar local (rotated 180° Y at z=0.34) into sroot local cleanly
-			hand_grp.position = Vector3(-mid_local.x, mid_local.y + 0.04, 0.34 - mid_local.z)
+			hand_grp.position = Vector3(-mid_local.x, mid_local.y + 0.04, 0.28 - mid_local.z)
 		else:
-			hand_grp.position = Vector3(0.0, 0.27, 0.08)
+			hand_grp.position = Vector3(0.0, 0.27, 0.04)
 		sroot.add_child(hand_grp)
 
 		var lbl := Label3D.new()
-		lbl.position = Vector3(0.0, 0.08, 0.38)
+		lbl.position = Vector3(0.0, 0.08, 0.34)
 		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		lbl.no_depth_test = true
 		lbl.font_size = 20
 		lbl.outline_size = 5
 		lbl.pixel_size = 0.0018
-		lbl.visible = (si != my_seat)
+		lbl.visible = not is_local
 		sroot.add_child(lbl)
 
 		seat_nodes[si] = {
@@ -1064,16 +1015,16 @@ func _build_hud() -> void:
 		)
 		ghb.add_child(gb)
 
-	# Victory Overlay
+	# Victory / Match End & Instant Rematch Overlay
 	victory_panel = PanelContainer.new()
-	victory_panel.anchor_left = 0.28; victory_panel.anchor_right = 0.72
-	victory_panel.anchor_top = 0.25; victory_panel.anchor_bottom = 0.65
-	victory_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.09, 0.065, 0.045, 0.96), Color(0.92, 0.72, 0.26, 0.95), 3, 14, 20))
+	victory_panel.anchor_left = 0.22; victory_panel.anchor_right = 0.78
+	victory_panel.anchor_top = 0.18; victory_panel.anchor_bottom = 0.78
+	victory_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.08, 0.055, 0.038, 0.97), Color(0.92, 0.72, 0.26, 0.96), 3, 14, 22))
 	victory_panel.visible = false
 	hud_root.add_child(victory_panel)
 	var vvb := VBoxContainer.new()
 	vvb.alignment = BoxContainer.ALIGNMENT_CENTER
-	vvb.add_theme_constant_override("separation", 16)
+	vvb.add_theme_constant_override("separation", 12)
 	victory_panel.add_child(vvb)
 	victory_lbl = Label.new()
 	victory_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1081,12 +1032,51 @@ func _build_hud() -> void:
 	victory_lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.56))
 	victory_lbl.add_theme_font_size_override("font_size", 24)
 	vvb.add_child(victory_lbl)
+	victory_stats_lbl = Label.new()
+	victory_stats_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	victory_stats_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_apply_font(victory_stats_lbl, false)
+	victory_stats_lbl.add_theme_color_override("font_color", Color(0.90, 0.86, 0.76))
+	victory_stats_lbl.add_theme_font_size_override("font_size", 14)
+	vvb.add_child(victory_stats_lbl)
+	rematch_status_lbl = Label.new()
+	rematch_status_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rematch_status_lbl.text = ""
+	_apply_font(rematch_status_lbl, true)
+	rematch_status_lbl.add_theme_color_override("font_color", Color(0.45, 0.96, 0.68))
+	rematch_status_lbl.add_theme_font_size_override("font_size", 16)
+	vvb.add_child(rematch_status_lbl)
+	var v_btn_hb := HBoxContainer.new()
+	v_btn_hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	v_btn_hb.add_theme_constant_override("separation", 12)
+	vvb.add_child(v_btn_hb)
+	rematch_btn = Button.new()
+	rematch_btn.text = "⚔ SEND REMATCH"
+	rematch_btn.custom_minimum_size = Vector2(180, 46)
+	_style_tavern_btn(rematch_btn, Color(0.16, 0.28, 0.16, 0.98), Color(0.56, 0.92, 0.48, 0.96), true, 10)
+	rematch_btn.pressed.connect(func():
+		play_sfx_requested.emit("ui_click")
+		_rematch_voted = not _rematch_voted
+		if mp_net != null and mp_net.has_method("send_rematch_vote"):
+			mp_net.send_rematch_vote(_rematch_voted)
+	)
+	v_btn_hb.add_child(rematch_btn)
+	lobby_keep_btn = Button.new()
+	lobby_keep_btn.text = "🏛 Return to Lobby"
+	lobby_keep_btn.custom_minimum_size = Vector2(175, 46)
+	_style_tavern_btn(lobby_keep_btn, Color(0.24, 0.16, 0.08, 0.96), Color(0.88, 0.68, 0.26, 0.92), true, 10)
+	lobby_keep_btn.pressed.connect(func():
+		play_sfx_requested.emit("ui_click")
+		if mp_net != null and mp_net.is_host and mp_net.has_method("request_return_to_lobby"):
+			mp_net.request_return_to_lobby()
+	)
+	v_btn_hb.add_child(lobby_keep_btn)
 	var vbtn := Button.new()
-	vbtn.text = "Return to MP Lobby"
-	vbtn.custom_minimum_size = Vector2(220, 44)
-	_style_tavern_btn(vbtn, Color(0.28, 0.15, 0.08, 0.96), Color(0.92, 0.72, 0.26, 0.92), true, 10)
+	vbtn.text = "✕ Leave Table"
+	vbtn.custom_minimum_size = Vector2(140, 46)
+	_style_tavern_btn(vbtn, Color(0.24, 0.10, 0.09, 0.95), Color(0.76, 0.36, 0.28, 0.88), false, 10)
 	vbtn.pressed.connect(func(): exit_mp_requested.emit())
-	vvb.add_child(vbtn)
+	v_btn_hb.add_child(vbtn)
 
 	# End-of-Round / Next-Round Cinematic Ribbon Overlay
 	round_transition_overlay = Control.new()
@@ -1272,17 +1262,10 @@ func _on_public_state(state: Dictionary) -> void:
 			sn["lbl"].modulate = Color(1.0, 0.90, 0.40) if is_turn else (Color.WHITE if is_alive else Color(0.55, 0.65, 0.72))
 			var dm: MeshInstance3D = sn["deck_mesh"]
 			dm.scale.y = clampf(float(s["deck_count"]) / 32.0, 0.15, 1.35)
-			if si == my_seat and dm.get_node_or_null("MpDrawDeckArea") == null:
-				var da := Area3D.new()
-				da.name = "MpDrawDeckArea"
-				da.set_meta("mp_draw_deck", true)
-				var dcs := CollisionShape3D.new()
-				var dbox := BoxShape3D.new()
-				dbox.size = Vector3(0.18, 0.14, 0.24)
-				dcs.shape = dbox
-				da.add_child(dcs)
-				dm.add_child(da)
+			if si == my_seat and is_instance_valid(_local_deck_lbl):
+				_local_deck_lbl.text = "DECK (%d)" % int(s["deck_count"])
 			sn["avatar"].visible = (si != my_seat)
+			sn["lbl"].visible = (si != my_seat)
 			if not is_alive:
 				sn["avatar"].scale = Vector3(0.72, 0.72, 0.72)
 			_rebuild_seat_hand_3d(si, s)
@@ -1348,9 +1331,12 @@ func _play_mp_round_transition_anim(finished_r: int, next_r: int) -> void:
 
 
 func _on_private_hand(s_idx: int, hand: Array, items: Array, meta: Dictionary) -> void:
+	var seat_changed := (my_seat != s_idx)
 	my_seat = s_idx
 	my_hand = hand
 	my_items = items
+	if seat_changed and not public_state.is_empty():
+		_on_public_state(public_state)
 	if meta.has("item_uses") and typeof(meta["item_uses"]) == TYPE_DICTIONARY:
 		mp_item_uses = (meta["item_uses"] as Dictionary).duplicate()
 	selected_indices.clear()
@@ -1403,6 +1389,10 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			_top_down_auto_timer = maxf(_top_down_auto_timer, 1.35)
 			cam_kick_shake = maxf(cam_kick_shake, 0.32)
 			var lead_c: Dictionary = cards_arr[0] if not cards_arr.is_empty() and typeof(cards_arr[0]) == TYPE_DICTIONARY else {}
+			SwordCardAnim.play_ancient_circle_sigil(self, lead_c, center)
+			if tavern_env != null:
+				tavern_env.trigger_suit_pulse(1.3)
+				tavern_env.boost_impact(0.7, 1.2)
 			SwordCardAnim.play_sword_card_mp_strike(
 				self,
 				lead_c,
@@ -1510,6 +1500,8 @@ func _on_vfx_event(evt: Dictionary) -> void:
 func _on_match_ended(winner_seat: int, summary: Dictionary) -> void:
 	parry_panel.visible = false
 	ghost_panel.visible = false
+	_rematch_voted = false
+	_rematch_other_waiting = false
 	var wname := str(summary.get("winner_name", "Champion"))
 	var you_won := (winner_seat == my_seat)
 	victory_lbl.text = "%s\nChampion: %s (%d Turns)" % [
@@ -1517,6 +1509,23 @@ func _on_match_ended(winner_seat: int, summary: Dictionary) -> void:
 		wname,
 		int(summary.get("rounds", 1)),
 	]
+	if is_instance_valid(victory_stats_lbl):
+		var stat_lines: PackedStringArray = []
+		for s_raw in summary.get("seats", []):
+			if s_raw is Dictionary:
+				var sd := s_raw as Dictionary
+				var tag := "👑 " if int(sd.get("seat_idx", -1)) == winner_seat else "• "
+				stat_lines.append("%s%s  —  ♥%d HP  |  ⚔ %d Kills" % [tag, str(sd.get("name", "Player")), int(sd.get("hp", 0)), int(sd.get("kills", 0))])
+		victory_stats_lbl.text = "\n".join(stat_lines)
+	if is_instance_valid(lobby_keep_btn):
+		var is_h := (mp_net != null and bool(mp_net.get("is_host")))
+		lobby_keep_btn.disabled = not is_h
+		lobby_keep_btn.tooltip_text = "Keep everyone connected and return to Tavern Lobby" if is_h else "Only Host can return table to Lobby"
+	if is_instance_valid(rematch_btn):
+		rematch_btn.text = "⚔ SEND REMATCH"
+		rematch_btn.scale = Vector2.ONE
+	if is_instance_valid(rematch_status_lbl):
+		rematch_status_lbl.text = ""
 	var focus_seat := my_seat
 	if you_won:
 		focus_seat = (my_seat + 1) % 2
@@ -1540,6 +1549,37 @@ func _on_match_ended(winner_seat: int, summary: Dictionary) -> void:
 				victory_panel.visible = true
 		)
 		tw.tween_property(victory_panel, "modulate:a", 1.0, 0.40)
+
+
+func _on_rematch_state_updated(state: Dictionary) -> void:
+	if state.is_empty():
+		_rematch_voted = false
+		_rematch_other_waiting = false
+		if is_instance_valid(rematch_status_lbl):
+			rematch_status_lbl.text = ""
+		if is_instance_valid(rematch_btn):
+			rematch_btn.text = "⚔ SEND REMATCH"
+			rematch_btn.scale = Vector2.ONE
+		return
+	var r_cnt := int(state.get("ready_count", 0))
+	var tot := int(state.get("total_humans", 1))
+	var req := str(state.get("requester_name", ""))
+	var voted_peers: Array = state.get("voted_peers", [])
+	var my_pid := int(mp_net.get("my_peer_id")) if mp_net != null else 1
+	_rematch_voted = (my_pid in voted_peers)
+	_rematch_other_waiting = (r_cnt > 0 and not _rematch_voted)
+	if is_instance_valid(rematch_btn):
+		rematch_btn.text = "✓ REMATCH READY (%d/%d)" % [r_cnt, tot] if _rematch_voted else ("🔥 ACCEPT REMATCH (%d/%d)!" % [r_cnt, tot] if _rematch_other_waiting else "⚔ SEND REMATCH")
+		if not _rematch_other_waiting:
+			rematch_btn.scale = Vector2.ONE
+	if is_instance_valid(rematch_status_lbl):
+		if r_cnt <= 0:
+			rematch_status_lbl.text = ""
+		elif _rematch_voted:
+			rematch_status_lbl.text = "⏳ Waiting for opponent to accept rematch (%d/%d)..." % [r_cnt, tot]
+		else:
+			var who := req if not req.is_empty() else "Opponent"
+			rematch_status_lbl.text = "⚔ %s wants a REMATCH! (%d/%d ready)" % [who, r_cnt, tot]
 
 
 # ---------------------------------------------------------------------------
@@ -1718,6 +1758,30 @@ func _build_mp_3d_card_node(card_data: Dictionary, border_col: Color) -> Node3D:
 		c_lbl.position = Vector3(0.0, 0.020, 0.0045)
 		card_root.add_child(c_lbl)
 
+	if shader_ed_id > 0:
+		var ed_lbl := Label3D.new()
+		ed_lbl.text = "MAGE" if is_mage else str(ed_info.get("badge", ed_id))
+		ed_lbl.font = _font_display
+		ed_lbl.modulate = acc_col
+		ed_lbl.font_size = 13
+		ed_lbl.outline_size = 5
+		ed_lbl.pixel_size = 0.00105
+		ed_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		ed_lbl.position = Vector3(0.076, 0.106, 0.0042)
+		card_root.add_child(ed_lbl)
+
+	var pts_lbl := Label3D.new()
+	pts_lbl.name = "PtsLabel"
+	pts_lbl.text = "+%d pts" % int(card_data.get("pts", 10))
+	pts_lbl.font = _font_display
+	pts_lbl.modulate = Color(1.0, 0.92, 0.56)
+	pts_lbl.outline_modulate = Color(0.05, 0.03, 0.02)
+	pts_lbl.outline_size = 3
+	pts_lbl.font_size = 16
+	pts_lbl.pixel_size = 0.00120
+	pts_lbl.position = Vector3(0.0, -0.112, 0.0042)
+	card_root.add_child(pts_lbl)
+
 	return card_root
 
 
@@ -1881,11 +1945,44 @@ func _play_mp_table_items_intro_showcase() -> void:
 		tw.parallel().tween_property(sn, "scale", bs, 0.16)
 
 
+func _trigger_mp_tavern_prop(prop_id: String) -> void:
+	if tavern_env == null:
+		return
+	var node: Node3D = null
+	match prop_id:
+		"mug":
+			node = tavern_env.tavern_mug_root
+			play_sfx_requested.emit("prop_tankard")
+			_toast_msg = "🍻 Cheers to a bloody duel!"
+		"coins":
+			node = tavern_env.tavern_coins_root
+			play_sfx_requested.emit("prop_coins")
+			_toast_msg = "💰 Florin Pouch jingles!"
+		"dice":
+			node = tavern_env.tavern_dice_root
+			play_sfx_requested.emit("prop_dice")
+			_toast_msg = "🎲 Rolled %d & %d!" % [(randi() % 6) + 1, (randi() % 6) + 1]
+		"bell":
+			node = tavern_env.tavern_bell_root
+			play_sfx_requested.emit("ui_click")
+			_toast_msg = "🔔 Tavern Bell rings!"
+	_toast_timer = 1.6
+	if is_instance_valid(center_banner_lbl) and _toast_msg != "":
+		center_banner_lbl.text = _toast_msg
+	if is_instance_valid(node) and is_inside_tree():
+		var bp: Vector3 = node.get_meta("base_pos", node.position)
+		var tw := node.create_tween()
+		tw.tween_property(node, "position:y", bp.y + 0.09, 0.11).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(node, "rotation_degrees:y", node.rotation_degrees.y + (180.0 if prop_id == "dice" else 28.0), 0.18)
+		tw.tween_property(node, "position:y", bp.y, 0.16).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+
+
 func _update_mp_hover_and_cursor(delta: float, blocked: bool) -> void:
 	hovered_card_idx = -1
 	hovered_item_id = ""
 	hovered_item_uid = ""
 	hovered_draw_deck = false
+	hovered_tavern_prop = ""
 
 	if not blocked and is_instance_valid(cam):
 		var vp := get_viewport()
@@ -1911,6 +2008,8 @@ func _update_mp_hover_and_cursor(delta: float, blocked: bool) -> void:
 							hovered_item_uid = str(ca.get_meta("mp_item_uid", hovered_item_id))
 						elif ca.has_meta("mp_draw_deck"):
 							hovered_draw_deck = true
+						elif ca.has_meta("mp_tavern_prop"):
+							hovered_tavern_prop = str(ca.get_meta("mp_tavern_prop", ""))
 
 	# Animate 3D hand card hover lift + shader glow
 	for i in range(player_card_nodes.size()):
@@ -1942,7 +2041,7 @@ func _update_mp_hover_and_cursor(delta: float, blocked: bool) -> void:
 			tag.visible = is_ih
 
 	# Update bottom-right hover inspect card/item tooltip
-	var nkey := "%d|%s|%s" % [hovered_card_idx, hovered_item_uid, str(hovered_draw_deck)]
+	var nkey := "%d|%s|%s|%s" % [hovered_card_idx, hovered_item_uid, str(hovered_draw_deck), hovered_tavern_prop]
 	if nkey != _hover_cache_key and is_instance_valid(hover_inspect_panel):
 		_hover_cache_key = nkey
 		if hovered_card_idx >= 0 and hovered_card_idx < my_hand.size():
@@ -1965,6 +2064,11 @@ func _update_mp_hover_and_cursor(delta: float, blocked: bool) -> void:
 			hover_inspect_title.text = "🃏 Draw Deck"
 			hover_inspect_sub.text = ("Blood Tax +%d cards" % tx) if tx > 0 else "Draw 1 card & end turn"
 			hover_inspect_desc.text = "Click 3D deck on the table to draw."
+			hover_inspect_panel.visible = true
+		elif hovered_tavern_prop != "":
+			hover_inspect_title.text = "🍺 Tavern Prop"
+			hover_inspect_sub.text = hovered_tavern_prop.capitalize()
+			hover_inspect_desc.text = "Click to interact on the table."
 			hover_inspect_panel.visible = true
 		else:
 			hover_inspect_panel.visible = false

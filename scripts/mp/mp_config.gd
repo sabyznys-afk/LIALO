@@ -9,7 +9,14 @@ const Catalog = preload("res://scripts/lialo_catalog.gd")
 ## exported Release templates automatically hide it even if ENABLE_TEST_MULTIPLAYER is true.
 const ENABLE_TEST_MULTIPLAYER := true
 const REQUIRE_NON_RELEASE_BUILD := false
-const MP_PROTOCOL_VERSION := "0.9.0-mp1"
+const MP_PROTOCOL_VERSION := "0.9.1-mp2"
+
+const VISTA_ERAS := [
+	{"id": "stredovek", "name": "🌕 Full Moon Tavern", "name_cs": "🌕 Krčma za úplňku"},
+	{"id": "antika", "name": "☀ Alpine Sun Vista", "name_cs": "☀ Slunečné Alpy"},
+	{"id": "rim", "name": "✨ Starry Night", "name_cs": "✨ Hvězdná noc"},
+	{"id": "prohibicia", "name": "⛈ Storm & Lightning", "name_cs": "⛈ Bouřka a blesky"},
+]
 
 const MIN_PLAYERS := 2
 const MAX_PLAYERS := 4
