@@ -5,6 +5,7 @@ extends Control
 ## Automatically opens only when MpConfig.is_test_mp_available() is true.
 
 const Config = preload("res://scripts/mp/mp_config.gd")
+const Catalog = preload("res://scripts/lialo_catalog.gd")
 const FONT_DISPLAY_PATH := "res://assets/fonts/LialoDisplay.ttf"
 const FONT_BODY_PATH := "res://assets/fonts/LialoBody.ttf"
 
@@ -38,6 +39,21 @@ var ready_btn: Button
 var start_btn: Button
 var _local_ready: bool = true
 
+var _profile: Dictionary = {}
+var _lang: String = "en"
+var selected_power_cards: Array[String] = []
+var selected_table_relics: Array[String] = []
+var selected_passive_relics: Array[String] = []
+var equipped_sword_id: String = "SWORD_IRON"
+var vault_power_btns: Dictionary = {}
+var vault_trel_btns: Dictionary = {}
+var vault_prel_btns: Dictionary = {}
+var vault_power_hdr: Label
+var vault_trel_hdr: Label
+var vault_prel_hdr: Label
+var vault_sword_lbl: Label
+var vault_box: VBoxContainer
+
 
 func configure(network_node: Node) -> void:
 	mp_net = network_node
@@ -46,6 +62,7 @@ func configure(network_node: Node) -> void:
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	_ensure_fonts()
+	_load_vault_from_profile()
 	_build_ui()
 	if mp_net != null:
 		mp_net.lobby_updated.connect(_on_lobby_updated)
@@ -283,11 +300,17 @@ func _build_ui() -> void:
 	body_hb.add_theme_constant_override("separation", 18)
 	root_vb.add_child(body_hb)
 
-	# Left Column: Personal Custom Deck Builder
+	# Left Column: Personal Custom Deck Builder + Campaign Vault Loadout (scrollable)
+	var left_scroll := ScrollContainer.new()
+	left_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	left_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	body_hb.add_child(left_scroll)
+
 	var left_vb := VBoxContainer.new()
 	left_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left_vb.add_theme_constant_override("separation", 10)
-	body_hb.add_child(left_vb)
+	left_scroll.add_child(left_vb)
 
 	var c_title := Label.new()
 	c_title.text = "CHOOSE YOUR 3D CHARACTER (Visible around the Tavern Table)"
@@ -368,6 +391,8 @@ func _build_ui() -> void:
 	deck_desc_lbl.add_theme_color_override("font_color", Color(0.84, 0.78, 0.66))
 	left_vb.add_child(deck_desc_lbl)
 
+	_build_vault_section(left_vb)
+
 	# Right Column: 2-4 Player Seat Roster & Launch Controls
 	var right_vb := VBoxContainer.new()
 	right_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -382,7 +407,7 @@ func _build_ui() -> void:
 	right_vb.add_child(r_title)
 
 	rule_btn = Button.new()
-	rule_btn.text = "Ruleset: ⚡ OP CHAOS (3× Aces = Instant Kill on Chosen Target! + Relics)"
+	rule_btn.text = "Ruleset: 🏛 Campaign Vault (Your Unlocked Power Cards, Relics & Sword)"
 	rule_btn.clip_text = true
 	rule_btn.custom_minimum_size = Vector2(0, 38)
 	_style_tavern_btn(rule_btn, Color(0.16, 0.12, 0.08, 0.94), Color(0.76, 0.58, 0.26, 0.86), false, 8)
@@ -390,7 +415,8 @@ func _build_ui() -> void:
 		if mp_net == null or not mp_net.is_host:
 			return
 		play_click_sfx.emit()
-		var nxt := "CLASSIC_BRAWL" if str(mp_net.room_settings.get("rule_mode", "OP_CHAOS")) == "OP_CHAOS" else "OP_CHAOS"
+		var cur := str(mp_net.room_settings.get("rule_mode", Config.RULE_CAMPAIGN_VAULT))
+		var nxt := Config.RULE_BALANCED_ARENA if cur == Config.RULE_CAMPAIGN_VAULT else Config.RULE_CAMPAIGN_VAULT
 		mp_net.set_rule_mode(nxt)
 	)
 	right_vb.add_child(rule_btn)
@@ -439,6 +465,326 @@ func _build_ui() -> void:
 	_select_archetype("GUILLOTINE_ACES")
 
 
+func _build_local_deck_cfg(arch_id: String) -> Dictionary:
+	return {
+		"archetype_id": arch_id,
+		"extra_aces": extra_aces_val,
+		"character_id": selected_char_id,
+		"power_cards": selected_power_cards.duplicate(),
+		"table_relics": selected_table_relics.duplicate(),
+		"passive_relics": selected_passive_relics.duplicate(),
+		"sword_skin": equipped_sword_id,
+	}
+
+
+func _load_vault_from_profile() -> void:
+	_lang = str(Catalog.load_options().get("language", "en"))
+	_profile = Catalog.load_profile()
+	equipped_sword_id = str(_profile.get("equipped_sword", "SWORD_IRON"))
+	var loadout: Dictionary = _profile.get("mp_loadout", {})
+	selected_power_cards.clear()
+	var mythic_cnt := 0
+	for pv in loadout.get("power_cards", []):
+		var pid := str(pv)
+		if (pid in Catalog.ARCHIVED_CARD_IDS) or not Catalog.is_power_card_unlocked(_profile, pid):
+			continue
+		var pdata := Catalog.get_power_card(pid)
+		if pdata.is_empty():
+			continue
+		if str(pdata.get("rarity", "")) == "Mythic":
+			if mythic_cnt >= Config.MP_MAX_MYTHIC_POWER_CARDS:
+				continue
+			mythic_cnt += 1
+		if not (pid in selected_power_cards):
+			selected_power_cards.append(pid)
+		if selected_power_cards.size() >= Config.MP_MAX_POWER_CARDS:
+			break
+
+	selected_table_relics.clear()
+	for tv in loadout.get("table_relics", []):
+		var tid := str(tv)
+		if not Catalog.is_table_relic_unlocked(_profile, tid):
+			continue
+		if Catalog.get_table_relic(tid).is_empty():
+			continue
+		if not (tid in selected_table_relics):
+			selected_table_relics.append(tid)
+		if selected_table_relics.size() >= Config.MP_MAX_TABLE_RELICS:
+			break
+
+	selected_passive_relics.clear()
+	for rv in loadout.get("passive_relics", []):
+		var rid := str(rv)
+		if (rid in Catalog.ARCHIVED_RELIC_IDS) or Catalog.is_relic_hidden(rid) or not Catalog.is_relic_unlocked(_profile, rid):
+			continue
+		if Catalog.get_relic(rid).is_empty():
+			continue
+		if not (rid in selected_passive_relics):
+			selected_passive_relics.append(rid)
+		if selected_passive_relics.size() >= Config.MP_MAX_PASSIVE_RELICS:
+			break
+
+
+func _save_vault_to_profile() -> void:
+	_profile["mp_loadout"] = {
+		"power_cards": selected_power_cards.duplicate(),
+		"table_relics": selected_table_relics.duplicate(),
+		"passive_relics": selected_passive_relics.duplicate(),
+		"sword_skin": equipped_sword_id,
+	}
+	Catalog.save_profile(_profile)
+
+
+func _style_vault_locked_btn(btn: Button) -> void:
+	_apply_font(btn, false)
+	var sb_d := _make_tavern_panel_sb(Color(0.06, 0.05, 0.045, 0.55), Color(0.28, 0.24, 0.18, 0.35), 1, 8, 8)
+	sb_d.shadow_size = 2
+	btn.add_theme_stylebox_override("normal", sb_d)
+	btn.add_theme_stylebox_override("hover", sb_d)
+	btn.add_theme_stylebox_override("pressed", sb_d)
+	btn.add_theme_stylebox_override("disabled", sb_d)
+	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	btn.add_theme_color_override("font_disabled_color", Color(0.46, 0.42, 0.36, 0.65))
+
+
+func _build_vault_section(parent_vb: VBoxContainer) -> void:
+	var vault_panel := PanelContainer.new()
+	vault_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.07, 0.055, 0.04, 0.90), Color(0.62, 0.46, 0.22, 0.72), 2, 10, 12))
+	parent_vb.add_child(vault_panel)
+
+	vault_box = VBoxContainer.new()
+	vault_box.add_theme_constant_override("separation", 8)
+	vault_panel.add_child(vault_box)
+
+	var hdr_hb := HBoxContainer.new()
+	vault_box.add_child(hdr_hb)
+	var v_title := Label.new()
+	v_title.text = "CAMPAIGN VAULT LOADOUT"
+	v_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_apply_font(v_title, true)
+	v_title.add_theme_font_size_override("font_size", 15)
+	v_title.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42))
+	hdr_hb.add_child(v_title)
+
+	var sw_info := Catalog.get_sword_skin_loc(equipped_sword_id, _lang)
+	vault_sword_lbl = Label.new()
+	vault_sword_lbl.text = "⚔ Sword: %s" % str(sw_info.get("name", equipped_sword_id))
+	_apply_font(vault_sword_lbl, false)
+	vault_sword_lbl.add_theme_font_size_override("font_size", 13)
+	vault_sword_lbl.add_theme_color_override("font_color", Color(0.76, 0.92, 1.0))
+	hdr_hb.add_child(vault_sword_lbl)
+
+	# 1. Power Cards (3 max, max 1 Mythic)
+	vault_power_hdr = Label.new()
+	_apply_font(vault_power_hdr, false)
+	vault_power_hdr.add_theme_font_size_override("font_size", 13)
+	vault_power_hdr.add_theme_color_override("font_color", Color(0.95, 0.84, 0.56))
+	vault_box.add_child(vault_power_hdr)
+
+	var p_grid := GridContainer.new()
+	p_grid.columns = 3
+	p_grid.add_theme_constant_override("h_separation", 6)
+	p_grid.add_theme_constant_override("v_separation", 6)
+	vault_box.add_child(p_grid)
+	vault_power_btns.clear()
+	for pc in Catalog.POWER_CARDS:
+		var pid := str(pc.get("id", ""))
+		if pid == "" or (pid in Catalog.ARCHIVED_CARD_IDS):
+			continue
+		var pc_loc := Catalog.get_power_card_loc(pid, _lang)
+		var unlocked := Catalog.is_power_card_unlocked(_profile, pid)
+		var is_mythic := str(pc.get("rarity", "")) == "Mythic"
+		var btn := Button.new()
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.custom_minimum_size = Vector2(0, 32)
+		btn.clip_text = true
+		btn.add_theme_font_size_override("font_size", 12)
+		var tag := " ★M" if is_mythic else ""
+		if unlocked:
+			btn.text = "%s%s" % [str(pc_loc.get("short", pc_loc.get("name", pid))), tag]
+			btn.tooltip_text = "%s (%s)\n%s" % [str(pc_loc.get("name", pid)), str(pc_loc.get("rarity", "")), str(pc_loc.get("desc", ""))]
+			btn.toggle_mode = true
+			btn.set_pressed_no_signal(pid in selected_power_cards)
+			btn.pressed.connect(func(): _toggle_vault_power(pid))
+			_apply_choice_btn_style(btn, pid in selected_power_cards, pc.get("accent", Color(0.95, 0.78, 0.30)))
+		else:
+			btn.text = "🔒 %s%s" % [str(pc_loc.get("short", pc_loc.get("name", pid))), tag]
+			btn.tooltip_text = "Locked — %s\n%s" % [Catalog.get_unlock_source_label(pid, _lang), str(pc_loc.get("desc", ""))]
+			btn.disabled = true
+			_style_vault_locked_btn(btn)
+		vault_power_btns[pid] = btn
+		p_grid.add_child(btn)
+
+	# 2. Tabletop Relics (2 max)
+	vault_trel_hdr = Label.new()
+	_apply_font(vault_trel_hdr, false)
+	vault_trel_hdr.add_theme_font_size_override("font_size", 13)
+	vault_trel_hdr.add_theme_color_override("font_color", Color(0.95, 0.84, 0.56))
+	vault_box.add_child(vault_trel_hdr)
+
+	var t_grid := GridContainer.new()
+	t_grid.columns = 3
+	t_grid.add_theme_constant_override("h_separation", 6)
+	t_grid.add_theme_constant_override("v_separation", 6)
+	vault_box.add_child(t_grid)
+	vault_trel_btns.clear()
+	for tr_item in Catalog.TABLE_RELICS:
+		var tid := str(tr_item.get("id", ""))
+		if tid == "":
+			continue
+		var tr_loc := Catalog.get_table_relic_loc(tid, _lang)
+		var unlocked := Catalog.is_table_relic_unlocked(_profile, tid)
+		var btn := Button.new()
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.custom_minimum_size = Vector2(0, 32)
+		btn.clip_text = true
+		btn.add_theme_font_size_override("font_size", 12)
+		if unlocked:
+			btn.text = str(tr_loc.get("name", tid))
+			btn.tooltip_text = "%s\n%s" % [str(tr_loc.get("name", tid)), str(tr_loc.get("desc", ""))]
+			btn.toggle_mode = true
+			btn.set_pressed_no_signal(tid in selected_table_relics)
+			btn.pressed.connect(func(): _toggle_vault_table_relic(tid))
+			_apply_choice_btn_style(btn, tid in selected_table_relics, tr_item.get("col", Color(0.96, 0.78, 0.34)))
+		else:
+			btn.text = "🔒 %s" % str(tr_loc.get("name", tid))
+			btn.tooltip_text = "Locked — %s\n%s" % [Catalog.get_unlock_source_label(tid, _lang), str(tr_loc.get("desc", ""))]
+			btn.disabled = true
+			_style_vault_locked_btn(btn)
+		vault_trel_btns[tid] = btn
+		t_grid.add_child(btn)
+
+	# 3. Passive Relics (2 max)
+	vault_prel_hdr = Label.new()
+	_apply_font(vault_prel_hdr, false)
+	vault_prel_hdr.add_theme_font_size_override("font_size", 13)
+	vault_prel_hdr.add_theme_color_override("font_color", Color(0.95, 0.84, 0.56))
+	vault_box.add_child(vault_prel_hdr)
+
+	var r_grid := GridContainer.new()
+	r_grid.columns = 3
+	r_grid.add_theme_constant_override("h_separation", 6)
+	r_grid.add_theme_constant_override("v_separation", 6)
+	vault_box.add_child(r_grid)
+	vault_prel_btns.clear()
+	for rel in Catalog.get_visible_relics():
+		var rid := str(rel.get("id", ""))
+		if rid == "" or (rid in Catalog.ARCHIVED_RELIC_IDS):
+			continue
+		var rel_loc := Catalog.get_relic_loc(rid, _lang)
+		var unlocked := Catalog.is_relic_unlocked(_profile, rid)
+		var btn := Button.new()
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.custom_minimum_size = Vector2(0, 32)
+		btn.clip_text = true
+		btn.add_theme_font_size_override("font_size", 12)
+		if unlocked:
+			btn.text = str(rel_loc.get("name", rid))
+			btn.tooltip_text = "%s\n%s" % [str(rel_loc.get("name", rid)), str(rel_loc.get("desc", ""))]
+			btn.toggle_mode = true
+			btn.set_pressed_no_signal(rid in selected_passive_relics)
+			btn.pressed.connect(func(): _toggle_vault_passive_relic(rid))
+			_apply_choice_btn_style(btn, rid in selected_passive_relics, rel.get("col", Color(0.54, 0.86, 0.96)))
+		else:
+			btn.text = "🔒 %s" % str(rel_loc.get("name", rid))
+			btn.tooltip_text = "Locked — %s\n%s" % [Catalog.get_unlock_source_label(rid, _lang), str(rel_loc.get("desc", ""))]
+			btn.disabled = true
+			_style_vault_locked_btn(btn)
+		vault_prel_btns[rid] = btn
+		r_grid.add_child(btn)
+
+	_refresh_vault_buttons()
+
+
+func _toggle_vault_power(pid: String) -> void:
+	play_click_sfx.emit()
+	if pid in selected_power_cards:
+		selected_power_cards.erase(pid)
+	else:
+		if selected_power_cards.size() >= Config.MP_MAX_POWER_CARDS:
+			_on_status_changed("Max %d Power Cards allowed in Vault Loadout!" % Config.MP_MAX_POWER_CARDS, true)
+			_refresh_vault_buttons()
+			return
+		var pdata := Catalog.get_power_card(pid)
+		if str(pdata.get("rarity", "")) == "Mythic":
+			var m_cnt := 0
+			for sp in selected_power_cards:
+				if str(Catalog.get_power_card(sp).get("rarity", "")) == "Mythic":
+					m_cnt += 1
+			if m_cnt >= Config.MP_MAX_MYTHIC_POWER_CARDS:
+				_on_status_changed("Max %d Mythic Power Card allowed in Vault Loadout!" % Config.MP_MAX_MYTHIC_POWER_CARDS, true)
+				_refresh_vault_buttons()
+				return
+		selected_power_cards.append(pid)
+	_save_vault_to_profile()
+	_refresh_vault_buttons()
+	_push_deck_update()
+
+
+func _toggle_vault_table_relic(tid: String) -> void:
+	play_click_sfx.emit()
+	if tid in selected_table_relics:
+		selected_table_relics.erase(tid)
+	else:
+		if selected_table_relics.size() >= Config.MP_MAX_TABLE_RELICS:
+			_on_status_changed("Max %d Tabletop Relics allowed in Vault Loadout!" % Config.MP_MAX_TABLE_RELICS, true)
+			_refresh_vault_buttons()
+			return
+		selected_table_relics.append(tid)
+	_save_vault_to_profile()
+	_refresh_vault_buttons()
+	_push_deck_update()
+
+
+func _toggle_vault_passive_relic(rid: String) -> void:
+	play_click_sfx.emit()
+	if rid in selected_passive_relics:
+		selected_passive_relics.erase(rid)
+	else:
+		if selected_passive_relics.size() >= Config.MP_MAX_PASSIVE_RELICS:
+			_on_status_changed("Max %d Passive Relics allowed in Vault Loadout!" % Config.MP_MAX_PASSIVE_RELICS, true)
+			_refresh_vault_buttons()
+			return
+		selected_passive_relics.append(rid)
+	_save_vault_to_profile()
+	_refresh_vault_buttons()
+	_push_deck_update()
+
+
+func _refresh_vault_buttons() -> void:
+	var m_cnt := 0
+	for sp in selected_power_cards:
+		if str(Catalog.get_power_card(sp).get("rarity", "")) == "Mythic":
+			m_cnt += 1
+	if vault_power_hdr != null:
+		vault_power_hdr.text = "⚡ Power Cards (%d/%d, Mythic %d/%d):" % [selected_power_cards.size(), Config.MP_MAX_POWER_CARDS, m_cnt, Config.MP_MAX_MYTHIC_POWER_CARDS]
+	if vault_trel_hdr != null:
+		vault_trel_hdr.text = "🏺 Tabletop Relics (%d/%d):" % [selected_table_relics.size(), Config.MP_MAX_TABLE_RELICS]
+	if vault_prel_hdr != null:
+		vault_prel_hdr.text = "🧿 Passive Relics (%d/%d):" % [selected_passive_relics.size(), Config.MP_MAX_PASSIVE_RELICS]
+
+	for pid in vault_power_btns.keys():
+		var btn: Button = vault_power_btns[pid]
+		if not btn.disabled:
+			var is_sel := str(pid) in selected_power_cards
+			btn.set_pressed_no_signal(is_sel)
+			_apply_choice_btn_style(btn, is_sel, Catalog.get_power_card(str(pid)).get("accent", Color(0.95, 0.78, 0.30)))
+
+	for tid in vault_trel_btns.keys():
+		var btn: Button = vault_trel_btns[tid]
+		if not btn.disabled:
+			var is_sel := str(tid) in selected_table_relics
+			btn.set_pressed_no_signal(is_sel)
+			_apply_choice_btn_style(btn, is_sel, Catalog.get_table_relic(str(tid)).get("col", Color(0.96, 0.78, 0.34)))
+
+	for rid in vault_prel_btns.keys():
+		var btn: Button = vault_prel_btns[rid]
+		if not btn.disabled:
+			var is_sel := str(rid) in selected_passive_relics
+			btn.set_pressed_no_signal(is_sel)
+			_apply_choice_btn_style(btn, is_sel, Catalog.get_relic(str(rid)).get("col", Color(0.54, 0.86, 0.96)))
+
+
 func _select_character(char_id: String) -> void:
 	selected_char_id = char_id
 	for k in char_buttons.keys():
@@ -468,7 +814,7 @@ func _select_archetype(arch_id: String) -> void:
 		_apply_choice_btn_style(char_buttons[k], is_csel, ch_info.get("col", Color(0.95, 0.78, 0.30)))
 	extra_aces_val = int(arch.get("extra_aces", 2))
 	if mp_net != null:
-		mp_net.local_deck_cfg = {"archetype_id": arch_id, "extra_aces": extra_aces_val, "character_id": selected_char_id}
+		mp_net.local_deck_cfg = _build_local_deck_cfg(arch_id)
 		mp_net.update_local_deck(mp_net.local_deck_cfg)
 	_update_deck_summary(arch)
 
@@ -480,16 +826,26 @@ func _push_deck_update() -> void:
 			arch_id = str(k)
 			break
 	if mp_net != null:
-		mp_net.local_deck_cfg = {"archetype_id": arch_id, "extra_aces": extra_aces_val, "character_id": selected_char_id}
+		mp_net.local_deck_cfg = _build_local_deck_cfg(arch_id)
 		mp_net.update_local_deck(mp_net.local_deck_cfg)
 	_update_deck_summary(Config.get_archetype(arch_id))
 
 
-func _update_deck_summary(arch: Dictionary) -> void:
+func _update_deck_summary(_arch: Dictionary) -> void:
 	aces_lbl.text = "Extra Aces in Your Deck (3× Aces = Instant Kill on Chosen Target!): +%d (%d Aces Total)" % [extra_aces_val, 4 + extra_aces_val]
-	var pnames := ", ".join(PackedStringArray(arch.get("powers", [])))
-	var inames := ", ".join(PackedStringArray(arch.get("items", [])))
-	deck_desc_lbl.text = "Included Powers: %s\nStarting OP Items: %s\nTip: 3× Aces = Instant Kill on Chosen Target! (unless Mirror/Chronos parried!)." % [pnames, inames]
+	var pnames_arr: PackedStringArray = []
+	for pid in selected_power_cards:
+		pnames_arr.append(str(Catalog.get_power_card_loc(pid, _lang).get("short", pid)))
+	var tnames_arr: PackedStringArray = []
+	for tid in selected_table_relics:
+		tnames_arr.append(str(Catalog.get_table_relic_loc(tid, _lang).get("name", tid)))
+	var rnames_arr: PackedStringArray = []
+	for rid in selected_passive_relics:
+		rnames_arr.append(str(Catalog.get_relic_loc(rid, _lang).get("name", rid)))
+	var pnames := ", ".join(pnames_arr) if not pnames_arr.is_empty() else "None"
+	var tnames := ", ".join(tnames_arr) if not tnames_arr.is_empty() else "None"
+	var rnames := ", ".join(rnames_arr) if not rnames_arr.is_empty() else "None"
+	deck_desc_lbl.text = "Vault Powers: %s  |  Table Relics: %s  |  Passive Relics: %s\nTip: 3× Aces = Instant Kill on Chosen Target! (unless Mirror/Chronos parried!)." % [pnames, tnames, rnames]
 
 
 func _on_host_pressed() -> void:
@@ -510,21 +866,50 @@ func _on_join_pressed() -> void:
 	_refresh_controls()
 
 
+func _format_seat_loadout_summary(dcfg: Dictionary) -> String:
+	var p_arr: PackedStringArray = []
+	for pv in dcfg.get("power_cards", []):
+		var pid := str(pv)
+		p_arr.append(str(Catalog.get_power_card_loc(pid, _lang).get("short", pid)))
+	var t_arr: PackedStringArray = []
+	for tv in dcfg.get("table_relics", []):
+		var tid := str(tv)
+		var info := Config.get_mp_item_info(tid, _lang)
+		t_arr.append(str(info.get("name", tid)) if not info.is_empty() else tid)
+	var r_arr: PackedStringArray = []
+	for rv in dcfg.get("passive_relics", []):
+		var rid := str(rv)
+		r_arr.append(str(Catalog.get_relic_loc(rid, _lang).get("name", rid)))
+	var sw_id := str(dcfg.get("sword_skin", "SWORD_IRON"))
+	var sw_name := str(Catalog.get_sword_skin_loc(sw_id, _lang).get("name", sw_id))
+	var p_str := ", ".join(p_arr) if not p_arr.is_empty() else "None"
+	var t_str := ", ".join(t_arr) if not t_arr.is_empty() else "None"
+	var r_str := ", ".join(r_arr) if not r_arr.is_empty() else "None"
+	return "⚔ %s  |  ⚡ %s  |  🏺 %s  |  🧿 %s" % [sw_name, p_str, t_str, r_str]
+
+
 func _on_lobby_updated(seats: Array, settings: Dictionary) -> void:
 	for c in seats_box.get_children():
 		c.queue_free()
 
+	var rm := str(settings.get("rule_mode", Config.RULE_CAMPAIGN_VAULT))
 	for s in seats:
 		var si := int(s["seat_idx"])
 		var is_rdy := bool(s["ready"])
 		var card := PanelContainer.new()
 		var border_col := Color(0.78, 0.64, 0.28, 0.85) if is_rdy else Color(0.46, 0.36, 0.24, 0.65)
 		card.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.12, 0.09, 0.065, 0.92), border_col, 2, 9, 10))
+		var seat_vb := VBoxContainer.new()
+		seat_vb.add_theme_constant_override("separation", 4)
+		card.add_child(seat_vb)
+
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
-		card.add_child(row)
-		var arch := Config.get_archetype(str(s.get("deck_cfg", {}).get("archetype_id", "GUILLOTINE_ACES")))
-		var aces := 4 + int(s.get("deck_cfg", {}).get("extra_aces", 0))
+		seat_vb.add_child(row)
+		var raw_dcfg: Dictionary = s.get("deck_cfg", {})
+		var eff_dcfg := Config.sanitize_deck_cfg(raw_dcfg, rm)
+		var arch := Config.get_archetype(str(eff_dcfg.get("archetype_id", "GUILLOTINE_ACES")))
+		var aces := 4 + int(eff_dcfg.get("extra_aces", 0))
 		var lbl := Label.new()
 		var kind := "HOST" if si == 0 else ("BOT" if bool(s["is_bot"]) else "PLAYER")
 		var rdy := "✅ READY" if is_rdy else "⏳ WAIT"
@@ -539,10 +924,23 @@ func _on_lobby_updated(seats: Array, settings: Dictionary) -> void:
 			_style_tavern_btn(kick, Color(0.26, 0.11, 0.10, 0.94), Color(0.76, 0.36, 0.28, 0.85), false, 6)
 			kick.pressed.connect(func(): mp_net.remove_seat(si))
 			row.add_child(kick)
+
+		var loadout_lbl := Label.new()
+		loadout_lbl.text = _format_seat_loadout_summary(eff_dcfg)
+		loadout_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_apply_font(loadout_lbl, false)
+		loadout_lbl.add_theme_font_size_override("font_size", 12)
+		loadout_lbl.add_theme_color_override("font_color", Color(0.76, 0.70, 0.58))
+		seat_vb.add_child(loadout_lbl)
+
 		seats_box.add_child(card)
 
-	var rm := str(settings.get("rule_mode", "OP_CHAOS"))
-	rule_btn.text = "Ruleset: ⚡ OP CHAOS (3× Aces = Instant Kill on Chosen Target! + OP Relics)" if rm == "OP_CHAOS" else "Ruleset: ⚖ Classic Brawl"
+	if rm == Config.RULE_BALANCED_ARENA:
+		rule_btn.text = "Ruleset: ⚖ Balanced Arena (Preset Archetype Decks + Fair Relics)"
+	else:
+		rule_btn.text = "Ruleset: 🏛 Campaign Vault (Your Unlocked Power Cards, Relics & Sword)"
+	if vault_box != null:
+		vault_box.modulate = Color(0.62, 0.60, 0.56, 0.85) if rm == Config.RULE_BALANCED_ARENA else Color(1, 1, 1, 1)
 	_refresh_controls()
 
 
