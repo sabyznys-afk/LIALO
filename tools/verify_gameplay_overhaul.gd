@@ -7,7 +7,7 @@ const QuillScript = preload("res://scripts/handwriting_quill.gd")
 const HeartbeatHpDisplayScript = preload("res://scripts/heartbeat_hp_display.gd")
 const Catalog = preload("res://scripts/lialo_catalog.gd")
 
-const SHOT_DIR := "C:/Users/arnos/.gemini/antigravity/brain/a20e3f18-d942-46fa-80e3-721c54108b6d/scratch"
+var SHOT_DIR: String = OS.get_user_data_dir() + "/verify_shots"
 
 var _failures: Array[String] = []
 
@@ -23,6 +23,10 @@ func _assert(cond: bool, msg: String) -> void:
 
 
 func _initialize() -> void:
+	create_timer(60.0).timeout.connect(func():
+		printerr("TIMEOUT: verify_gameplay_overhaul exceeded 60s")
+		quit(124)
+	)
 	DirAccess.make_dir_recursive_absolute(SHOT_DIR)
 	call_deferred("_run_all")
 
@@ -33,6 +37,9 @@ func _wait_frames(n: int) -> void:
 
 
 func _save_shot(filename: String) -> void:
+	if DisplayServer.get_name() == "headless":
+		print("  SHOT SKIPPED (headless): %s" % filename)
+		return
 	await RenderingServer.frame_post_draw
 	var vp := root
 	if vp == null:
@@ -319,29 +326,32 @@ func _run_all() -> void:
 		hc_layer.add_child(tag)
 		h_centers.append(hw.position + hw.size * 0.5 * 1.85)
 	await _wait_frames(6)
-	await RenderingServer.frame_post_draw
-	var hc_img := root.get_texture().get_image()
-	_assert(hc_img != null and not hc_img.is_empty(), "Failed to capture heart closeup viewport image")
-	if hc_img != null and not hc_img.is_empty():
-		var redness := []
-		for ctr in h_centers:
-			var sum_red := 0.0
-			var cnt_px := 0
-			var cx := int(ctr.x)
-			var cy := int(ctr.y)
-			for dy in range(-28, 29, 4):
-				for dx in range(-28, 29, 4):
-					var px := hc_img.get_pixel(clampi(cx + dx, 0, hc_img.get_width() - 1), clampi(cy + dy, 0, hc_img.get_height() - 1))
-					sum_red += px.r - (px.g + px.b) * 0.5
-					cnt_px += 1
-			redness.append(sum_red / maxf(1.0, float(cnt_px)))
-		print("  Heart pixel redness (10->5->2->0 HP): %.3f -> %.3f -> %.3f -> %.3f" % [redness[0], redness[1], redness[2], redness[3]])
-		_assert(redness[0] > redness[1] + 0.02, "10/10 heart must be significantly redder than 5/10 (%.3f vs %.3f)" % [redness[0], redness[1]])
-		_assert(redness[1] > redness[2] + 0.02, "5/10 heart must be significantly redder than 2/10 (%.3f vs %.3f)" % [redness[1], redness[2]])
-		_assert(redness[0] > redness[3] + 0.05, "10/10 heart must be much redder than 0/10 (%.3f vs %.3f)" % [redness[0], redness[3]])
-		var shot_path := "%s/verify_heart_2d_closeup.png" % SHOT_DIR
-		_assert(hc_img.save_png(shot_path) == OK, "Failed to save verify_heart_2d_closeup.png")
-		print("  SHOT SAVED: %s (%dx%d)" % [shot_path, hc_img.get_width(), hc_img.get_height()])
+	if DisplayServer.get_name() != "headless":
+		await RenderingServer.frame_post_draw
+		var hc_img := root.get_texture().get_image()
+		_assert(hc_img != null and not hc_img.is_empty(), "Failed to capture heart closeup viewport image")
+		if hc_img != null and not hc_img.is_empty():
+			var redness := []
+			for ctr in h_centers:
+				var sum_red := 0.0
+				var cnt_px := 0
+				var cx := int(ctr.x)
+				var cy := int(ctr.y)
+				for dy in range(-28, 29, 4):
+					for dx in range(-28, 29, 4):
+						var px := hc_img.get_pixel(clampi(cx + dx, 0, hc_img.get_width() - 1), clampi(cy + dy, 0, hc_img.get_height() - 1))
+						sum_red += px.r - (px.g + px.b) * 0.5
+						cnt_px += 1
+				redness.append(sum_red / maxf(1.0, float(cnt_px)))
+			print("  Heart pixel redness (10->5->2->0 HP): %.3f -> %.3f -> %.3f -> %.3f" % [redness[0], redness[1], redness[2], redness[3]])
+			_assert(redness[0] > redness[1] + 0.02, "10/10 heart must be significantly redder than 5/10 (%.3f vs %.3f)" % [redness[0], redness[1]])
+			_assert(redness[1] > redness[2] + 0.02, "5/10 heart must be significantly redder than 2/10 (%.3f vs %.3f)" % [redness[1], redness[2]])
+			_assert(redness[0] > redness[3] + 0.05, "10/10 heart must be much redder than 0/10 (%.3f vs %.3f)" % [redness[0], redness[3]])
+			var shot_path := "%s/verify_heart_2d_closeup.png" % SHOT_DIR
+			_assert(hc_img.save_png(shot_path) == OK, "Failed to save verify_heart_2d_closeup.png")
+			print("  SHOT SAVED: %s (%dx%d)" % [shot_path, hc_img.get_width(), hc_img.get_height()])
+	else:
+		print("  SHOT SKIPPED (headless): verify_heart_2d_closeup.png")
 	hc_layer.queue_free()
 
 	bt.queue_free()

@@ -6,6 +6,9 @@ build/
 *.zip
 
 # Temporary asset backups & Python cache
+**/__pycache__/
+*.pyc
+*.blend1
 tools/__pycache__/
 tools/backup_audio_orig/
 tools/backup_spec_orig/

@@ -31,7 +31,11 @@ func _wait_frames(n: int) -> void:
 
 
 func _save_shot(fname: String) -> void:
-	await _wait_frames(4)
+	await _wait_frames(2)
+	if DisplayServer.get_name() == "headless":
+		print("  SHOT SKIPPED (headless): %s" % fname)
+		return
+	await _wait_frames(2)
 	var img := root.get_viewport().get_texture().get_image()
 	_assert(img != null and not img.is_empty(), "Empty viewport capture for " + fname)
 	if img != null and not img.is_empty():
@@ -43,6 +47,10 @@ func _save_shot(fname: String) -> void:
 
 
 func _initialize() -> void:
+	create_timer(60.0).timeout.connect(func():
+		printerr("TIMEOUT: verify_master_overhaul exceeded 60s")
+		quit(124)
+	)
 	call_deferred("_run_all")
 
 
