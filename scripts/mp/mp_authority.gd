@@ -8,6 +8,7 @@ extends RefCounted
 const ScoreEng = preload("res://scripts/scoring_engine.gd")
 const Catalog = preload("res://scripts/lialo_catalog.gd")
 const Config = preload("res://scripts/mp/mp_config.gd")
+const MAX_MP_ITEM_USES: int = 3
 
 signal broadcast_public_state(state: Dictionary)
 signal send_private_hand(peer_id: int, seat_idx: int, hand: Array, items: Array, meta: Dictionary)
@@ -87,6 +88,7 @@ func setup_match(lobby_seats: Array, settings: Dictionary) -> void:
 			"spent_pile": [],
 			"hand": [],
 			"items": item_list,
+			"item_uses": {},
 		}
 		seats.append(seat)
 
@@ -360,7 +362,15 @@ func handle_use_item(peer_id: int, seat_idx_hint: int, item_id: String, target_s
 
 	var tgt := _resolve_target_seat(turn_seat, target_seat)
 	var tgt_s := _get_seat(tgt)
-	s["items"].remove_at(idx)
+	var item_uses: Dictionary = s.get("item_uses", {})
+	var new_uses := int(item_uses.get(item_id, 0)) + 1
+	item_uses[item_id] = new_uses
+	s["item_uses"] = item_uses
+	var shattered := (new_uses >= MAX_MP_ITEM_USES)
+	var uses_left := maxi(0, MAX_MP_ITEM_USES - new_uses)
+	if shattered:
+		s["items"].remove_at(idx)
+		item_uses.erase(item_id)
 
 	match item_id:
 		"MYS_IRON_GAUNTLET":
@@ -401,6 +411,7 @@ func handle_use_item(peer_id: int, seat_idx_hint: int, item_id: String, target_s
 			if not tgt_s.is_empty():
 				if not tgt_s["items"].is_empty():
 					var stolen_it: String = str(tgt_s["items"].pop_back())
+					tgt_s.get("item_uses", {}).erase(stolen_it)
 					s["items"].append(stolen_it)
 					banner_text = "🗝 %s unlocked & stole %s's Relic!" % [s["name"], tgt_s["name"]]
 				elif not tgt_s["hand"].is_empty():
@@ -408,7 +419,14 @@ func handle_use_item(peer_id: int, seat_idx_hint: int, item_id: String, target_s
 					s["hand"].append(sc)
 					banner_text = "🗝 %s pickpocketed a card from %s!" % [s["name"], tgt_s["name"]]
 
-	broadcast_vfx_event.emit({"type": "ITEM_CAST", "from_seat": turn_seat, "to_seat": tgt, "item_id": item_id})
+	broadcast_vfx_event.emit({
+		"type": "ITEM_CAST",
+		"from_seat": turn_seat,
+		"to_seat": tgt,
+		"item_id": item_id,
+		"uses_left": uses_left,
+		"shattered": shattered,
+	})
 	if _check_match_winner():
 		return
 	_sync_all()
@@ -985,4 +1003,6 @@ func _send_private_only(s: Dictionary, meta: Dictionary) -> void:
 	if bool(s.get("is_bot", false)):
 		return
 	var peer_id := int(s.get("peer_id", 1))
-	send_private_hand.emit(peer_id, int(s["seat_idx"]), s["hand"].duplicate(), s["items"].duplicate(), meta)
+	var out_meta := meta.duplicate(true)
+	out_meta["item_uses"] = s.get("item_uses", {}).duplicate()
+	send_private_hand.emit(peer_id, int(s["seat_idx"]), s["hand"].duplicate(), s["items"].duplicate(), out_meta)

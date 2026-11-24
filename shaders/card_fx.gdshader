@@ -135,7 +135,7 @@ void fragment() {
 			vec3 mage_c = mix(violet_aura, cyan_aura, clamp(mage_charge * 0.55 + flame_wisps * 0.60 + 0.18 * sin(TIME * 2.1 + uv.y * 6.0), 0.0, 1.0));
 			float magic_mask = clamp(outer_ring + inner_ring * 0.85 + glyphs * 1.10 + star * 0.70, 0.0, 1.35);
 			// Subtle arcane tint in center so card art stays crisp & legible, strong luminous aura on border
-			base = mix(base, mage_c * 0.28 + base * 0.80, 0.14 + aura_band * 0.24 + mage_charge * 0.10);
+			base = mix(base, mage_c * 0.22 + base * 0.86, 0.08 + aura_band * 0.20 + mage_charge * 0.08);
 			vec3 border_glow = mage_c * (rim_mask * (1.05 + flame_wisps * 0.95) + outer_halo * (0.85 + pulse * 0.55) + aura_band * flame_wisps * 0.52);
 			vec3 circle_glow = mage_c * (magic_mask * (0.34 + mage_charge * 0.58));
 			fx_emit += (border_glow + circle_glow + mage_c * fresnel * 0.65) * (0.78 + pulse * 0.36 + mage_charge * 0.45);

@@ -967,3 +967,194 @@ static func attach_card_class_aura(card_node: Node3D, edition_id: int, col: Colo
 	p.color_ramp = gr
 	card_node.add_child(p)
 
+## Bespoke multi-phase 3D activation ritual animation for every tabletop item / relic!
+static func play_complex_table_item_anim(parent: Node3D, item_node: Node3D, origin: Vector3, target: Vector3, item_id: String, col: Color) -> void:
+	if not is_instance_valid(parent):
+		return
+	var id_up := item_id.to_upper()
+	var item_pos := origin + Vector3(0.0, 0.08, 0.0)
+
+	# Stage 0: Bespoke 3D physical choreography on the tabletop item mesh itself
+	if is_instance_valid(item_node):
+		var bp: Vector3 = item_node.get_meta("base_pos", item_node.position)
+		var bs: Vector3 = item_node.get_meta("base_scale", Vector3.ONE)
+		var br: Vector3 = item_node.get_meta("base_rot", item_node.rotation_degrees)
+		item_node.set_meta("base_rot", br)
+		var tw := item_node.create_tween()
+		if "BELL" in id_up or "FUJARA" in id_up or "MUG" in id_up:
+			# Belfry swing & resonant hop
+			tw.tween_property(item_node, "position:y", bp.y + 0.24, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			tw.parallel().tween_property(item_node, "rotation_degrees:z", br.z + 32.0, 0.10)
+			tw.tween_property(item_node, "rotation_degrees:z", br.z - 30.0, 0.12).set_trans(Tween.TRANS_SINE)
+			tw.tween_property(item_node, "rotation_degrees:z", br.z + 18.0, 0.10)
+			tw.tween_property(item_node, "rotation_degrees:z", br.z, 0.12)
+			tw.parallel().tween_property(item_node, "position", bp, 0.18).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+		elif "ASH_GLASS" in id_up or "CHRONO" in id_up or "HOUR" in id_up or "CLOCK" in id_up:
+			# Hourglass chronostasis levitation + 180-deg flip
+			tw.tween_property(item_node, "position:y", bp.y + 0.30, 0.16).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			tw.parallel().tween_property(item_node, "rotation_degrees:z", br.z + 180.0, 0.22).set_trans(Tween.TRANS_BACK)
+			tw.tween_interval(0.14)
+			tw.tween_property(item_node, "rotation_degrees:z", br.z + 360.0, 0.20)
+			tw.parallel().tween_property(item_node, "position", bp, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+		elif "HORN" in id_up or "BOOT" in id_up or "WOODCUTTER" in id_up or "FORGE" in id_up or "GAUNTLET" in id_up:
+			# Heavy anvil leap & slam onto table
+			tw.tween_property(item_node, "position:y", bp.y + 0.32, 0.14).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			tw.parallel().tween_property(item_node, "scale", bs * 1.42, 0.14)
+			tw.parallel().tween_property(item_node, "rotation_degrees:x", br.x - 24.0, 0.14)
+			tw.tween_property(item_node, "position:y", bp.y, 0.08).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_IN)
+			tw.parallel().tween_property(item_node, "rotation_degrees:x", br.x, 0.08)
+			tw.parallel().tween_property(item_node, "scale", bs, 0.18).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+		elif "SCALES" in id_up or "GREED" in id_up or "LEDGER" in id_up or "ROYAL" in id_up or "SOVEREIGN" in id_up or "MIRROR" in id_up:
+			# Balance beam tip-rock & gilded flash
+			tw.tween_property(item_node, "position:y", bp.y + 0.20, 0.12)
+			tw.parallel().tween_property(item_node, "rotation_degrees:z", br.z + 24.0, 0.12)
+			tw.tween_property(item_node, "rotation_degrees:z", br.z - 22.0, 0.14)
+			tw.tween_property(item_node, "rotation_degrees", Vector3(br.x, br.y + 360.0, br.z), 0.22)
+			tw.parallel().tween_property(item_node, "position", bp, 0.18).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+		elif "CHAIN" in id_up or "BOW" in id_up or "FANG" in id_up or "KNUCKLE" in id_up or "BLOOD" in id_up:
+			# Coil-back & high-velocity strike lunge toward target
+			var dir_to := (target - origin)
+			dir_to.y = 0.0
+			var lunge := dir_to.normalized() * 0.18 if dir_to.length() > 0.01 else Vector3(0.0, 0.0, -0.18)
+			tw.tween_property(item_node, "position", bp - lunge * 0.45 + Vector3(0.0, 0.14, 0.0), 0.10)
+			tw.parallel().tween_property(item_node, "scale", bs * 1.32, 0.10)
+			tw.tween_property(item_node, "position", bp + lunge + Vector3(0.0, 0.10, 0.0), 0.09).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+			tw.tween_property(item_node, "position", bp, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			tw.parallel().tween_property(item_node, "scale", bs, 0.22)
+		else:
+			# Arcane spiral orbit & levitation bloom (Censer, Mask, Phial, Feather, Grimoire)
+			tw.tween_property(item_node, "position:y", bp.y + 0.28, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			tw.parallel().tween_property(item_node, "rotation_degrees:y", br.y + 720.0, 0.44).set_trans(Tween.TRANS_CUBIC)
+			tw.parallel().tween_property(item_node, "scale", bs * 1.38, 0.16)
+			tw.tween_property(item_node, "scale", bs, 0.22)
+			tw.parallel().tween_property(item_node, "position", bp, 0.20).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+
+	# Stage 1: Category-specific layered 3D VFX choreography
+	if "BLOOD" in id_up or "FANG" in id_up or "CRIMSON" in id_up or "FINAL_TOLL" in id_up:
+		ring(parent, item_pos, col, 0.36, 0.34, 0.06, 2.1, 8.0)
+		tybw_reiatsu_pillar(parent, item_pos, col, 1.35, 0.24, 0.65)
+		dagger_slash(parent, target, origin, 1.15)
+		tybw_slash_arc(parent, item_pos, target, col.lightened(0.18), true, 1.05, -26.0)
+		parent.get_tree().create_timer(0.14).timeout.connect(func():
+			if is_instance_valid(parent):
+				siphon(parent, target, item_pos, Color(0.96, 0.16, 0.24), 24, 0.62)
+				ink_splat(parent, target, 18, 1.05)
+		)
+	elif "BOW" in id_up or "STORM" in id_up or "OVERCHARGE" in id_up or "LIGHTNING" in id_up:
+		light_pillar(parent, item_pos, col, 1.5, 0.55)
+		compass_spin(parent, target, col.lightened(0.25))
+		tybw_quincy_volley(parent, item_pos, target, 6, col)
+		parent.get_tree().create_timer(0.20).timeout.connect(func():
+			if is_instance_valid(parent):
+				beam(parent, item_pos, target, col.lightened(0.35), 0.28)
+				ring(parent, target, col, 0.52, 0.40, 0.08, 1.9, 9.0)
+		)
+	elif "BELL" in id_up or "FUJARA" in id_up or "MUG" in id_up:
+		feather_vortex(parent, item_pos, 1.1)
+		for wi in range(4):
+			var wave_d := float(wi) * 0.09
+			var w_rad := 0.26 + float(wi) * 0.14
+			parent.get_tree().create_timer(wave_d).timeout.connect(func():
+				if is_instance_valid(parent):
+					ring(parent, item_pos + Vector3(0.0, 0.04 * float(wi), 0.0), col.lightened(0.25), w_rad, 0.42, 0.06, 2.2, 8.0)
+			)
+		beam(parent, item_pos, target, col.lightened(0.30), 0.34)
+	elif "ASH_GLASS" in id_up or "CHRONO" in id_up or "HOUR" in id_up or "CLOCK" in id_up:
+		sigil_clock(parent, item_pos, target, 1.25)
+		shard_burst(parent, item_pos, col.lightened(0.20), 14, 0.45)
+		parent.get_tree().create_timer(0.16).timeout.connect(func():
+			if is_instance_valid(parent):
+				siphon(parent, target, item_pos, col, 20, 0.58)
+				sigil_clock(parent, target, item_pos, 1.10)
+		)
+	elif "HORN" in id_up or "BOOT" in id_up or "WOODCUTTER" in id_up or "FORGE" in id_up or "GAUNTLET" in id_up:
+		knight_heavy_steel_slam(parent, item_pos, col)
+		embers(parent, item_pos, 32, 1.1)
+		parent.get_tree().create_timer(0.12).timeout.connect(func():
+			if is_instance_valid(parent):
+				tybw_slash_arc(parent, item_pos, target, col.lightened(0.20), true, 1.15, 24.0)
+				ring(parent, target, col, 0.48, 0.38, 0.09, 2.0, 9.0)
+		)
+	elif "MASK" in id_up or "HEX" in id_up or "RED_SEAL" in id_up or "EYE" in id_up or "KEY" in id_up:
+		mage_arcane_cast(parent, item_pos, target, col)
+		thief_shunpo_strike(parent, item_pos, target, col.lightened(0.22))
+		ink_splat(parent, item_pos, 20, 1.1)
+	elif "CENSER" in id_up or "ALEMBIC" in id_up or "PHIAL" in id_up or "LANTERN" in id_up:
+		embers(parent, item_pos, 46, 1.35)
+		tybw_reiatsu_pillar(parent, item_pos, col, 1.45, 0.26, 0.60)
+		item_ritual_activation(parent, item_pos, target, col.lightened(0.25))
+		parent.get_tree().create_timer(0.18).timeout.connect(func():
+			if is_instance_valid(parent):
+				embers(parent, target, 36, 1.15)
+				ring(parent, target, col.lightened(0.2), 0.55, 0.42, 0.08, 2.1, 8.0)
+		)
+	elif "SCALES" in id_up or "GREED" in id_up or "LEDGER" in id_up or "ROYAL" in id_up or "SOVEREIGN" in id_up or "MIRROR" in id_up or "COINS" in id_up:
+		merchant_gold_vault(parent, item_pos)
+		gold_flakes(parent, item_pos, 42, 1.25)
+		beam(parent, item_pos + Vector3(0.05, 0.0, 0.0), target, Color(1.0, 0.86, 0.28), 0.36)
+		beam(parent, item_pos - Vector3(0.05, 0.0, 0.0), target, Color(1.0, 0.94, 0.58), 0.36)
+	elif "CHAIN" in id_up or "KNUCKLE" in id_up or "DICE" in id_up:
+		compass_spin(parent, target, col)
+		beam(parent, item_pos, target, col.lightened(0.18), 0.38)
+		shard_burst(parent, target, col, 14, 0.52)
+		ring(parent, target, col.lightened(0.25), 0.48, 0.40, 0.07, 1.9, 8.0)
+	else:
+		# Phoenix Box, Phoenix Feather, Grimoire, Canopy, Purist, etc.
+		feather_vortex(parent, item_pos, 1.25)
+		tybw_quincy_volley(parent, item_pos, target, 5, col)
+		light_pillar(parent, item_pos, col, 1.4, 0.60)
+		relic_tybw_ritual(parent, item_pos, target, item_id, col)
+
+## Shatters and removes a tabletop item after exhausting all 3 uses!
+static func shatter_table_item(parent: Node3D, item_node: Node3D, gpos: Vector3, col: Color) -> void:
+	if not is_instance_valid(parent):
+		return
+	var s_pos := gpos + Vector3(0.0, 0.06, 0.0)
+	shard_burst(parent, s_pos, col, 22, 0.65)
+	ink_splat(parent, s_pos, 26, 1.2)
+	ring(parent, s_pos, Color(1.0, 0.34, 0.22), 0.52, 0.46, 0.09, 2.3, 10.0)
+	burst(parent, s_pos, col.lightened(0.30), 28, 1.5, 0.55, 0.030, 1.8, true, 160.0, Vector3.UP, true)
+
+	# 12 flying physical 3D fragments exploding out of the broken item
+	var shard_mesh := BoxMesh.new()
+	shard_mesh.size = Vector3(0.036, 0.022, 0.028)
+	var smat := StandardMaterial3D.new()
+	smat.albedo_color = col.darkened(0.18)
+	smat.emission_enabled = true
+	smat.emission = col
+	smat.emission_energy_multiplier = 2.4
+	smat.metallic = 0.55
+	smat.roughness = 0.28
+	smat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	for i in range(12):
+		var frag := MeshInstance3D.new()
+		frag.mesh = shard_mesh
+		frag.material_override = smat
+		parent.add_child(frag)
+		frag.global_position = s_pos + Vector3(randf_range(-0.04, 0.04), randf_range(0.0, 0.05), randf_range(-0.04, 0.04))
+		frag.rotation_degrees = Vector3(randf() * 360.0, randf() * 360.0, randf() * 360.0)
+		var ang := float(i) * (TAU / 12.0) + randf_range(-0.22, 0.22)
+		var dist := randf_range(0.24, 0.58)
+		var peak := s_pos + Vector3(cos(ang) * dist * 0.55, randf_range(0.18, 0.38), sin(ang) * dist * 0.55)
+		var land := Vector3(s_pos.x + cos(ang) * dist, s_pos.y - 0.04, s_pos.z + sin(ang) * dist)
+		var ftw := frag.create_tween()
+		ftw.tween_property(frag, "global_position", peak, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		ftw.parallel().tween_property(frag, "rotation_degrees", frag.rotation_degrees + Vector3(360.0, 520.0, 280.0), 0.55)
+		ftw.tween_property(frag, "global_position", land, 0.24).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		ftw.tween_property(frag, "scale", Vector3(0.01, 0.01, 0.01), 0.22)
+		_auto_free(parent, frag, 0.68)
+
+	if is_instance_valid(item_node):
+		for ch in item_node.get_children():
+			if ch is Area3D:
+				(ch as Area3D).monitoring = false
+				(ch as Area3D).monitorable = false
+				(ch as Area3D).collision_layer = 0
+		var itw := item_node.create_tween()
+		itw.tween_property(item_node, "scale", Vector3(1.35, 0.22, 1.35), 0.08)
+		itw.tween_property(item_node, "scale", Vector3(0.001, 0.001, 0.001), 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		itw.tween_callback(func():
+			if is_instance_valid(item_node):
+				item_node.visible = false
+		)
+

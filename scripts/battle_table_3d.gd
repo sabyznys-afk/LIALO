@@ -504,6 +504,10 @@ var table_arcane_spin_boost: float = 0.0
 var table_relic_rack_root: Node3D
 var relic_3d_nodes: Dictionary = {}
 var invoked_table_relics: Dictionary = {}
+const MAX_TABLE_ITEM_USES: int = 3
+var table_item_uses: Dictionary = {}
+var broken_table_items: Dictionary = {}
+var active_player_count: int = 2
 var run_table_relics: Array = []
 var table_relic_blood_seal_active: bool = false
 var table_relic_hollow_mask_active: bool = false
@@ -809,6 +813,119 @@ func _begin_player_item_review_stage(play_fx: bool = true) -> void:
 		wager_showcase_boost = 0.75
 	_refresh_table_labels()
 
+func _play_table_items_intro_showcase() -> void:
+	if tutorial_mode:
+		return
+	var showcase_nodes: Array[Node3D] = []
+	for rn in relic_3d_nodes.values():
+		if rn is Node3D and is_instance_valid(rn) and (rn as Node3D).visible:
+			showcase_nodes.append(rn as Node3D)
+	for ptn in purchased_table_item_nodes:
+		if ptn is Node3D and is_instance_valid(ptn) and (ptn as Node3D).visible:
+			showcase_nodes.append(ptn as Node3D)
+	if is_instance_valid(magic_puf_bottle) and magic_puf_bottle.visible:
+		showcase_nodes.append(magic_puf_bottle)
+	if is_instance_valid(tavern_bell_root) and tavern_bell_root.visible:
+		showcase_nodes.append(tavern_bell_root)
+	if is_instance_valid(player_sword_root) and player_sword_root.visible:
+		showcase_nodes.append(player_sword_root)
+
+	for si in range(showcase_nodes.size()):
+		var sn: Node3D = showcase_nodes[si]
+		var pid_s := str(sn.get_meta("prop_id", sn.get_meta("relic_id", "item")))
+		var id_u := pid_s.to_upper()
+		var item_col := Color(0.96, 0.80, 0.36)
+		if pid_s.begins_with("trelic:"):
+			item_col = Catalog.get_table_relic_loc(pid_s.substr(7), opts_language).get("col", item_col)
+		elif pid_s.begins_with("relic:"):
+			item_col = Catalog.get_relic_loc(pid_s.substr(6), opts_language).get("col", item_col)
+		elif sn.has_meta("item_col"):
+			item_col = sn.get_meta("item_col")
+		elif "SWORD" in id_u:
+			item_col = Color(0.95, 0.32, 0.26)
+		elif "PHIAL" in id_u or sn == magic_puf_bottle:
+			item_col = Color(1.0, 0.48, 0.16)
+		var bp: Vector3 = sn.get_meta("base_pos", sn.position)
+		var bs: Vector3 = sn.get_meta("base_scale", sn.scale)
+		var br: Vector3 = sn.get_meta("base_rot", sn.rotation_degrees)
+		sn.set_meta("base_pos", bp)
+		sn.set_meta("base_scale", bs)
+		sn.set_meta("base_rot", br)
+		var delay := 0.08 * float(si)
+		var tw := sn.create_tween()
+		if delay > 0.001:
+			tw.tween_interval(delay)
+		tw.tween_callback(func():
+			if is_instance_valid(self) and is_instance_valid(sn):
+				var gp := sn.global_position + Vector3(0.0, 0.06, 0.0)
+				Fx.ring(self, gp, item_col, 0.24, 0.36, 0.04, 1.9, 6.0)
+				Fx.burst(self, gp, item_col.lightened(0.25), 10, 0.75, 0.38, 0.020, 1.6, true, 120.0, Vector3.UP, true)
+				emit_signal("play_sfx_pitched_requested", "card_hover", 0.92 + float(si % 5) * 0.08)
+		)
+		tw.tween_property(sn, "position:y", bp.y + 0.18, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(sn, "scale", bs * 1.26, 0.16)
+		tw.parallel().tween_property(sn, "rotation_degrees:y", br.y + 360.0, 0.36).set_trans(Tween.TRANS_CUBIC)
+		tw.tween_property(sn, "position:y", bp.y, 0.18).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(sn, "scale", bs, 0.18)
+
+func _can_use_table_item(item_id: String) -> bool:
+	if broken_table_items.has(item_id):
+		return false
+	return int(table_item_uses.get(item_id, 0)) < MAX_TABLE_ITEM_USES
+
+func _record_table_item_activation(item_id: String, item_node: Variant, target_override: Vector3 = Vector3.ZERO, anim_key: String = "") -> int:
+	var n_node: Node3D = item_node as Node3D if item_node is Node3D else null
+	var origin := n_node.global_position if is_instance_valid(n_node) else (discard_pile_root.global_position if is_instance_valid(discard_pile_root) else Vector3(0.0, 0.85, 0.0))
+	var target := target_override
+	if target == Vector3.ZERO:
+		target = opp_silhouette_root.global_position + Vector3(0.0, 0.65, 0.18) if is_instance_valid(opp_silhouette_root) else Vector3(0.0, 1.25, -1.35)
+	var col := Color(0.96, 0.78, 0.34)
+	var item_name := item_id
+	var t_info := Catalog.get_table_relic_loc(item_id, opts_language)
+	if not t_info.is_empty():
+		col = t_info.get("col", col)
+		item_name = str(t_info.get("name", item_id))
+	else:
+		var r_info := Catalog.get_relic_loc(item_id, opts_language)
+		if not r_info.is_empty():
+			col = r_info.get("col", col)
+			item_name = str(r_info.get("name", item_id))
+		elif is_instance_valid(n_node) and n_node.has_meta("item_col"):
+			col = n_node.get_meta("item_col")
+			item_name = str(n_node.get_meta("hover_title", item_id))
+
+	Fx.play_complex_table_item_anim(self, n_node, origin, target, anim_key if anim_key != "" else item_id, col)
+
+	var new_uses := int(table_item_uses.get(item_id, 0)) + 1
+	table_item_uses[item_id] = new_uses
+	var rem := maxi(0, MAX_TABLE_ITEM_USES - new_uses)
+
+	if is_instance_valid(n_node):
+		var rtag := n_node.get_node_or_null("RelicHoverTag") as Label3D
+		if rtag:
+			if rem <= 0:
+				rtag.text = _tr("%s [SHATTERED]", "%s [ROZBITO]") % item_name
+			else:
+				var short_tag := str(t_info.get("short", "")) if not t_info.is_empty() else ""
+				if short_tag != "":
+					rtag.text = "%s [%d/%d]\n[%s]" % [item_name, rem, MAX_TABLE_ITEM_USES, short_tag]
+				else:
+					rtag.text = "%s [%d/%d]" % [item_name, rem, MAX_TABLE_ITEM_USES]
+
+	if rem <= 0:
+		broken_table_items[item_id] = true
+		invoked_table_relics[item_id] = true
+		Fx.float_number(self, origin + Vector3(0.0, 0.26, 0.0), _tr("💥 SHATTERED! (0/3)", "💥 ROZBITO! (0/3)"), Color(1.0, 0.36, 0.24), 52, 0.20, 0.90, 1.45)
+		get_tree().create_timer(0.50).timeout.connect(func():
+			if is_instance_valid(self):
+				Fx.shatter_table_item(self, n_node, origin, col)
+				emit_signal("play_sfx_pitched_requested", "card_slam", 0.72)
+		)
+	else:
+		invoked_table_relics.erase(item_id)
+		Fx.float_number(self, origin + Vector3(0.0, 0.26, 0.0), "%d/%d" % [rem, MAX_TABLE_ITEM_USES], col.lightened(0.32), 46, 0.16, 0.65, 1.25)
+	return rem
+
 func _confirm_item_review_to_cards(play_fx: bool = true) -> void:
 	if turn_stage != TurnStage.ITEM_REVIEW and cam_view_mode == CameraViewMode.CARDS:
 		return
@@ -1005,7 +1122,7 @@ func _setup_tutorial_beacon_3d() -> void:
 	var w_plane := PlaneMesh.new(); w_plane.size = Vector2(0.46, 0.46)
 	wager_3d_ring.mesh = w_plane
 	wager_3d_ring.material_override = _make_arrow_compass_ring_mat(Color(1.0, 0.82, 0.28, 0.92), 8.0, 1.35)
-	wager_3d_ring.position = Vector3(-0.34, 0.817, 0.14)
+	wager_3d_ring.position = Vector3(-0.56, 0.818, 0.44)
 	wager_3d_ring.visible = false
 	add_child(wager_3d_ring)
 
@@ -4221,7 +4338,7 @@ func _build_3d_card_node(card_data: Dictionary, face_up: bool, back_border_col: 
 	var is_mage_aura := (face_up and ed_id == "MAGE")
 	rbox.size = Vector3(0.200 if is_knight_plate else (0.202 if is_mage_aura else 0.194), 0.290 if is_knight_plate else (0.292 if is_mage_aura else 0.284), 0.0072 if is_knight_plate else (0.0055 if is_mage_aura else 0.004))
 	rim.mesh = rbox
-	rim.position = Vector3(0.0, 0.0, -0.0020 if is_knight_plate else 0.0)
+	rim.position = Vector3(0.0, 0.0, -0.0020 if is_knight_plate else (-0.0022 if is_mage_aura else 0.0))
 	var rim_col := Color(0.68, 0.78, 0.88) if is_knight_plate else (Color(0.32, 0.72, 1.0) if is_mage_aura else (acc_col if (face_up and (is_power or shader_ed_id > 0)) else back_border_col))
 	var rim_emit := acc_col * (1.15 if is_mage_aura else 0.45) if (face_up and (is_power or shader_ed_id > 0)) else Color.BLACK
 	if is_knight_plate:
@@ -4236,7 +4353,7 @@ func _build_3d_card_node(card_data: Dictionary, face_up: bool, back_border_col: 
 		var hbox := BoxMesh.new()
 		hbox.size = Vector3(0.214, 0.306, 0.0025)
 		mage_halo.mesh = hbox
-		mage_halo.position = Vector3(0.0, 0.0, -0.0032)
+		mage_halo.position = Vector3(0.0, 0.0, -0.0046)
 		var hmat := StandardMaterial3D.new()
 		hmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		hmat.albedo_color = Color(0.28, 0.68, 1.0, 0.42)
@@ -4638,7 +4755,7 @@ func _rebuild_relic_visuals() -> void:
 	if relic_bar_hbox:
 		for c in relic_bar_hbox.get_children():
 			c.queue_free()
-		relic_bar_hbox.visible = (not tutorial_mode) and (not run_active_relics.is_empty())
+		relic_bar_hbox.visible = false
 
 	if tutorial_mode:
 		return
@@ -4659,10 +4776,13 @@ func _rebuild_relic_visuals() -> void:
 	]
 	for ti in range(run_table_relics.size()):
 		var tid: String = str(run_table_relics[ti])
+		if broken_table_items.has(tid):
+			continue
 		var t_info: Dictionary = Catalog.get_table_relic_loc(tid, opts_language)
 		if t_info.is_empty() or not table_relic_rack_root:
 			continue
 		var tcol: Color = t_info.get("col", Color(0.96, 0.24, 0.34))
+		var t_rem := maxi(0, MAX_TABLE_ITEM_USES - int(table_item_uses.get(tid, 0)))
 		var tped := Node3D.new()
 		tped.name = "TableRelic_" + tid
 		tped.position = trelic_arc_slots[ti % trelic_arc_slots.size()]
@@ -4671,12 +4791,12 @@ func _rebuild_relic_visuals() -> void:
 		t_model.scale = Vector3(1.26, 1.26, 1.26)
 		var t_halo := t_model.get_node_or_null("ReadyHalo") as Node3D
 		if t_halo:
-			t_halo.visible = not invoked_table_relics.has(tid)
+			t_halo.visible = (t_rem > 0)
 		tped.add_child(t_model)
 
 		var t_lbl := Label3D.new()
 		t_lbl.name = "RelicHoverTag"
-		t_lbl.text = str(t_info.get("name", tid)) + "\n[" + str(t_info.get("short", "USE")) + "]"
+		t_lbl.text = "%s [%d/%d]\n[%s]" % [str(t_info.get("name", tid)), t_rem, MAX_TABLE_ITEM_USES, str(t_info.get("short", "USE"))]
 		t_lbl.font = df_tr
 		t_lbl.modulate = tcol.lightened(0.45)
 		t_lbl.font_size = 11
@@ -4710,10 +4830,13 @@ func _rebuild_relic_visuals() -> void:
 	var df := _get_font(true)
 	for i in range(run_active_relics.size()):
 		var rel_id: String = str(run_active_relics[i])
+		if broken_table_items.has(rel_id):
+			continue
 		var r_info: Dictionary = Catalog.get_relic_loc(rel_id, opts_language)
 		if r_info.is_empty():
 			continue
 		var rcol: Color = r_info.get("col", Color(1.0, 0.84, 0.32))
+		var r_rem := maxi(0, MAX_TABLE_ITEM_USES - int(table_item_uses.get(rel_id, 0)))
 		var r_art_p := Catalog.get_relic_art_path(rel_id)
 		var r_tex: Texture2D = Toon.tex(r_art_p) if ResourceLoader.exists(r_art_p) else null
 
@@ -4739,12 +4862,12 @@ func _rebuild_relic_visuals() -> void:
 			rel_model.scale = Vector3(1.18, 1.18, 1.18)
 			var halo_n := rel_model.get_node_or_null("ReadyHalo") as Node3D
 			if halo_n:
-				halo_n.visible = not invoked_table_relics.has(rel_id)
+				halo_n.visible = (r_rem > 0)
 			ped.add_child(rel_model)
 
 			var r_lbl3d := Label3D.new()
 			r_lbl3d.name = "RelicHoverTag"
-			r_lbl3d.text = str(r_info.get("name", r_info.get("icon", "R")))
+			r_lbl3d.text = "%s [%d/%d]" % [str(r_info.get("name", r_info.get("icon", "R"))), r_rem, MAX_TABLE_ITEM_USES]
 			r_lbl3d.font = df
 			r_lbl3d.modulate = Color(1.0, 0.96, 0.86)
 			r_lbl3d.font_size = 11
@@ -6348,10 +6471,11 @@ func _get_prop_hover_info(prop_id: String) -> Array[String]:
 		var tr_l := Catalog.get_table_relic_loc(tid, opts_language)
 		var t_title := _tr("⚔ TABLE RELIC: ", "⚔ RELIKVIE NA STŮL: ") + str(tr_l.get("name", tid))
 		var t_body := str(tr_l.get("desc", ""))
-		if invoked_table_relics.has(tid):
-			t_body += _tr("  (Spent this duel)", "  (Využito v tomto duelu)")
+		var t_rem := maxi(0, MAX_TABLE_ITEM_USES - int(table_item_uses.get(tid, 0)))
+		if broken_table_items.has(tid) or t_rem <= 0:
+			t_body += _tr("  (Shattered! 0/3 uses)", "  (Rozbito! 0/3 použití)")
 		else:
-			t_body += _tr("  [Click on Table to Activate!]", "  [Klikni na stole pro aktivaci!]")
+			t_body += _tr("  [Click on Table: %d/%d uses]" % [t_rem, MAX_TABLE_ITEM_USES], "  [Klikni na stole: %d/%d použití]" % [t_rem, MAX_TABLE_ITEM_USES])
 		return [t_title, t_body]
 	if prop_id.begins_with("relic:"):
 		var rel_id := prop_id.substr(6)
@@ -6364,17 +6488,21 @@ func _get_prop_hover_info(prop_id: String) -> Array[String]:
 		elif rel_id == "REL_MERCHANT_LEDGER":
 			var scm := maxi(ScoreEng.MERCHANT_LEDGER_CHIP_STEP, int(match_relic_scales.get("REL_MERCHANT_LEDGER", run_shop_rerolls * ScoreEng.MERCHANT_LEDGER_CHIP_STEP)) + ScoreEng.MERCHANT_LEDGER_CHIP_STEP)
 			body_s += _tr(" (Current: +%d)" % scm, " (Aktuálně: +%d)" % scm)
-		if invoked_table_relics.has(rel_id):
-			body_s += _tr("  (Passive Active • Channeled)", "  (Pasivně aktivní • Aktivováno)")
+		var r_rem := maxi(0, MAX_TABLE_ITEM_USES - int(table_item_uses.get(rel_id, 0)))
+		if broken_table_items.has(rel_id) or r_rem <= 0:
+			body_s += _tr("  (Shattered! 0/3 uses)", "  (Rozbito! 0/3 použití)")
 		else:
-			body_s += _tr("  [Click on Table: Channel Relic!]", "  [Klikni na stole: Aktivovat relikvii!]")
+			body_s += _tr("  [Click on Table: %d/%d uses]" % [r_rem, MAX_TABLE_ITEM_USES], "  [Klikni na stole: %d/%d použití]" % [r_rem, MAX_TABLE_ITEM_USES])
 		return [title_s, body_s]
 	for p_item_n in purchased_table_item_nodes:
 		var pn_node := p_item_n as Node3D
 		if is_instance_valid(pn_node) and str(pn_node.get_meta("prop_id", "")) == prop_id:
 			var item_desc := str(pn_node.get_meta("hover_desc", ""))
-			if int(pn_node.get_meta("active_charges", 0)) > 0:
-				item_desc += _tr("  [Click on Table: Resonate!]", "  [Klikni na stole: Použít!]")
+			var p_rem := maxi(0, MAX_TABLE_ITEM_USES - int(table_item_uses.get(prop_id, 0)))
+			if broken_table_items.has(prop_id) or p_rem <= 0:
+				item_desc += _tr("  (Shattered! 0/3 uses)", "  (Rozbito! 0/3 použití)")
+			else:
+				item_desc += _tr("  [Click on Table: %d/%d uses]" % [p_rem, MAX_TABLE_ITEM_USES], "  [Klikni na stole: %d/%d použití]" % [p_rem, MAX_TABLE_ITEM_USES])
 			return [
 				str(pn_node.get_meta("hover_title", "Table Artifact")),
 				item_desc
@@ -7064,12 +7192,14 @@ func _setup_minimal_overlay_hud() -> void:
 	# Disjoint Row beside Player Heart & beneath Score Ledger (x: 166..660, y: 182..218): Cards/Coins + Carry-Out + Cancel
 	bottom_left_status_pill = PanelContainer.new()
 	bottom_left_status_pill.anchor_left = 0.0
-	bottom_left_status_pill.anchor_top = 0.0
+	bottom_left_status_pill.anchor_top = 1.0
 	bottom_left_status_pill.anchor_right = 0.0
-	bottom_left_status_pill.anchor_bottom = 0.0
-	bottom_left_status_pill.position = Vector2(166, 182)
-	bottom_left_status_pill.custom_minimum_size = Vector2(204, 36)
-	bottom_left_status_pill.size = Vector2(204, 36)
+	bottom_left_status_pill.anchor_bottom = 1.0
+	bottom_left_status_pill.offset_left = 18
+	bottom_left_status_pill.offset_top = -90
+	bottom_left_status_pill.offset_right = 224
+	bottom_left_status_pill.offset_bottom = -54
+	bottom_left_status_pill.custom_minimum_size = Vector2(206, 36)
 	bottom_left_status_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bottom_left_status_pill.add_theme_stylebox_override("panel", _make_tex_panel_style("ui_status_pill_3d.png", 12, 4))
 	var bl_hb := HBoxContainer.new()
@@ -7112,7 +7242,7 @@ func _setup_minimal_overlay_hud() -> void:
 	hud_root.add_child(bottom_left_status_pill)
 
 	carry_out_pill = PanelContainer.new()
-	carry_out_pill.position = Vector2(376, 182)
+	carry_out_pill.position = Vector2(166, 182)
 	carry_out_pill.custom_minimum_size = Vector2(184, 36)
 	carry_out_pill.size = Vector2(184, 36)
 	carry_out_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -7149,9 +7279,15 @@ func _setup_minimal_overlay_hud() -> void:
 	btn_map.name = "MapExitBtn"
 	btn_map.text = _tr("✕ Cancel", "✕ Zrušit")
 	btn_map.tooltip_text = _tr("Return to last Shop Checkpoint (or cancel duel if no checkpoint yet)", "Návrat na poslední Checkpoint po Obchodě (nebo zrušení hry)")
-	btn_map.position = Vector2(566, 182)
-	btn_map.custom_minimum_size = Vector2(94, 36)
-	btn_map.size = Vector2(94, 36)
+	btn_map.anchor_left = 0.0
+	btn_map.anchor_top = 1.0
+	btn_map.anchor_right = 0.0
+	btn_map.anchor_bottom = 1.0
+	btn_map.offset_left = 222
+	btn_map.offset_top = -48
+	btn_map.offset_right = 320
+	btn_map.offset_bottom = -12
+	btn_map.custom_minimum_size = Vector2(98, 36)
 	btn_map.add_theme_font_override("font", _get_font(true))
 	btn_map.add_theme_font_size_override("font_size", 12)
 	btn_map.add_theme_color_override("font_color", Color(0.98, 0.88, 0.74))
@@ -7492,9 +7628,9 @@ func _setup_minimal_overlay_hud() -> void:
 	turn_banner_grp.anchor_right = 0.0
 	turn_banner_grp.anchor_bottom = 1.0
 	turn_banner_grp.offset_left = 18
-	turn_banner_grp.offset_top = -68
+	turn_banner_grp.offset_top = -152
 	turn_banner_grp.offset_right = 388
-	turn_banner_grp.offset_bottom = -12
+	turn_banner_grp.offset_bottom = -96
 	turn_banner_grp.pivot_offset = Vector2(100, 28)
 	turn_banner_grp.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	turn_banner_grp.visible = false
@@ -7616,9 +7752,15 @@ func _setup_minimal_overlay_hud() -> void:
 	wager_indicator_pill = PanelContainer.new()
 	wager_indicator_pill.name = "WagerIndicatorPill"
 	wager_indicator_pill.visible = false
-	wager_indicator_pill.position = Vector2(166, 222)
+	wager_indicator_pill.anchor_left = 0.0
+	wager_indicator_pill.anchor_top = 1.0
+	wager_indicator_pill.anchor_right = 0.0
+	wager_indicator_pill.anchor_bottom = 1.0
+	wager_indicator_pill.offset_left = 18
+	wager_indicator_pill.offset_top = -48
+	wager_indicator_pill.offset_right = 212
+	wager_indicator_pill.offset_bottom = -12
 	wager_indicator_pill.custom_minimum_size = Vector2(194, 36)
-	wager_indicator_pill.size = Vector2(194, 36)
 	wager_indicator_pill.mouse_filter = Control.MOUSE_FILTER_STOP
 	wager_indicator_pill.add_theme_stylebox_override("panel", _make_tex_panel_style("ui_wager_pill_3d.png", 0, 0))
 	wager_indicator_pill.mouse_entered.connect(func():
@@ -7940,6 +8082,8 @@ func _setup_minimal_overlay_hud() -> void:
 	relic_bar_hbox.position = Vector2(128, 224)
 	relic_bar_hbox.size = Vector2(474, 32)
 	relic_bar_hbox.add_theme_constant_override("separation", 5)
+	relic_bar_hbox.visible = false
+	relic_bar_hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud_root.add_child(relic_bar_hbox)
 
 	# LEFT-FLANK PULSING SEVEN TRAP BANNER (beside Player Heart)
@@ -8690,6 +8834,9 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 		hud_score_revealed = true
 		hud_combo_revealed = true
 		puf_revealed = true
+	var rivals_arr = run_loadout.get("rivals", [])
+	var r_cnt: int = (rivals_arr as Array).size() if rivals_arr is Array else 0
+	active_player_count = 2 if is_tutorial else maxi(2, maxi(int(run_loadout.get("player_count", 2)), 1 + r_cnt))
 
 	last_player_play_suit = ""
 	last_player_play_rank = ""
@@ -8762,6 +8909,8 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 	opening_turn_committed = false
 	opening_veto_used = false
 	invoked_table_relics.clear()
+	table_item_uses.clear()
+	broken_table_items.clear()
 	table_relic_blood_seal_active = false
 	table_relic_hollow_mask_active = false
 	turn_score_history.clear()
@@ -9027,6 +9176,7 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 		emit_signal("play_sfx_requested", "turn_player")
 		if was_natural_intro and not tutorial_mode:
 			_begin_player_item_review_stage(true)
+			_play_table_items_intro_showcase()
 			_check_battle_unlock_tips()
 	)
 
@@ -9191,18 +9341,18 @@ func set_duel_wager(w_type: String, silent: bool = false) -> void:
 
 	if is_instance_valid(player_sword_root):
 		if active_wager_type == "SWORD":
-			player_sword_root.position = Vector3(-0.34, 0.832, 0.14)
-			player_sword_root.rotation_degrees = Vector3(0.0, 32.0, 0.0)
+			player_sword_root.position = Vector3(-0.56, 0.824, 0.44)
+			player_sword_root.rotation_degrees = Vector3(0.0, 82.0, 0.0)
 			player_sword_root.set_meta("base_pos", player_sword_root.position)
 			if is_instance_valid(wager_3d_ring):
 				wager_3d_ring.visible = true
-				wager_3d_ring.position = Vector3(-0.34, 0.818, 0.14)
+				wager_3d_ring.position = Vector3(-0.56, 0.818, 0.44)
 				if wager_3d_ring.material_override is ShaderMaterial:
 					(wager_3d_ring.material_override as ShaderMaterial).set_shader_parameter("ring_color", Color(1.0, 0.24, 0.20, 0.86))
 				elif wager_3d_ring.material_override is StandardMaterial3D:
 					(wager_3d_ring.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.24, 0.20, 0.82)
 			if not silent:
-				Fx.ring(self, to_global(Vector3(-0.34, 0.822, 0.14)), Color(1.0, 0.24, 0.18), 0.38, 0.45, 0.09, 2.2, 8.0)
+				Fx.ring(self, to_global(Vector3(-0.56, 0.822, 0.44)), Color(1.0, 0.24, 0.18), 0.38, 0.45, 0.09, 2.2, 8.0)
 				table_status_label3d.text = _tr("⚔ BLOOD OATH: Sword staked!", "⚔ KRVAVÁ PŘÍSAHA: Vsazen meč!")
 		else:
 			player_sword_root.position = Vector3(1.02, 0.822, 0.22)
@@ -9599,14 +9749,25 @@ func _setup_tutorial_special_and_phial_step() -> void:
 	pending_skip_turns = 0
 	pending_king_challenge.clear()
 	staged_card_indices.clear()
-	var spec_card := _make_card_dict("CERVEN", "H")
-	var p_data := Catalog.get_power_card("SPEC_VAMPIRE")
-	if not p_data.is_empty():
-		spec_card = p_data.duplicate(true)
-	spec_card["suit"] = active_suit_id if active_suit_id != "" else "CERVEN"
+	var p_data := Catalog.get_power_card_loc("SPEC_VAMPIRE", opts_language)
+	var use_suit := active_suit_id if active_suit_id != "" else "CERVEN"
+	var spec_card := {
+		"suit": use_suit,
+		"rank": "PWR",
+		"pts": int(p_data.get("pts", 22)),
+		"rname": str(p_data.get("name", "Vampire Leech")),
+		"short": str(p_data.get("short", "LEECH")),
+		"power_id": "SPEC_VAMPIRE",
+		"wild": true,
+		"accent": p_data.get("accent", Color(0.92, 0.16, 0.26)),
+		"power_line": str(p_data.get("power_line", "Drain 15 pts from Rival")),
+		"desc": str(p_data.get("desc", "Steals 15 pts from Rival.")),
+		"edition": "NORMAL",
+		"mage_charge": 0,
+	}
 	player_hand = [
 		spec_card,
-		_make_card_dict(active_suit_id if active_suit_id != "" else "CERVEN", "10"),
+		_make_card_dict(use_suit, "10"),
 	]
 
 func _setup_tutorial_final_shed_card() -> void:
@@ -10270,6 +10431,16 @@ func _process(delta: float) -> void:
 
 			var target_pitch := 1.0 if is_ghost_closeup else (-26.0 if is_rival_items_view else (-76.0 if is_top_down_view else -54.0))
 			var target_yaw := 44.0 if is_ghost_closeup else 0.0
+			if active_player_count > 2 and not is_player_turn and not is_ghost_closeup and not intro_animating and not tutorial_mode:
+				var vp_fl := get_viewport().get_visible_rect().size
+				var mp_fl := get_viewport().get_mouse_position()
+				if vp_fl.x > 10.0 and vp_fl.y > 10.0:
+					var nx_fl := clampf((mp_fl.x / vp_fl.x) * 2.0 - 1.0, -1.0, 1.0)
+					var ny_fl := clampf((mp_fl.y / vp_fl.y) * 2.0 - 1.0, -1.0, 1.0)
+					freelook_yaw = -nx_fl * 60.0
+					freelook_pitch = clampf(-ny_fl * 22.0, -24.0, 24.0)
+					target_yaw += freelook_yaw
+					target_pitch = clampf(target_pitch + freelook_pitch, -82.0, -8.0)
 			var target_cam_pos := Vector3(-0.32, 1.50, 0.76) if is_ghost_closeup else (Vector3(0.0, 1.54, 1.04) if is_rival_items_view else (Vector3(0.0, 2.75, 0.45) if is_top_down_view else Vector3(0.0, 2.28, 1.18)))
 			var target_fov := 62.0 if is_ghost_closeup else (64.0 if is_rival_items_view else 72.0)
 			cam.position = cam.position.lerp(target_cam_pos, 9.0 * delta)
@@ -10471,10 +10642,11 @@ func _process(delta: float) -> void:
 				dc.set_meta("pile_base_rot", dc.rotation_degrees)
 			var from_top := d_cnt - 1 - di
 			if from_top == 0:
-				# Always showcase the single TOP active card tilted proudly toward camera so it is 100% readable!
-				var top_tilt_x := -52.0 if cards_tucked else -64.0
-				var top_target_p := Vector3(0.0, 0.112 + sin(t * 2.6) * 0.004, 0.044)
-				var top_target_r := Vector3(top_tilt_x, sin(t * 2.1) * 2.2, 0.0)
+				# Flat on the table during top-down view (when not playing a card); tilted toward camera otherwise
+				var is_td_flat := (not busy_animating) and (cam_view_mode == CameraViewMode.TABLE_ITEMS or turn_glance_timer > 0.0)
+				var top_tilt_x := -90.0 if is_td_flat else (-52.0 if cards_tucked else -64.0)
+				var top_target_p := Vector3(0.0, 0.028, 0.0) if is_td_flat else Vector3(0.0, 0.112 + sin(t * 2.6) * 0.004, 0.044)
+				var top_target_r := Vector3(-90.0, 0.0, 0.0) if is_td_flat else Vector3(top_tilt_x, sin(t * 2.1) * 2.2, 0.0)
 				dc.position = dc.position.lerp(top_target_p, 11.0 * delta)
 				dc.rotation_degrees = dc.rotation_degrees.lerp(top_target_r, 11.0 * delta)
 				dc.scale = dc.scale.lerp(Vector3(1.06, 1.06, 1.06), 11.0 * delta)
@@ -11244,7 +11416,7 @@ func _animate_wager_showcase_3d(emit_fx: bool = true) -> void:
 	table_arcane_spin_boost = maxf(table_arcane_spin_boost, 1.15)
 	chandelier_sway_boost = maxf(chandelier_sway_boost, 0.72)
 	if active_wager_type == "SWORD" and is_instance_valid(player_sword_root):
-		var sw_bp := Vector3(-0.34, 0.832, 0.14)
+		var sw_bp := Vector3(-0.56, 0.824, 0.44)
 		var sw_tw := player_sword_root.create_tween()
 		sw_tw.tween_property(player_sword_root, "position", sw_bp + Vector3(0.0, 0.11, 0.0), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		sw_tw.parallel().tween_property(player_sword_root, "rotation_degrees:z", 12.0, 0.18)
@@ -11757,8 +11929,8 @@ func _trigger_tavern_prop_click(prop_id: String) -> void:
 				trtw.parallel().tween_property(sp_t, "rotation_degrees:y", sp_t.rotation_degrees.y + 540.0, 0.38)
 			trtw.tween_property(trn, "position:y", bp_y, 0.18).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 
-		if is_player_turn and not busy_animating and not tutorial_mode and not invoked_table_relics.has(tid):
-			invoked_table_relics[tid] = true
+		if is_player_turn and not busy_animating and not tutorial_mode and _can_use_table_item(tid):
+			_record_table_item_activation(tid, relic_3d_nodes.get(tid))
 			var t_origin := trn.global_position + Vector3(0.0, 0.10, 0.0) if is_instance_valid(trn) else Vector3(0.35, 0.90, 0.45)
 			var t_target := opp_hands_anchor.global_position + Vector3(0.0, 0.08, 0.0) if is_instance_valid(opp_hands_anchor) else Vector3(0.0, 1.05, -1.0)
 			if is_instance_valid(trn):
@@ -11860,8 +12032,8 @@ func _trigger_tavern_prop_click(prop_id: String) -> void:
 			rtw.tween_property(rn, "position:y", bp_y, 0.16).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 			Fx.burst(self, rn.global_position + Vector3(0.0, 0.09, 0.0), col.lightened(0.25), 18, 0.95, 0.48, 0.025, 1.8, true, 140.0, Vector3.UP, true)
 
-		if is_player_turn and not busy_animating and not tutorial_mode and not invoked_table_relics.has(rel_id):
-			invoked_table_relics[rel_id] = true
+		if is_player_turn and not busy_animating and not tutorial_mode and _can_use_table_item(rel_id):
+			_record_table_item_activation(rel_id, relic_3d_nodes.get(rel_id))
 			if is_instance_valid(rn):
 				var halo_n := rn.get_node_or_null("RelicModel3D/ReadyHalo") as Node3D
 				if halo_n:
@@ -11896,19 +12068,15 @@ func _trigger_tavern_prop_click(prop_id: String) -> void:
 		for p_node in purchased_table_item_nodes:
 			var pn := p_node as Node3D
 			if is_instance_valid(pn) and str(pn.get_meta("prop_id", "")) == prop_id:
+				if not _can_use_table_item(prop_id):
+					_show_stagger_callout(_tr("💥 Item Shattered!", "💥 Předmět se rozbil!"), Color(0.75, 0.34, 0.28), 1.0)
+					break
 				emit_signal("play_sfx_pitched_requested", "prop_coins", 1.16)
-				var bp_y: float = (pn.get_meta("base_pos", pn.position) as Vector3).y
-				var itw := pn.create_tween()
-				itw.tween_property(pn, "position:y", bp_y + 0.12, 0.09).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-				itw.parallel().tween_property(pn, "rotation_degrees:y", pn.rotation_degrees.y + 360.0, 0.28)
-				itw.tween_property(pn, "position:y", bp_y, 0.14).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 				var ic: Color = pn.get_meta("item_col", Color(1.0, 0.86, 0.34))
-				var chg_left := int(pn.get_meta("active_charges", 0))
-				if is_player_turn and not busy_animating and chg_left > 0:
-					pn.set_meta("active_charges", chg_left - 1)
-					var em_s := str(pn.get_meta("emblem", "bell"))
-					var s_target := discard_pile_root.global_position + Vector3(0.0, 0.05, 0.0) if is_instance_valid(discard_pile_root) else pn.global_position + Vector3(0.0, 0.25, -0.35)
-					Fx.item_ritual_activation(self, pn.global_position + Vector3(0.0, 0.08, 0.0), s_target, ic.lightened(0.30))
+				var em_s := str(pn.get_meta("emblem", "bell"))
+				var s_target := discard_pile_root.global_position + Vector3(0.0, 0.05, 0.0) if is_instance_valid(discard_pile_root) else pn.global_position + Vector3(0.0, 0.25, -0.35)
+				if is_player_turn and not busy_animating:
+					var rem_s := _record_table_item_activation(prop_id, pn, s_target, em_s)
 					var res_msg := ""
 					if em_s == "mirror":
 						redraws_left += 1
@@ -11927,12 +12095,11 @@ func _trigger_tavern_prop_click(prop_id: String) -> void:
 					else:
 						_award_player_score_immediately(10, _tr("✦ Relic (+10)", "✦ Relikvie (+10)"), ic)
 						res_msg = _tr("+10 PTS!", "+10 BODŮ!")
-					Fx.float_number(self, pn.global_position + Vector3(0.0, 0.22, 0.0), res_msg, ic.lightened(0.32), 48, 0.18, 0.78, 1.42)
-					_show_stagger_callout("✦ %s — %s" % [str(pn.get_meta("hover_title", "Artifact")), res_msg], ic, 1.25)
+					_show_stagger_callout("✦ %s (%d/3) — %s" % [str(pn.get_meta("hover_title", "Artifact")), rem_s, res_msg], ic, 1.25)
 					_refresh_table_labels()
 					_rebuild_all_3d_hands()
 				else:
-					Fx.burst(self, pn.global_position + Vector3(0.0, 0.08, 0.0), ic, 16, 0.95, 0.45, 0.024, 1.8, true, 140.0, Vector3.UP, true)
+					Fx.play_complex_table_item_anim(self, pn, pn.global_position, s_target, em_s, ic)
 					_show_stagger_callout(str(pn.get_meta("hover_title", "Artifact")), ic, 1.25)
 				break
 
@@ -14702,9 +14869,9 @@ func _flash_turn_toast(title_txt: String, sub_txt: String, accent: Color, hold_s
 		turn_banner_grp.anchor_right = 0.0
 		turn_banner_grp.anchor_bottom = 1.0
 		turn_banner_grp.offset_left = 18
-		turn_banner_grp.offset_top = -68
+		turn_banner_grp.offset_top = -152
 		turn_banner_grp.offset_right = 388
-		turn_banner_grp.offset_bottom = -12
+		turn_banner_grp.offset_bottom = -96
 		turn_banner_grp.pivot_offset = Vector2(100, 28)
 		turn_banner_lbl.position = Vector2(0, 0)
 		turn_banner_lbl.size = Vector2(370, 52)

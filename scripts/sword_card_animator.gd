@@ -12,6 +12,12 @@ const SHADER_BLADE_PATH := "res://shaders/sword_blade_cutout.gdshader"
 
 const TEX_BLADE_MIST := "res://assets/vfx/sword_card/sword_blade_mist.png"
 const TEX_BLADE_ROYAL := "res://assets/vfx/sword_card/sword_blade_royal.png"
+const TEX_WEAPON_HALBERD := "res://assets/vfx/sword_card/weapon_halberd.png"
+const TEX_WEAPON_STAFF := "res://assets/vfx/sword_card/weapon_staff.png"
+const TEX_WEAPON_DAGGER := "res://assets/vfx/sword_card/weapon_dagger.png"
+const TEX_WEAPON_MACE := "res://assets/vfx/sword_card/weapon_mace.png"
+const TEX_WEAPON_SPEAR := "res://assets/vfx/sword_card/weapon_spear.png"
+const TEX_WEAPON_SHIELD := "res://assets/vfx/sword_card/weapon_shield.png"
 const TEX_SLASH_SHEET := "res://assets/vfx/sword_card/slash_cel_sheet.png"
 const TEX_MIST_SHEET := "res://assets/vfx/sword_card/mist_veil_sheet.png"
 const TEX_IMPACT_SHEET := "res://assets/vfx/sword_card/impact_sigil_sheet.png"
@@ -25,6 +31,46 @@ static var _shader_blade: Shader = null
 static var _sfx_unsheathe: AudioStream = null
 static var _sfx_cleave_mist: AudioStream = null
 static var _sfx_cleave_royal: AudioStream = null
+static var _weapon_tex_cache: Dictionary = {}
+
+
+static func _load_weapon_tex(path: String) -> Texture2D:
+	if _weapon_tex_cache.has(path):
+		return _weapon_tex_cache[path] as Texture2D
+	var t := Toon.tex(path)
+	if t != null:
+		_weapon_tex_cache[path] = t
+		return t
+	var abs_p := ProjectSettings.globalize_path(path)
+	if FileAccess.file_exists(abs_p):
+		var img := Image.load_from_file(abs_p)
+		if img != null and not img.is_empty():
+			var it := ImageTexture.create_from_image(img)
+			_weapon_tex_cache[path] = it
+			return it
+	return Toon.tex(TEX_BLADE_ROYAL)
+
+
+static func _pick_weapon_style(card_data: Dictionary, use_mist: bool) -> String:
+	if use_mist:
+		return "sword_mist"
+	var cls := str(card_data.get("edition", card_data.get("card_class", "NORMAL"))).to_upper()
+	var pid := str(card_data.get("power_id", "")).to_upper()
+	var rank := str(card_data.get("rank", "")).to_upper()
+	var suit := str(card_data.get("suit", "CERVEN")).to_upper()
+	if cls == "MAGE" or pid in ["SPEC_ORACLE", "SPEC_MIRROR", "SPEC_ALCHEMIST"]:
+		return "staff"
+	if cls == "THIEF" or rank == "7" or pid in ["SPEC_HEX", "SPEC_PLAGUE"]:
+		return "dagger"
+	if rank == "E" or pid in ["SPEC_STORM", "SPEC_CHRONOS"]:
+		return "spear"
+	if cls == "MERCHANT" or rank == "10" or pid in ["SPEC_MIDAS", "SPEC_CROWN", "SPEC_GAMBLER"]:
+		return "mace"
+	if rank in ["H", "D"] or (rank in ["8", "9"] and suit == "ZELEN"):
+		return "halberd"
+	if pid in ["SPEC_SHIELD", "SPEC_PHOENIX", "SPEC_VAMPIRE", "SPEC_MAGNET", "SPEC_JESTER"] or rank in ["8", "9"]:
+		return "shield"
+	return "sword_royal"
 
 
 static func play_sword_card_score_anim(
@@ -275,6 +321,10 @@ class _SwordVfxRig extends Node3D:
 	var _blade_mat: ShaderMaterial
 	var _shadow_blade_mesh: MeshInstance3D
 	var _shadow_mat: ShaderMaterial
+	var _weapon_style := "sword_royal"
+	var _second_pivot: Node3D = null
+	var _second_blade_mat: ShaderMaterial = null
+	var _second_shadow_mat: ShaderMaterial = null
 
 	var _slash_canopy: MeshInstance3D
 	var _slash_canopy_mat: ShaderMaterial
@@ -346,6 +396,7 @@ class _SwordVfxRig extends Node3D:
 		var suit := str(card_data.get("suit", "CERVEN"))
 		var use_mist := is_knight_mist or (cls == "KNIGHT")
 		_is_knight_mist = use_mist
+		_weapon_style = SwordCardAnimator._pick_weapon_style(card_data, use_mist)
 		if use_mist:
 			_glow_col = Color(0.28, 0.92, 1.0, 1.0)
 			_tint_col = Color(0.96, 0.99, 1.0, 1.0)
@@ -380,7 +431,16 @@ class _SwordVfxRig extends Node3D:
 		var anchor := Vector3(_impact_pos.x, _felt_y, _impact_pos.z)
 		var attack_center := anchor + Vector3(0.0, 0.0, _dir_z * 0.14)
 
-		var tex_blade := Toon.tex(TEX_BLADE_MIST if _is_knight_mist else TEX_BLADE_ROYAL)
+		var weapon_tex_path := TEX_BLADE_ROYAL
+		match _weapon_style:
+			"sword_mist": weapon_tex_path = TEX_BLADE_MIST
+			"halberd": weapon_tex_path = TEX_WEAPON_HALBERD
+			"staff": weapon_tex_path = TEX_WEAPON_STAFF
+			"dagger": weapon_tex_path = TEX_WEAPON_DAGGER
+			"mace": weapon_tex_path = TEX_WEAPON_MACE
+			"spear": weapon_tex_path = TEX_WEAPON_SPEAR
+			"shield": weapon_tex_path = TEX_WEAPON_SHIELD
+		var tex_blade := SwordCardAnimator._load_weapon_tex(weapon_tex_path)
 		var tex_slash := Toon.tex(TEX_SLASH_SHEET)
 		var tex_mist := Toon.tex(TEX_MIST_SHEET)
 		var tex_sigil := Toon.tex(TEX_IMPACT_SHEET)
@@ -488,6 +548,14 @@ class _SwordVfxRig extends Node3D:
 		add_child(_sword_pivot)
 
 		var blade_h := 0.56 * _power_scale
+		if _weapon_style == "halberd" or _weapon_style == "spear":
+			blade_h = 0.68 * _power_scale
+		elif _weapon_style == "staff":
+			blade_h = 0.64 * _power_scale
+		elif _weapon_style == "dagger":
+			blade_h = 0.48 * _power_scale
+		elif _weapon_style == "shield":
+			blade_h = 0.54 * _power_scale
 		var aspect := 0.75
 		if tex_blade != null and tex_blade.get_size().y > 1.0:
 			aspect = tex_blade.get_size().x / tex_blade.get_size().y
@@ -503,7 +571,7 @@ class _SwordVfxRig extends Node3D:
 
 		_blade_mesh = _make_quad_node("SwordBladeMain", blade_w, blade_h, _blade_mat, 6)
 		# Shift up so hilt/crossguard sits at _sword_pivot origin and tip extends to +0.86*blade_h
-		_blade_mesh.position = Vector3(0.0, blade_h * 0.36, 0.0)
+		_blade_mesh.position = Vector3(0.0, 0.0 if _weapon_style == "shield" else blade_h * 0.36, 0.0)
 		_sword_pivot.add_child(_blade_mesh)
 
 		# Subtle ink-outline offset backing plane for 3D woodcut diorama thickness
@@ -517,10 +585,28 @@ class _SwordVfxRig extends Node3D:
 		_shadow_mat.set_shader_parameter("opacity", 0.0)
 
 		_shadow_blade_mesh = _make_quad_node("SwordBladeInkDepth", blade_w * 1.03, blade_h * 1.01, _shadow_mat, 5)
-		_shadow_blade_mesh.position = Vector3(0.004, blade_h * 0.36 - 0.004, -0.006 * _dir_z)
+		_shadow_blade_mesh.position = Vector3(0.004, (0.0 if _weapon_style == "shield" else blade_h * 0.36) - 0.004, -0.006 * _dir_z)
 		_sword_pivot.add_child(_shadow_blade_mesh)
 
 		_sword_pivot.scale = Vector3.ONE * 0.05
+
+		# Twin crossed assassin dagger rig for "dagger" style
+		if _weapon_style == "dagger":
+			_second_pivot = Node3D.new()
+			_second_pivot.name = "SecondDaggerPivot"
+			_second_pivot.position = anchor + Vector3(0.0, 0.20, -_dir_z * 0.02)
+			_second_pivot.scale = Vector3.ONE * 0.05
+			add_child(_second_pivot)
+
+			_second_blade_mat = _blade_mat.duplicate() as ShaderMaterial
+			var dag2 := _make_quad_node("SecondDaggerMain", blade_w, blade_h, _second_blade_mat, 6)
+			dag2.position = Vector3(0.0, blade_h * 0.36, 0.0)
+			_second_pivot.add_child(dag2)
+
+			_second_shadow_mat = _shadow_mat.duplicate() as ShaderMaterial
+			var dag2_sh := _make_quad_node("SecondDaggerInkDepth", blade_w * 1.03, blade_h * 1.01, _second_shadow_mat, 5)
+			dag2_sh.position = Vector3(-0.004, blade_h * 0.36 - 0.004, -0.006 * _dir_z)
+			_second_pivot.add_child(dag2_sh)
 
 		# 6. Pre-spawn Ink Droplets & Diegetic Score Energy Orbs (hidden until cleave)
 		_build_ink_sparks(attack_center)
@@ -648,6 +734,9 @@ class _SwordVfxRig extends Node3D:
 			_sword_pivot.position += jit * 0.35
 			_slash_canopy.position += jit * 0.25
 			_blade_mat.set_shader_parameter("flash_white", 0.85)
+			if is_instance_valid(_second_pivot) and _second_blade_mat != null:
+				_second_pivot.position -= jit * 0.35
+				_second_blade_mat.set_shader_parameter("flash_white", 0.85)
 			_slash_canopy_mat.set_shader_parameter("flash_white", 0.72)
 			return
 		else:
@@ -660,80 +749,309 @@ class _SwordVfxRig extends Node3D:
 		_update_score_orbs(dt)
 		_update_light(_anim_t)
 
+	func _set_weapon_mats(opacity_v: float, dissolve_v: float, flash_v: float, sheen_v: float, rune_v: float) -> void:
+		_blade_mat.set_shader_parameter("opacity", opacity_v)
+		_shadow_mat.set_shader_parameter("opacity", opacity_v * 0.85)
+		_blade_mat.set_shader_parameter("dissolve", dissolve_v)
+		_shadow_mat.set_shader_parameter("dissolve", dissolve_v)
+		_blade_mat.set_shader_parameter("flash_white", flash_v)
+		if sheen_v >= -0.4:
+			_blade_mat.set_shader_parameter("sheen_pos", sheen_v)
+		if rune_v >= 0.0:
+			_blade_mat.set_shader_parameter("rune_glow", rune_v)
+		if _second_blade_mat != null and _second_shadow_mat != null:
+			_second_blade_mat.set_shader_parameter("opacity", opacity_v)
+			_second_shadow_mat.set_shader_parameter("opacity", opacity_v * 0.85)
+			_second_blade_mat.set_shader_parameter("dissolve", dissolve_v)
+			_second_shadow_mat.set_shader_parameter("dissolve", dissolve_v)
+			_second_blade_mat.set_shader_parameter("flash_white", flash_v)
+			if sheen_v >= -0.4:
+				_second_blade_mat.set_shader_parameter("sheen_pos", sheen_v)
+			if rune_v >= 0.0:
+				_second_blade_mat.set_shader_parameter("rune_glow", rune_v)
+
 	func _update_sword_blade(t: float) -> void:
 		var base_anchor := Vector3(_impact_pos.x, _felt_y + 0.14, _impact_pos.z)
-		# Keep yaw within ~22 deg of Z axis so BOTH +Z and -Z players see the broad Damascus blade & guard
 		var yaw_face := 22.0 if _attacker_is_player else -158.0
 		var wind_pitch := 24.0 if _attacker_is_player else -24.0
 		var planted_pitch := -18.0 if _attacker_is_player else 18.0
-		var planted_pos := Vector3(_impact_pos.x + (0.16 if _attacker_is_player else -0.16), _felt_y + 0.41, _impact_pos.z + _dir_z * 0.14)
+		var sgn := 1.0 if _attacker_is_player else -1.0
 
-		if t < 0.20:
-			# Beat 1: Mist-unsheathe rise + coiled anticipation shoulder wind-up
-			var u := clampf(t / 0.20, 0.0, 1.0)
-			var ease_out := 1.0 - pow(1.0 - u, 3.0)
-			var sc := lerpf(0.28, 1.02, ease_out)
-			_sword_pivot.scale = Vector3(sc, sc * lerpf(0.88, 1.06, u), sc)
-			_sword_pivot.position = base_anchor + Vector3(
-				lerpf(0.0, 0.14 if _attacker_is_player else -0.14, ease_out),
-				lerpf(-0.08, 0.18, ease_out),
-				-_dir_z * lerpf(0.0, 0.10, ease_out)
-			)
-			_sword_pivot.rotation_degrees = Vector3(
-				lerpf(6.0 if _attacker_is_player else -6.0, wind_pitch, ease_out),
-				yaw_face,
-				lerpf(-10.0, -40.0, ease_out)
-			)
-			var op := clampf(u * 3.4, 0.0, 1.0)
-			_blade_mat.set_shader_parameter("opacity", op)
-			_shadow_mat.set_shader_parameter("opacity", op * 0.78)
-			_blade_mat.set_shader_parameter("sheen_pos", lerpf(-0.3, 1.35, u))
-			_blade_mat.set_shader_parameter("flash_white", 0.0)
-		elif t < 0.32:
-			# Beat 2: Wide tip-first arc whip -> plunges tip-first into glowing center star of rune seal
-			if not _cleave_fired:
-				_cleave_fired = true
-				if is_instance_valid(_audio_cleave):
-					_audio_cleave.play()
-			var u := clampf((t - 0.20) / 0.12, 0.0, 1.0)
-			var snap := 1.0 - pow(1.0 - u, 3.6)
-			var start_pos := base_anchor + Vector3(0.14 if _attacker_is_player else -0.14, 0.18, -_dir_z * 0.10)
-			_sword_pivot.position = start_pos.lerp(planted_pos, snap) + Vector3(0.0, sin(u * PI) * 0.12, 0.0)
-			_sword_pivot.rotation_degrees = Vector3(
-				lerpf(wind_pitch, planted_pitch, snap),
-				yaw_face + lerpf(0.0, -10.0 if _attacker_is_player else 10.0, snap),
-				lerpf(-40.0, 152.0, snap)
-			)
-			# Subtle squash-and-stretch on fast cleave sweep
-			var stretch := 1.0 + sin(u * PI) * 0.20
-			_sword_pivot.scale = Vector3(1.04 / sqrt(stretch), stretch, 1.0)
-			_blade_mat.set_shader_parameter("opacity", 1.0)
-			_shadow_mat.set_shader_parameter("opacity", 0.88)
-			_blade_mat.set_shader_parameter("flash_white", sin(u * PI) * 0.52)
-			if not _hitstop_done and u >= 0.56:
-				_hitstop_done = true
-				_hitstop_left = 0.045
-		elif t < 0.80:
-			# Beat 3: Tip stabbed into carved rune center star, ornate hilt towering broadside with steel tremor
-			var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
-			var vib := exp(-u * 10.5) * sin(u * 46.0) * 4.2
-			_sword_pivot.position = planted_pos + Vector3(0.0, sin(u * 6.0) * 0.005, 0.0)
-			_sword_pivot.rotation_degrees = Vector3(
-				planted_pitch + vib * 0.4,
-				yaw_face + (-10.0 if _attacker_is_player else 10.0),
-				152.0 + vib
-			)
-			_sword_pivot.scale = Vector3.ONE.lerp(Vector3(1.02, 1.02, 1.0), minf(1.0, u * 4.0))
-			_blade_mat.set_shader_parameter("flash_white", maxf(0.0, 0.45 * (1.0 - u * 4.0)))
-			_blade_mat.set_shader_parameter("rune_glow", 2.45 - u * 0.75)
-		else:
-			# Beat 4: Organic woodcut ink/mist erosion dissolve
-			var u := clampf((t - 0.80) / 0.34, 0.0, 1.0)
-			_blade_mat.set_shader_parameter("dissolve", u)
-			_shadow_mat.set_shader_parameter("dissolve", u)
-			_blade_mat.set_shader_parameter("opacity", 1.0 - pow(u, 1.8))
-			_shadow_mat.set_shader_parameter("opacity", (1.0 - pow(u, 1.6)) * 0.85)
-			_sword_pivot.position.y += 0.0005
+		if t >= 0.20 and not _cleave_fired:
+			_cleave_fired = true
+			if is_instance_valid(_audio_cleave):
+				_audio_cleave.play()
+
+		match _weapon_style:
+			"halberd":
+				var p_plant := Vector3(_impact_pos.x + 0.18 * sgn, _felt_y + 0.44, _impact_pos.z + _dir_z * 0.14)
+				if t < 0.20:
+					var u := clampf(t / 0.20, 0.0, 1.0)
+					var eo := 1.0 - pow(1.0 - u, 3.0)
+					var sc := lerpf(0.32, 1.04, eo)
+					_sword_pivot.scale = Vector3(sc, sc, sc)
+					_sword_pivot.position = base_anchor + Vector3(lerpf(0.0, 0.34 * sgn, eo), lerpf(-0.04, 0.22, eo), -_dir_z * lerpf(0.0, 0.08, eo))
+					_sword_pivot.rotation_degrees = Vector3(lerpf(8.0 * sgn, 26.0 * sgn, eo), yaw_face + lerpf(0.0, 32.0 * sgn, eo), lerpf(-24.0, -96.0, eo))
+					_set_weapon_mats(clampf(u * 3.5, 0.0, 1.0), 0.0, 0.0, lerpf(-0.3, 1.35, u), 1.95)
+				elif t < 0.32:
+					var u := clampf((t - 0.20) / 0.12, 0.0, 1.0)
+					var snap := 1.0 - pow(1.0 - u, 3.4)
+					var p0 := base_anchor + Vector3(0.34 * sgn, 0.22, -_dir_z * 0.08)
+					_sword_pivot.position = p0.lerp(p_plant, snap) + Vector3(-sin(u * PI) * 0.22 * sgn, sin(u * PI) * 0.08, 0.0)
+					_sword_pivot.rotation_degrees = Vector3(lerpf(26.0 * sgn, planted_pitch, snap), yaw_face + lerpf(32.0 * sgn, -14.0 * sgn, snap), lerpf(-96.0, 138.0, snap))
+					var st := 1.0 + sin(u * PI) * 0.22
+					_sword_pivot.scale = Vector3(1.06 / sqrt(st), st, 1.0)
+					_set_weapon_mats(1.0, 0.0, sin(u * PI) * 0.56, -1.0, 2.35)
+					if not _hitstop_done and u >= 0.58:
+						_hitstop_done = true
+						_hitstop_left = 0.045
+				elif t < 0.80:
+					var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
+					var vib := exp(-u * 9.5) * sin(u * 42.0) * 4.5
+					_sword_pivot.position = p_plant + Vector3(0.0, sin(u * 5.0) * 0.005, 0.0)
+					_sword_pivot.rotation_degrees = Vector3(planted_pitch + vib * 0.35, yaw_face - 14.0 * sgn, 138.0 + vib)
+					_sword_pivot.scale = Vector3(1.04, 1.04, 1.0)
+					_set_weapon_mats(1.0, 0.0, maxf(0.0, 0.45 * (1.0 - u * 4.0)), -1.0, 2.45 - u * 0.7)
+				else:
+					var u := clampf((t - 0.80) / 0.34, 0.0, 1.0)
+					_set_weapon_mats(1.0 - pow(u, 1.8), u, 0.0, -1.0, 1.6)
+					_sword_pivot.position.y += 0.0005
+
+			"staff":
+				var p_plant := Vector3(_impact_pos.x, _felt_y + 0.14, _impact_pos.z + _dir_z * 0.14)
+				if t < 0.20:
+					var u := clampf(t / 0.20, 0.0, 1.0)
+					var eo := 1.0 - pow(1.0 - u, 3.0)
+					var sc := lerpf(0.30, 1.02, eo)
+					_sword_pivot.scale = Vector3(sc, sc, sc)
+					_sword_pivot.position = base_anchor + Vector3(0.0, lerpf(0.04, 0.42, eo), _dir_z * lerpf(0.02, 0.12, eo))
+					_sword_pivot.rotation_degrees = Vector3(lerpf(-10.0 * sgn, 14.0 * sgn, eo), yaw_face + eo * 360.0, sin(eo * PI) * 14.0)
+					_set_weapon_mats(clampf(u * 3.4, 0.0, 1.0), 0.0, 0.0, lerpf(-0.3, 1.4, u), 2.35)
+				elif t < 0.32:
+					var u := clampf((t - 0.20) / 0.12, 0.0, 1.0)
+					var snap := pow(u, 2.4)
+					var p0 := base_anchor + Vector3(0.0, 0.42, _dir_z * 0.12)
+					_sword_pivot.position = p0.lerp(p_plant, snap)
+					_sword_pivot.rotation_degrees = Vector3(lerpf(14.0 * sgn, -10.0 * sgn, snap), yaw_face, lerpf(0.0, 8.0 * sgn, snap))
+					var st := 1.0 + sin(u * PI) * 0.18
+					_sword_pivot.scale = Vector3(1.02 / sqrt(st), st, 1.0)
+					_set_weapon_mats(1.0, 0.0, sin(u * PI) * 0.65, -1.0, 3.1)
+					if not _hitstop_done and u >= 0.72:
+						_hitstop_done = true
+						_hitstop_left = 0.045
+				elif t < 0.80:
+					var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
+					var vib := exp(-u * 10.0) * sin(u * 40.0) * 3.0
+					_sword_pivot.position = p_plant + Vector3(0.0, absf(sin(u * 8.0)) * 0.008, 0.0)
+					_sword_pivot.rotation_degrees = Vector3(-10.0 * sgn + vib * 0.4, yaw_face + sin(u * 6.0) * 8.0, 8.0 * sgn + vib)
+					_sword_pivot.scale = Vector3.ONE.lerp(Vector3(1.05, 1.05, 1.0), minf(1.0, u * 4.0))
+					_set_weapon_mats(1.0, 0.0, maxf(0.0, 0.50 * (1.0 - u * 4.0)), -1.0, 2.8 - u * 0.8)
+				else:
+					var u := clampf((t - 0.80) / 0.34, 0.0, 1.0)
+					_set_weapon_mats(1.0 - pow(u, 1.8), u, 0.0, -1.0, 1.8)
+					_sword_pivot.position.y += 0.0008
+
+			"dagger":
+				var p_left := Vector3(_impact_pos.x - 0.13 * sgn, _felt_y + 0.36, _impact_pos.z + _dir_z * 0.14)
+				var p_right := Vector3(_impact_pos.x + 0.13 * sgn, _felt_y + 0.36, _impact_pos.z + _dir_z * 0.14)
+				if t < 0.20:
+					var u := clampf(t / 0.20, 0.0, 1.0)
+					var eo := 1.0 - pow(1.0 - u, 3.0)
+					var sc := lerpf(0.28, 1.02, eo)
+					_sword_pivot.scale = Vector3(sc, sc, sc)
+					_sword_pivot.position = base_anchor + Vector3(lerpf(0.18 * sgn, 0.44 * sgn, eo), lerpf(0.02, 0.26, eo), -_dir_z * 0.08)
+					_sword_pivot.rotation_degrees = Vector3(wind_pitch, yaw_face, lerpf(-20.0, -58.0, eo))
+					if is_instance_valid(_second_pivot):
+						_second_pivot.scale = Vector3(-sc, sc, sc)
+						_second_pivot.position = base_anchor + Vector3(lerpf(-0.18 * sgn, -0.44 * sgn, eo), lerpf(0.02, 0.26, eo), -_dir_z * 0.08)
+						_second_pivot.rotation_degrees = Vector3(wind_pitch, yaw_face, lerpf(20.0, 58.0, eo))
+					_set_weapon_mats(clampf(u * 3.5, 0.0, 1.0), 0.0, 0.0, lerpf(-0.3, 1.35, u), 2.05)
+				elif t < 0.32:
+					var u := clampf((t - 0.20) / 0.12, 0.0, 1.0)
+					var snap := 1.0 - pow(1.0 - u, 3.8)
+					var s1 := base_anchor + Vector3(0.44 * sgn, 0.26, -_dir_z * 0.08)
+					_sword_pivot.position = s1.lerp(p_right, snap) + Vector3(0.0, sin(u * PI) * 0.08, 0.0)
+					_sword_pivot.rotation_degrees = Vector3(lerpf(wind_pitch, planted_pitch, snap), yaw_face, lerpf(-58.0, 138.0, snap))
+					var st := 1.0 + sin(u * PI) * 0.24
+					_sword_pivot.scale = Vector3(1.02 / sqrt(st), st, 1.0)
+					if is_instance_valid(_second_pivot):
+						var s2 := base_anchor + Vector3(-0.44 * sgn, 0.26, -_dir_z * 0.08)
+						_second_pivot.position = s2.lerp(p_left, snap) + Vector3(0.0, sin(u * PI) * 0.08, 0.0)
+						_second_pivot.rotation_degrees = Vector3(lerpf(wind_pitch, planted_pitch, snap), yaw_face, lerpf(58.0, -138.0, snap))
+						_second_pivot.scale = Vector3(-1.02 / sqrt(st), st, 1.0)
+					_set_weapon_mats(1.0, 0.0, sin(u * PI) * 0.58, -1.0, 2.45)
+					if not _hitstop_done and u >= 0.58:
+						_hitstop_done = true
+						_hitstop_left = 0.045
+				elif t < 0.80:
+					var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
+					var vib := exp(-u * 11.0) * sin(u * 48.0) * 4.0
+					_sword_pivot.position = p_right
+					_sword_pivot.rotation_degrees = Vector3(planted_pitch + vib * 0.3, yaw_face, 138.0 + vib)
+					_sword_pivot.scale = Vector3.ONE
+					if is_instance_valid(_second_pivot):
+						_second_pivot.position = p_left
+						_second_pivot.rotation_degrees = Vector3(planted_pitch - vib * 0.3, yaw_face, -138.0 - vib)
+						_second_pivot.scale = Vector3(-1.0, 1.0, 1.0)
+					_set_weapon_mats(1.0, 0.0, maxf(0.0, 0.45 * (1.0 - u * 4.0)), -1.0, 2.3 - u * 0.6)
+				else:
+					var u := clampf((t - 0.80) / 0.34, 0.0, 1.0)
+					_set_weapon_mats(1.0 - pow(u, 1.8), u, 0.0, -1.0, 1.5)
+					_sword_pivot.position.y += 0.0005
+					if is_instance_valid(_second_pivot):
+						_second_pivot.position.y += 0.0005
+
+			"mace":
+				var p_plant := Vector3(_impact_pos.x, _felt_y + 0.40, _impact_pos.z + _dir_z * 0.14)
+				if t < 0.20:
+					var u := clampf(t / 0.20, 0.0, 1.0)
+					var eo := 1.0 - pow(1.0 - u, 3.0)
+					var sc := lerpf(0.30, 1.08, eo)
+					_sword_pivot.scale = Vector3(sc, sc, sc)
+					_sword_pivot.position = base_anchor + Vector3(lerpf(0.0, 0.18 * sgn, eo), lerpf(0.05, 0.56, eo), -_dir_z * 0.06)
+					_sword_pivot.rotation_degrees = Vector3(lerpf(10.0 * sgn, 34.0 * sgn, eo), yaw_face, lerpf(0.0, -32.0, eo))
+					_set_weapon_mats(clampf(u * 3.4, 0.0, 1.0), 0.0, 0.0, lerpf(-0.3, 1.35, u), 2.0)
+				elif t < 0.32:
+					var u := clampf((t - 0.20) / 0.12, 0.0, 1.0)
+					var snap := pow(u, 2.2)
+					var p0 := base_anchor + Vector3(0.18 * sgn, 0.56, -_dir_z * 0.06)
+					_sword_pivot.position = p0.lerp(p_plant, snap)
+					_sword_pivot.rotation_degrees = Vector3(lerpf(34.0 * sgn, planted_pitch, snap), yaw_face, lerpf(-32.0, 174.0, snap))
+					var st := 1.0 + sin(u * PI) * 0.22
+					_sword_pivot.scale = Vector3(1.12 / sqrt(st), st, 1.0)
+					_set_weapon_mats(1.0, 0.0, sin(u * PI) * 0.62, -1.0, 2.6)
+					if not _hitstop_done and u >= 0.72:
+						_hitstop_done = true
+						_hitstop_left = 0.050
+				elif t < 0.80:
+					var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
+					var vib := exp(-u * 9.0) * sin(u * 38.0) * 5.0
+					_sword_pivot.position = p_plant + Vector3(0.0, -absf(sin(u * 12.0)) * exp(-u * 8.0) * 0.02, 0.0)
+					_sword_pivot.rotation_degrees = Vector3(planted_pitch + vib * 0.4, yaw_face, 174.0 + vib)
+					_sword_pivot.scale = Vector3(1.05, 1.05, 1.0)
+					_set_weapon_mats(1.0, 0.0, maxf(0.0, 0.5 * (1.0 - u * 4.0)), -1.0, 2.4 - u * 0.7)
+				else:
+					var u := clampf((t - 0.80) / 0.34, 0.0, 1.0)
+					_set_weapon_mats(1.0 - pow(u, 1.8), u, 0.0, -1.0, 1.5)
+					_sword_pivot.position.y += 0.0004
+
+			"spear":
+				var p_plant := Vector3(_impact_pos.x + 0.14 * sgn, _felt_y + 0.46, _impact_pos.z + _dir_z * 0.14)
+				if t < 0.20:
+					var u := clampf(t / 0.20, 0.0, 1.0)
+					var eo := 1.0 - pow(1.0 - u, 3.0)
+					var sc := lerpf(0.32, 1.04, eo)
+					_sword_pivot.scale = Vector3(sc, sc, sc)
+					_sword_pivot.position = base_anchor + Vector3(lerpf(0.0, -0.22 * sgn, eo), lerpf(0.28, 0.92, eo), -_dir_z * 0.14)
+					_sword_pivot.rotation_degrees = Vector3(lerpf(12.0 * sgn, 24.0 * sgn, eo), yaw_face, lerpf(120.0, 158.0, eo))
+					_set_weapon_mats(clampf(u * 3.6, 0.0, 1.0), 0.0, 0.0, lerpf(-0.3, 1.4, u), 2.3)
+				elif t < 0.32:
+					var u := clampf((t - 0.20) / 0.12, 0.0, 1.0)
+					var snap := pow(u, 2.0)
+					var p0 := base_anchor + Vector3(-0.22 * sgn, 0.92, -_dir_z * 0.14)
+					_sword_pivot.position = p0.lerp(p_plant, snap)
+					_sword_pivot.rotation_degrees = Vector3(lerpf(24.0 * sgn, -16.0 * sgn, snap), yaw_face, lerpf(158.0, 162.0, snap))
+					var st := 1.0 + sin(u * PI) * 0.28
+					_sword_pivot.scale = Vector3(1.0 / sqrt(st), st, 1.0)
+					_set_weapon_mats(1.0, 0.0, sin(u * PI) * 0.65, -1.0, 3.0)
+					if not _hitstop_done and u >= 0.72:
+						_hitstop_done = true
+						_hitstop_left = 0.055
+				elif t < 0.80:
+					var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
+					var vib := exp(-u * 10.5) * sin(u * 52.0) * 3.5
+					_sword_pivot.position = p_plant
+					_sword_pivot.rotation_degrees = Vector3(-16.0 * sgn + vib * 0.3, yaw_face, 162.0 + vib)
+					_sword_pivot.scale = Vector3(1.03, 1.03, 1.0)
+					_set_weapon_mats(1.0, 0.0, maxf(0.0, 0.5 * (1.0 - u * 4.0)), -1.0, 2.6 - u * 0.75)
+				else:
+					var u := clampf((t - 0.80) / 0.34, 0.0, 1.0)
+					_set_weapon_mats(1.0 - pow(u, 1.8), u, 0.0, -1.0, 1.6)
+					_sword_pivot.position.y += 0.0005
+
+			"shield":
+				var p_plant := Vector3(_impact_pos.x, _felt_y + 0.25, _impact_pos.z + _dir_z * 0.14)
+				if t < 0.20:
+					var u := clampf(t / 0.20, 0.0, 1.0)
+					var eo := 1.0 - pow(1.0 - u, 3.0)
+					var sc := lerpf(0.24, 1.12, eo)
+					_sword_pivot.scale = Vector3(sc, sc, sc)
+					_sword_pivot.position = base_anchor + Vector3(0.0, lerpf(0.04, 0.44, eo), _dir_z * 0.14)
+					_sword_pivot.rotation_degrees = Vector3(-16.0 * sgn, yaw_face + lerpf(-22.0 * sgn, 0.0, eo), 0.0)
+					_set_weapon_mats(clampf(u * 3.5, 0.0, 1.0), 0.0, 0.0, lerpf(-0.3, 1.35, u), 2.15)
+				elif t < 0.32:
+					var u := clampf((t - 0.20) / 0.12, 0.0, 1.0)
+					var snap := pow(u, 2.4)
+					var p0 := base_anchor + Vector3(0.0, 0.44, _dir_z * 0.14)
+					_sword_pivot.position = p0.lerp(p_plant, snap)
+					_sword_pivot.rotation_degrees = Vector3(lerpf(-16.0 * sgn, -10.0 * sgn, snap), yaw_face, 0.0)
+					var sq := 1.0 + sin(u * PI) * 0.18
+					_sword_pivot.scale = Vector3(1.06 * sq, 1.06 / sqrt(sq), 1.06)
+					_set_weapon_mats(1.0, 0.0, sin(u * PI) * 0.62, -1.0, 2.8)
+					if not _hitstop_done and u >= 0.72:
+						_hitstop_done = true
+						_hitstop_left = 0.045
+				elif t < 0.80:
+					var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
+					var vib := exp(-u * 10.0) * sin(u * 38.0) * 3.0
+					_sword_pivot.position = p_plant + Vector3(0.0, sin(u * 5.0) * 0.004, 0.0)
+					_sword_pivot.rotation_degrees = Vector3(-10.0 * sgn, yaw_face, vib)
+					_sword_pivot.scale = Vector3(1.06, 1.06, 1.06)
+					_set_weapon_mats(1.0, 0.0, maxf(0.0, 0.45 * (1.0 - u * 4.0)), -1.0, 2.5 - u * 0.7)
+				else:
+					var u := clampf((t - 0.80) / 0.34, 0.0, 1.0)
+					_set_weapon_mats(1.0 - pow(u, 1.8), u, 0.0, -1.0, 1.6)
+					_sword_pivot.position.y += 0.0004
+
+			_:
+				var planted_pos := Vector3(_impact_pos.x + (0.16 if _attacker_is_player else -0.16), _felt_y + 0.41, _impact_pos.z + _dir_z * 0.14)
+				if t < 0.20:
+					var u := clampf(t / 0.20, 0.0, 1.0)
+					var ease_out := 1.0 - pow(1.0 - u, 3.0)
+					var sc := lerpf(0.28, 1.02, ease_out)
+					_sword_pivot.scale = Vector3(sc, sc * lerpf(0.88, 1.06, u), sc)
+					_sword_pivot.position = base_anchor + Vector3(
+						lerpf(0.0, 0.14 if _attacker_is_player else -0.14, ease_out),
+						lerpf(-0.08, 0.18, ease_out),
+						-_dir_z * lerpf(0.0, 0.10, ease_out)
+					)
+					_sword_pivot.rotation_degrees = Vector3(
+						lerpf(6.0 if _attacker_is_player else -6.0, wind_pitch, ease_out),
+						yaw_face,
+						lerpf(-10.0, -40.0, ease_out)
+					)
+					_set_weapon_mats(clampf(u * 3.4, 0.0, 1.0), 0.0, 0.0, lerpf(-0.3, 1.35, u), 1.95)
+				elif t < 0.32:
+					var u := clampf((t - 0.20) / 0.12, 0.0, 1.0)
+					var snap := 1.0 - pow(1.0 - u, 3.6)
+					var start_pos := base_anchor + Vector3(0.14 if _attacker_is_player else -0.14, 0.18, -_dir_z * 0.10)
+					_sword_pivot.position = start_pos.lerp(planted_pos, snap) + Vector3(0.0, sin(u * PI) * 0.12, 0.0)
+					_sword_pivot.rotation_degrees = Vector3(
+						lerpf(wind_pitch, planted_pitch, snap),
+						yaw_face + lerpf(0.0, -10.0 if _attacker_is_player else 10.0, snap),
+						lerpf(-40.0, 152.0, snap)
+					)
+					var stretch := 1.0 + sin(u * PI) * 0.20
+					_sword_pivot.scale = Vector3(1.04 / sqrt(stretch), stretch, 1.0)
+					_set_weapon_mats(1.0, 0.0, sin(u * PI) * 0.52, -1.0, 2.2)
+					if not _hitstop_done and u >= 0.56:
+						_hitstop_done = true
+						_hitstop_left = 0.045
+				elif t < 0.80:
+					var u := clampf((t - 0.32) / 0.48, 0.0, 1.0)
+					var vib := exp(-u * 10.5) * sin(u * 46.0) * 4.2
+					_sword_pivot.position = planted_pos + Vector3(0.0, sin(u * 6.0) * 0.005, 0.0)
+					_sword_pivot.rotation_degrees = Vector3(
+						planted_pitch + vib * 0.4,
+						yaw_face + (-10.0 if _attacker_is_player else 10.0),
+						152.0 + vib
+					)
+					_sword_pivot.scale = Vector3.ONE.lerp(Vector3(1.02, 1.02, 1.0), minf(1.0, u * 4.0))
+					_set_weapon_mats(1.0, 0.0, maxf(0.0, 0.45 * (1.0 - u * 4.0)), -1.0, 2.45 - u * 0.75)
+				else:
+					var u := clampf((t - 0.80) / 0.34, 0.0, 1.0)
+					_set_weapon_mats(1.0 - pow(u, 1.8), u, 0.0, -1.0, 1.6)
+					_sword_pivot.position.y += 0.0005
 
 	func _update_slashes(t: float) -> void:
 		# Primary slash: starts at t = 0.15s -> 0.86s across 24 cel frames
