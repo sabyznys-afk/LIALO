@@ -86,9 +86,18 @@ var mp_item_uses: Dictionary = {}
 var _mp_intro_showcase_done: bool = false
 var hovered_card_idx: int = -1
 var hovered_item_id: String = ""
+var hovered_item_uid: String = ""
 var hovered_draw_deck: bool = false
 var _last_local_hp: int = 120
 var _hover_cache_key: String = ""
+var _freelook_enabled: bool = true
+var _freelook_sensitivity: float = 1.0
+var freelook_badge_panel: PanelContainer = null
+var freelook_badge_lbl: Label = null
+var combat_log_panel: PanelContainer = null
+var combat_log_rtl: RichTextLabel = null
+var combat_log_toggle_btn: Button = null
+var _combat_log_lines: Array[String] = []
 
 var player_hp_heart: Control
 var turn_banner_grp: Control
@@ -142,6 +151,9 @@ func configure(network_node: Node, muted: bool = false, vol_pct: int = 85) -> vo
 
 func _ready() -> void:
 	cam_spring = CamSpring.new()
+	var opts := Catalog.load_options()
+	_freelook_enabled = bool(opts.get("mp_freelook_enabled", true))
+	_freelook_sensitivity = clampf(float(opts.get("mp_freelook_sensitivity", 1.0)), 0.4, 2.0)
 	_ensure_fonts()
 	_build_3d_tavern()
 	_setup_mp_fpp_hand()
@@ -181,7 +193,7 @@ func _process(delta: float) -> void:
 	var modal_open := (is_instance_valid(parry_panel) and parry_panel.visible) or (is_instance_valid(victory_panel) and victory_panel.visible) or (is_instance_valid(suit_pick_modal) and suit_pick_modal.visible)
 
 	# Free camera look-around when >2 players & NOT your turn; smoothly return to static view on your turn!
-	var allow_free_look := (seats_arr.size() > 2) and (active_turn_seat != my_seat) and not modal_open and not match_over
+	var allow_free_look := _freelook_enabled and (seats_arr.size() > 2) and (active_turn_seat != my_seat) and not modal_open and not match_over
 	var tgt_yaw := 0.0
 	var tgt_pitch := 0.0
 	if allow_free_look:
@@ -190,8 +202,13 @@ func _process(delta: float) -> void:
 		if vp_s.x > 10.0 and vp_s.y > 10.0 and _mp_cursor_pos.x >= 0.0:
 			var nx := clampf((_mp_cursor_pos.x / vp_s.x) * 2.0 - 1.0, -1.0, 1.0)
 			var ny := clampf((_mp_cursor_pos.y / vp_s.y) * 2.0 - 1.0, -1.0, 1.0)
-			tgt_yaw = -nx * 62.0
-			tgt_pitch = clampf(-ny * 24.0, -24.0, 24.0)
+			tgt_yaw = clampf(-nx * 62.0 * _freelook_sensitivity, -78.0, 78.0)
+			tgt_pitch = clampf(-ny * 24.0 * _freelook_sensitivity, -30.0, 30.0)
+	if is_instance_valid(freelook_badge_panel):
+		freelook_badge_panel.visible = allow_free_look
+		if allow_free_look and is_instance_valid(freelook_badge_lbl):
+			var is_cs := str(Catalog.load_options().get("language", "en")) == "cs" or TranslationServer.get_locale().begins_with("cs")
+			freelook_badge_lbl.text = "👁 Volný rozhled (Myš) [F]" if is_cs else "👁 Free-Look (Mouse) [F]"
 	var cam_rot_speed := 8.5 if allow_free_look else 14.0
 	look_yaw = lerpf(look_yaw, tgt_yaw, clampf(delta * cam_rot_speed, 0.0, 1.0))
 	look_pitch = lerpf(look_pitch, tgt_pitch, clampf(delta * cam_rot_speed, 0.0, 1.0))
@@ -284,6 +301,19 @@ func _input(event: InputEvent) -> void:
 			var vp := get_viewport()
 			if vp != null:
 				vp.set_input_as_handled()
+		elif k.pressed and not k.echo and k.keycode == KEY_F:
+			_freelook_enabled = not _freelook_enabled
+			play_sfx_requested.emit("card_hover")
+			var vp_f := get_viewport()
+			if vp_f != null:
+				vp_f.set_input_as_handled()
+		elif k.pressed and not k.echo and k.keycode == KEY_L:
+			if is_instance_valid(combat_log_panel):
+				combat_log_panel.visible = not combat_log_panel.visible
+			play_sfx_requested.emit("ui_click")
+			var vp_l := get_viewport()
+			if vp_l != null:
+				vp_l.set_input_as_handled()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -324,10 +354,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if mb.button_index == MOUSE_BUTTON_LEFT and is_instance_valid(cam):
 			_mp_cursor_pos = mb.position
-			if hovered_item_id != "":
+			if hovered_item_id != "" or hovered_item_uid != "":
 				if my_turn and mp_net != null:
 					play_sfx_requested.emit("prop_coins")
-					mp_net.send_use_item(hovered_item_id, selected_target)
+					mp_net.send_use_item(hovered_item_uid if hovered_item_uid != "" else hovered_item_id, selected_target)
 				elif not my_turn:
 					_toast_msg = "Wait for your turn to activate tabletop items!"
 					_toast_timer = 1.6
@@ -1110,6 +1140,70 @@ func _build_hud() -> void:
 	round_transition_sub_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	rtvb.add_child(round_transition_sub_lbl)
 
+	# Q8: Subtle Free-Look HUD Badge (>2P off-turn)
+	freelook_badge_panel = PanelContainer.new()
+	freelook_badge_panel.name = "MpFreelookBadge"
+	freelook_badge_panel.anchor_left = 0.5; freelook_badge_panel.anchor_right = 0.5
+	freelook_badge_panel.offset_left = -135; freelook_badge_panel.offset_right = 135
+	freelook_badge_panel.offset_top = 98; freelook_badge_panel.offset_bottom = 128
+	freelook_badge_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.06, 0.08, 0.11, 0.78), Color(0.45, 0.78, 0.92, 0.65), 1, 8, 6))
+	freelook_badge_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	freelook_badge_panel.visible = false
+	hud_root.add_child(freelook_badge_panel)
+
+	freelook_badge_lbl = Label.new()
+	freelook_badge_lbl.text = "👁 Free-Look (Mouse) [F]"
+	freelook_badge_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	freelook_badge_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_apply_font(freelook_badge_lbl, false)
+	freelook_badge_lbl.add_theme_font_size_override("font_size", 12)
+	freelook_badge_lbl.add_theme_color_override("font_color", Color(0.74, 0.92, 1.0))
+	freelook_badge_panel.add_child(freelook_badge_lbl)
+
+	# Q7: Toggleable MP Combat Log Drawer [L]
+	combat_log_toggle_btn = Button.new()
+	combat_log_toggle_btn.name = "MpCombatLogBtn"
+	combat_log_toggle_btn.text = "📜 Log [L]"
+	combat_log_toggle_btn.anchor_left = 0.0; combat_log_toggle_btn.anchor_right = 0.0
+	combat_log_toggle_btn.offset_left = 18; combat_log_toggle_btn.offset_right = 114
+	combat_log_toggle_btn.offset_top = 124; combat_log_toggle_btn.offset_bottom = 154
+	_style_tavern_btn(combat_log_toggle_btn, Color(0.11, 0.085, 0.06, 0.88), Color(0.72, 0.54, 0.24, 0.82), false, 8)
+	combat_log_toggle_btn.pressed.connect(func():
+		if is_instance_valid(combat_log_panel):
+			combat_log_panel.visible = not combat_log_panel.visible
+			play_sfx_requested.emit("ui_click")
+	)
+	hud_root.add_child(combat_log_toggle_btn)
+
+	combat_log_panel = PanelContainer.new()
+	combat_log_panel.name = "MpCombatLogDrawer"
+	combat_log_panel.anchor_left = 0.0; combat_log_panel.anchor_right = 0.0
+	combat_log_panel.offset_left = 18; combat_log_panel.offset_right = 378
+	combat_log_panel.offset_top = 160; combat_log_panel.offset_bottom = 390
+	combat_log_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.06, 0.045, 0.035, 0.92), Color(0.72, 0.54, 0.24, 0.85), 2, 10, 10))
+	combat_log_panel.visible = false
+	hud_root.add_child(combat_log_panel)
+
+	var cl_vb := VBoxContainer.new()
+	cl_vb.add_theme_constant_override("separation", 4)
+	combat_log_panel.add_child(cl_vb)
+
+	var cl_hdr := Label.new()
+	cl_hdr.text = "📜 COMBAT LOG  [L]"
+	_apply_font(cl_hdr, true)
+	cl_hdr.add_theme_font_size_override("font_size", 13)
+	cl_hdr.add_theme_color_override("font_color", Color(1.0, 0.88, 0.48))
+	cl_vb.add_child(cl_hdr)
+
+	combat_log_rtl = RichTextLabel.new()
+	combat_log_rtl.bbcode_enabled = true
+	combat_log_rtl.scroll_following = true
+	combat_log_rtl.fit_content = false
+	combat_log_rtl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	combat_log_rtl.add_theme_font_size_override("normal_font_size", 12)
+	combat_log_rtl.add_theme_color_override("default_color", Color(0.92, 0.88, 0.78))
+	cl_vb.add_child(combat_log_rtl)
+
 	add_child(hud_layer)
 
 
@@ -1270,6 +1364,14 @@ func _on_private_hand(s_idx: int, hand: Array, items: Array, meta: Dictionary) -
 	_refresh_target_and_actions()
 
 
+func _append_combat_log(bb_line: String) -> void:
+	_combat_log_lines.append(bb_line)
+	if _combat_log_lines.size() > 60:
+		_combat_log_lines.pop_front()
+	if is_instance_valid(combat_log_rtl):
+		combat_log_rtl.text = "\n".join(_combat_log_lines)
+
+
 func _on_vfx_event(evt: Dictionary) -> void:
 	var etype := str(evt.get("type", ""))
 	var center := global_position + Vector3(0.0, 0.85, 0.0)
@@ -1280,6 +1382,9 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			var from_p := _seat_world_pos(fs, 1.02)
 			var to_p := _seat_world_pos(ts, 1.02)
 			var cards_arr: Array = evt.get("cards", [])
+			var fn := str(_get_pub_seat(fs).get("name", "P%d" % (fs + 1)))
+			var tn := str(_get_pub_seat(ts).get("name", "P%d" % (ts + 1)))
+			_append_combat_log("[color=#ffd966]⚔ %s[/color] played %d card(s) ([color=#9be2ff]%s[/color]) → [color=#ff8a7a]%s[/color] (%d DMG)" % [fn, cards_arr.size(), str(evt.get("combo_label", "Slam")), tn, int(evt.get("dmg", 0))])
 			play_sfx_requested.emit("card_slam")
 			if cards_arr.size() >= 2:
 				play_sfx_requested.emit("anim_combo_slam")
@@ -1313,14 +1418,26 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			var fs_i := int(evt.get("from_seat", 0))
 			var ts_i := int(evt.get("to_seat", 1))
 			var it_id := str(evt.get("item_id", ""))
-			var item_info: Dictionary = Config.MP_ITEMS.get(it_id, {"name": it_id, "col": Color.GOLD})
+			var it_uid := str(evt.get("item_uid", ""))
+			var item_info: Dictionary = Config.get_mp_item_info(it_id)
+			if item_info.is_empty():
+				item_info = {"name": it_id, "short": "Use", "col": Color.GOLD}
 			var icol: Color = item_info.get("col", Color(0.96, 0.78, 0.34))
-			var item_n: Node3D = mp_item_3d_nodes.get(it_id) as Node3D if (fs_i == my_seat and mp_item_3d_nodes.has(it_id)) else null
+			var item_n: Node3D = null
+			if fs_i == my_seat:
+				if it_uid != "" and mp_item_3d_nodes.has(it_uid):
+					item_n = mp_item_3d_nodes.get(it_uid) as Node3D
+				elif mp_item_3d_nodes.has(it_id):
+					item_n = mp_item_3d_nodes.get(it_id) as Node3D
 			var origin_i := item_n.global_position if is_instance_valid(item_n) else _seat_world_pos(fs_i, 0.82)
 			var target_i := _seat_world_pos(ts_i, 1.02) + Vector3(0.0, 0.32, 0.0)
+			var fn_i := str(_get_pub_seat(fs_i).get("name", "P%d" % (fs_i + 1)))
+			var shat := bool(evt.get("shattered", false))
+			var u_left := int(evt.get("uses_left", 2))
+			_append_combat_log("[color=#e4c1ff]✦ %s[/color] used [b]%s[/b] (%s)" % [fn_i, str(item_info.get("name", it_id)), "SHATTERED!" if shat else ("%d/3" % u_left)])
 			play_sfx_requested.emit("prop_coins")
 			Fx.play_complex_table_item_anim(self, item_n, origin_i, target_i, it_id, icol)
-			if bool(evt.get("shattered", false)):
+			if shat:
 				Fx.float_number(self, origin_i + Vector3(0.0, 0.24, 0.0), "💥 SHATTERED! (0/3)", Color(1.0, 0.36, 0.24), 48, 0.20, 0.85, 1.40)
 				get_tree().create_timer(0.48).timeout.connect(func():
 					if is_instance_valid(self):
@@ -1328,7 +1445,6 @@ func _on_vfx_event(evt: Dictionary) -> void:
 						play_sfx_requested.emit("card_slam")
 				)
 			elif is_instance_valid(item_n):
-				var u_left := int(evt.get("uses_left", 2))
 				Fx.float_number(self, origin_i + Vector3(0.0, 0.22, 0.0), "%d/%d" % [u_left, MAX_MP_ITEM_USES], icol.lightened(0.3), 44, 0.16, 0.65, 1.25)
 				var rtag := item_n.get_node_or_null("RelicHoverTag") as Label3D
 				if rtag:
@@ -1338,6 +1454,9 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			cam_kick_shake = 0.55
 			Fx.ring(self, center + Vector3(0.0, 0.04, 0.0), Color(1.0, 0.25, 0.22), 1.35, 0.8, 0.08, 2.5, 8.0)
 		"PARRY_DEFLECT":
+			var fn2 := str(_get_pub_seat(int(evt.get("from_seat", 0))).get("name", "Defender"))
+			var tn2 := str(_get_pub_seat(int(evt.get("to_seat", 1))).get("name", "Attacker"))
+			_append_combat_log("[color=#d896ff]🪞 %s DEFLECTED[/color] execution back at %s (%d DMG)!" % [fn2, tn2, int(evt.get("dmg", 0))])
 			play_sfx_requested.emit("anim_parry_clang")
 			var fs2 := int(evt.get("from_seat", 0))
 			var ts2 := int(evt.get("to_seat", 1))
@@ -1354,6 +1473,9 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			cam_kick_shake = 0.95
 			Fx.float_number(self, center + Vector3(0.0, 0.38, 0.0), "🪞 MIRROR PARRY!", Color(1.0, 0.84, 0.28), 64, 0.26, 1.1, 1.7)
 		"EXECUTION_KILL":
+			var fn3 := str(_get_pub_seat(int(evt.get("from_seat", 0))).get("name", "Attacker"))
+			var tn3 := str(_get_pub_seat(int(evt.get("to_seat", 1))).get("name", "Victim"))
+			_append_combat_log("[color=#ff5252]💀 %s EXECUTED %s[/color] (%s)!" % [fn3, tn3, str(evt.get("kind", "EXECUTION"))])
 			play_sfx_requested.emit("card_ace_strike")
 			var fs3 := int(evt.get("from_seat", 0))
 			var ts3 := int(evt.get("to_seat", 1))
@@ -1374,7 +1496,15 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			cam_kick_shake = 1.15
 			cam_spring.trigger_score_recoil(300, 4.0, 1.1)
 		"SHED_OVERDRIVE":
+			var fn_s := str(_get_pub_seat(int(evt.get("seat", 0))).get("name", "Player"))
+			_append_combat_log("[color=#7dff9e]★ %s[/color] triggered PRŠÍ OVERDRIVE (-42 AoE)!" % fn_s)
 			Fx.ring(self, center + Vector3(0.0, 0.03, 0.0), Color(0.45, 1.0, 0.65), 1.5, 0.7, 0.10, 2.2, 14.0)
+		"BLOOD_DRAW":
+			var fn_b := str(_get_pub_seat(int(evt.get("seat", 0))).get("name", "Player"))
+			_append_combat_log("[color=#ff7575]🩸 %s[/color] drew %d Blood-Tax cards (-%d DMG)!" % [fn_b, int(evt.get("count", 0)), int(evt.get("dmg", 0))])
+		"GHOST_ACT":
+			var fn_g := str(_get_pub_seat(int(evt.get("from_seat", 0))).get("name", "Ghost"))
+			_append_combat_log("[color=#8be9fd]👻 %s[/color] used %s" % [fn_g, str(evt.get("action", "GHOST"))])
 
 
 func _on_match_ended(winner_seat: int, summary: Dictionary) -> void:
@@ -1491,13 +1621,14 @@ func _create_mp_glove_mesh(is_right: bool) -> Node3D:
 
 
 func _is_mp_card_playable(c_data: Dictionary) -> bool:
-	var my_turn: bool = (int(public_state.get("turn_seat", -1)) == my_seat) and public_state.get("pending_parry", {}).is_empty() and bool(_get_pub_seat(my_seat).get("alive", true))
+	var my_pub := _get_pub_seat(my_seat)
+	var my_turn: bool = (int(public_state.get("turn_seat", -1)) == my_seat) and public_state.get("pending_parry", {}).is_empty() and bool(my_pub.get("alive", true))
 	if not my_turn:
 		return false
 	var r := str(c_data.get("rank", ""))
 	if int(public_state.get("pending_draw_stack", 0)) > 0:
 		return r == "7"
-	if r in ["H", "PWR"] or bool(c_data.get("wild", false)):
+	if bool(my_pub.get("hollow_mask_active", false)) or r in ["H", "PWR"] or bool(c_data.get("wild", false)):
 		return true
 	var top_c: Dictionary = public_state.get("top_card", {})
 	var top_r := str(top_c.get("rank", ""))
@@ -1671,17 +1802,22 @@ func _rebuild_local_items_ui() -> void:
 		Vector3(0.58, 0.0, 0.60),
 	]
 	for idx_i in range(my_items.size()):
-		var it_id := str(my_items[idx_i])
-		var info: Dictionary = Config.MP_ITEMS.get(it_id, {"name": it_id, "short": "Use", "col": Color.GOLD})
+		var it_entry = my_items[idx_i]
+		var it_id := Config.get_item_id(it_entry)
+		var it_uid := Config.get_item_uid(it_entry, idx_i)
+		var info: Dictionary = Config.get_mp_item_info(it_id)
+		if info.is_empty():
+			info = {"name": it_id, "short": "Use", "col": Color.GOLD}
 		var icol: Color = info.get("col", Color(0.95, 0.80, 0.32))
-		var rem_uses := maxi(0, MAX_MP_ITEM_USES - int(mp_item_uses.get(it_id, 0)))
+		var used_cnt := int(mp_item_uses.get(it_uid, (it_entry as Dictionary).get("uses", 0) if it_entry is Dictionary else 0))
+		var rem_uses := maxi(0, MAX_MP_ITEM_USES - used_cnt)
 		if rem_uses <= 0:
 			continue
 		var ped := Node3D.new()
-		ped.name = "MpItem_" + it_id
+		ped.name = "MpItem_" + it_uid.replace("#", "_")
 		ped.position = item_slots[idx_i % item_slots.size()]
 
-		var mesh_key := str(MP_ITEM_MESH_MAP.get(it_id, "TRELIC_BLOOD_SEAL"))
+		var mesh_key := it_id if it_id.begins_with("TRELIC_") else str(MP_ITEM_MESH_MAP.get(it_id, "TRELIC_BLOOD_SEAL"))
 		var imodel := RelicMesh.build_relic_3d_mesh(mesh_key, icol)
 		imodel.scale = Vector3(1.24, 1.24, 1.24)
 		ped.add_child(imodel)
@@ -1701,6 +1837,7 @@ func _rebuild_local_items_ui() -> void:
 
 		var area := Area3D.new()
 		area.set_meta("mp_item_id", it_id)
+		area.set_meta("mp_item_uid", it_uid)
 		var cs := CollisionShape3D.new()
 		var box := BoxShape3D.new(); box.size = Vector3(0.18, 0.24, 0.18)
 		cs.shape = box; cs.position = Vector3(0.0, 0.10, 0.0)
@@ -1711,7 +1848,7 @@ func _rebuild_local_items_ui() -> void:
 		ped.set_meta("base_scale", Vector3.ONE)
 		ped.set_meta("base_rot", ped.rotation_degrees)
 		mp_items_rack_root.add_child(ped)
-		mp_item_3d_nodes[it_id] = ped
+		mp_item_3d_nodes[it_uid] = ped
 
 
 func _play_mp_table_items_intro_showcase() -> void:
@@ -1747,6 +1884,7 @@ func _play_mp_table_items_intro_showcase() -> void:
 func _update_mp_hover_and_cursor(delta: float, blocked: bool) -> void:
 	hovered_card_idx = -1
 	hovered_item_id = ""
+	hovered_item_uid = ""
 	hovered_draw_deck = false
 
 	if not blocked and is_instance_valid(cam):
@@ -1770,6 +1908,7 @@ func _update_mp_hover_and_cursor(delta: float, blocked: bool) -> void:
 							hovered_card_idx = int(ca.get_meta("mp_card_index", -1))
 						elif ca.has_meta("mp_item_id"):
 							hovered_item_id = str(ca.get_meta("mp_item_id", ""))
+							hovered_item_uid = str(ca.get_meta("mp_item_uid", hovered_item_id))
 						elif ca.has_meta("mp_draw_deck"):
 							hovered_draw_deck = true
 
@@ -1795,7 +1934,7 @@ func _update_mp_hover_and_cursor(delta: float, blocked: bool) -> void:
 		if not is_instance_valid(in_node) or not in_node.visible:
 			continue
 		var bp_i: Vector3 = in_node.get_meta("base_pos", in_node.position)
-		var is_ih := (str(k_it) == hovered_item_id)
+		var is_ih := (str(k_it) == hovered_item_uid)
 		in_node.position = in_node.position.lerp(bp_i + (Vector3(0.0, 0.06, 0.0) if is_ih else Vector3.ZERO), clampf(delta * 12.0, 0.0, 1.0))
 		in_node.scale = in_node.scale.lerp(Vector3(1.24, 1.24, 1.24) if is_ih else Vector3.ONE, clampf(delta * 12.0, 0.0, 1.0))
 		var tag := in_node.get_node_or_null("RelicHoverTag") as Label3D
@@ -1803,7 +1942,7 @@ func _update_mp_hover_and_cursor(delta: float, blocked: bool) -> void:
 			tag.visible = is_ih
 
 	# Update bottom-right hover inspect card/item tooltip
-	var nkey := "%d|%s|%s" % [hovered_card_idx, hovered_item_id, str(hovered_draw_deck)]
+	var nkey := "%d|%s|%s" % [hovered_card_idx, hovered_item_uid, str(hovered_draw_deck)]
 	if nkey != _hover_cache_key and is_instance_valid(hover_inspect_panel):
 		_hover_cache_key = nkey
 		if hovered_card_idx >= 0 and hovered_card_idx < my_hand.size():
@@ -1815,11 +1954,11 @@ func _update_mp_hover_and_cursor(delta: float, blocked: bool) -> void:
 			hover_inspect_desc.text = str(hc.get("desc", "Left-click: Play now  |  Right-click: Stage for Combo!"))
 			hover_inspect_panel.visible = true
 		elif hovered_item_id != "":
-			var ii: Dictionary = Config.MP_ITEMS.get(hovered_item_id, {})
-			var rem_i := maxi(0, MAX_MP_ITEM_USES - int(mp_item_uses.get(hovered_item_id, 0)))
+			var ii: Dictionary = Config.get_mp_item_info(hovered_item_id)
+			var rem_i := maxi(0, MAX_MP_ITEM_USES - int(mp_item_uses.get(hovered_item_uid, 0)))
 			hover_inspect_title.text = "✦ %s [%d/%d]" % [str(ii.get("name", hovered_item_id)), rem_i, MAX_MP_ITEM_USES]
 			hover_inspect_sub.text = str(ii.get("short", "Table Artifact"))
-			hover_inspect_desc.text = "Click to activate on table (breaks after 3 uses!)."
+			hover_inspect_desc.text = str(ii.get("desc", "Click to activate on table (1 per turn, breaks after 3 uses!)."))
 			hover_inspect_panel.visible = true
 		elif hovered_draw_deck:
 			var tx := int(public_state.get("pending_draw_stack", 0))
@@ -1959,7 +2098,12 @@ func _update_parry_ui(parry_pub: Dictionary) -> void:
 		c.queue_free()
 
 	var my_pub := _get_pub_seat(my_seat)
-	var has_mirror := bool(my_pub.get("aegis_reflect", false)) or ("MYS_WITCH_MIRROR" in my_items)
+	var has_mirror := bool(my_pub.get("aegis_reflect", false))
+	if not has_mirror:
+		for it_e in my_items:
+			if Config.get_item_id(it_e) == "MYS_WITCH_MIRROR":
+				has_mirror = true
+				break
 	var has_chronos := false
 	for card in my_hand:
 		if str(card.get("power_id", "")) == "SPEC_MIRROR": has_mirror = true
