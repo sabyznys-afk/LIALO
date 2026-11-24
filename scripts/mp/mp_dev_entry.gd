@@ -12,6 +12,7 @@ const ArenaScript = preload("res://scripts/mp/mp_battle_table_3d.gd")
 var _root: Node = null
 var _menu_ctrl: Control = null
 var _mp_net: Node = null
+var _lobby_layer: CanvasLayer = null
 var _lobby: Control = null
 var _arena: Node3D = null
 var _dev_btn: Button = null
@@ -69,26 +70,39 @@ func _auto_open_mp_test() -> void:
 
 func open_lobby() -> void:
 	_play_click()
-	if is_instance_valid(_lobby):
+	if is_instance_valid(_lobby) and is_instance_valid(_lobby_layer):
+		_lobby_layer.visible = true
 		_lobby.visible = true
 		return
+	_free_lobby()
+	_lobby_layer = CanvasLayer.new()
+	_lobby_layer.name = "MpLobbyCanvasLayer"
+	_lobby_layer.layer = 35
+	if is_instance_valid(_root):
+		_root.add_child(_lobby_layer)
+	else:
+		add_child(_lobby_layer)
+
 	_lobby = LobbyScript.new()
 	_lobby.configure(_mp_net)
 	_lobby.close_requested.connect(func():
-		if is_instance_valid(_lobby):
-			_lobby.queue_free()
-			_lobby = null
+		_free_lobby()
 	)
 	_lobby.play_click_sfx.connect(_play_click)
-	if is_instance_valid(_menu_ctrl):
-		_menu_ctrl.add_child(_lobby)
-	else:
-		_root.add_child(_lobby)
+	_lobby_layer.add_child(_lobby)
+
+
+func _free_lobby() -> void:
+	if is_instance_valid(_lobby):
+		_lobby.queue_free()
+		_lobby = null
+	if is_instance_valid(_lobby_layer):
+		_lobby_layer.queue_free()
+		_lobby_layer = null
 
 
 func _on_match_started(_init: Dictionary) -> void:
-	if is_instance_valid(_lobby):
-		_lobby.visible = false
+	_free_lobby()
 	if is_instance_valid(_menu_ctrl):
 		_menu_ctrl.visible = false
 
