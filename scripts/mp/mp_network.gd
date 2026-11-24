@@ -15,6 +15,9 @@ signal private_hand_received(my_seat: int, hand: Array, items: Array, meta: Dict
 signal vfx_event_received(evt: Dictionary)
 signal match_ended(winner_seat: int, summary: Dictionary)
 signal session_closed(reason: String)
+signal host_network_ready(info: Dictionary)
+
+const CONNECT_TIMEOUT_SEC := 10.0
 
 var is_host: bool = false
 var in_session: bool = false
@@ -31,14 +34,37 @@ var _bot_seq: int = 1
 var last_public_state: Dictionary = {}
 var last_private_packet: Dictionary = {}
 
+var _is_connecting: bool = false
+var _connect_elapsed: float = 0.0
+var _host_port: int = Config.DEFAULT_PORT
+var _upnp_thread: Thread = null
+var _upnp_instance: UPNP = null
+var _upnp_mapped_port: int = 0
+var _upnp_stop_requested: bool = false
+var _upnp_ok: bool = false
+var _upnp_pending: bool = false
+var _upnp_external_ip: String = ""
+var _upnp_error: String = ""
+
 
 func _ready() -> void:
 	name = "MpNetwork"
 
 
+func _exit_tree() -> void:
+	_cleanup_upnp()
+
+
 func _process(delta: float) -> void:
 	if is_host and in_match and authority != null:
 		authority.tick(delta)
+	if _is_connecting and not is_host and in_session:
+		_connect_elapsed += delta
+		if _connect_elapsed >= CONNECT_TIMEOUT_SEC:
+			_is_connecting = false
+			_connect_elapsed = 0.0
+			status_changed.emit("Connection timed out after 10s — check Host IP, Port, or Firewall/UPnP/Radmin/Tailscale.", true)
+			leave_room(true)
 
 
 func host_room(port: int, player_name: String, deck_cfg: Dictionary) -> Error:
@@ -55,6 +81,9 @@ func host_room(port: int, player_name: String, deck_cfg: Dictionary) -> Error:
 	is_host = true
 	in_session = true
 	in_match = false
+	_is_connecting = false
+	_connect_elapsed = 0.0
+	_host_port = port
 	my_peer_id = 1
 	local_name = player_name.strip_edges()
 	if local_name.is_empty():
@@ -73,6 +102,8 @@ func host_room(port: int, player_name: String, deck_cfg: Dictionary) -> Error:
 	}]
 	_broadcast_lobby()
 	status_changed.emit("Hosting Table on port %d — Ready for 2–4 Players!" % port, false)
+	_start_upnp_async(port)
+	host_network_ready.emit(get_host_network_addresses())
 	return OK
 
 
@@ -90,6 +121,8 @@ func join_room(ip: String, port: int, player_name: String, deck_cfg: Dictionary)
 	is_host = false
 	in_session = true
 	in_match = false
+	_is_connecting = true
+	_connect_elapsed = 0.0
 	local_name = player_name.strip_edges()
 	if local_name.is_empty():
 		local_name = "Challenger"
@@ -99,6 +132,9 @@ func join_room(ip: String, port: int, player_name: String, deck_cfg: Dictionary)
 
 
 func leave_room(notify: bool = true) -> void:
+	_is_connecting = false
+	_connect_elapsed = 0.0
+	_cleanup_upnp()
 	_disconnect_mp_signals()
 	if multiplayer.multiplayer_peer != null:
 		multiplayer.multiplayer_peer.close()
@@ -113,6 +149,112 @@ func leave_room(notify: bool = true) -> void:
 	last_private_packet.clear()
 	if notify:
 		session_closed.emit("Disconnected from table.")
+
+
+func get_host_network_addresses() -> Dictionary:
+	var lan_ips: Array[String] = []
+	for raw_addr in IP.get_local_addresses():
+		var addr := str(raw_addr).strip_edges()
+		if ":" in addr:
+			continue # Skip IPv6
+		var parts := addr.split(".")
+		if parts.size() != 4:
+			continue
+		var a := int(parts[0])
+		var b := int(parts[1])
+		var is_lan := (a == 192 and b == 168) or (a == 10) or (a == 172 and b >= 16 and b <= 31)
+		if is_lan and not (addr in lan_ips):
+			lan_ips.append(addr)
+
+	var primary_lan := "127.0.0.1"
+	for ip_s in lan_ips:
+		if ip_s.begins_with("192.168."):
+			primary_lan = ip_s
+			break
+	if primary_lan == "127.0.0.1" and not lan_ips.is_empty():
+		primary_lan = lan_ips[0]
+
+	return {
+		"port": _host_port,
+		"lan_ip": primary_lan,
+		"lan_ips": lan_ips,
+		"public_ip": _upnp_external_ip,
+		"upnp_ok": _upnp_ok,
+		"upnp_pending": _upnp_pending,
+		"upnp_error": _upnp_error,
+	}
+
+
+func _start_upnp_async(port: int) -> void:
+	_cleanup_upnp()
+	_upnp_stop_requested = false
+	_upnp_pending = true
+	_upnp_ok = false
+	_upnp_external_ip = ""
+	_upnp_error = ""
+	_upnp_thread = Thread.new()
+	var err := _upnp_thread.start(_upnp_worker.bind(port))
+	if err != OK:
+		_upnp_pending = false
+		_upnp_error = "Could not start UPnP thread"
+		_upnp_thread = null
+
+
+func _upnp_worker(port: int) -> void:
+	var upnp := UPNP.new()
+	var discover_res := upnp.discover(2500, 2, "InternetGatewayDevice")
+	if _upnp_stop_requested:
+		return
+	if discover_res != UPNP.UPNP_RESULT_SUCCESS:
+		call_deferred("_on_upnp_finished", false, "", "UPnP gateway not found (code %d)" % discover_res, null, port)
+		return
+	var gw := upnp.get_gateway()
+	if gw == null or not gw.is_valid_gateway():
+		call_deferred("_on_upnp_finished", false, "", "No valid UPnP gateway", null, port)
+		return
+	var map_res := upnp.add_port_mapping(port, port, "Lialo Downpour MP", "UDP", 0)
+	var ext_ip := upnp.query_external_address()
+	if _upnp_stop_requested:
+		if map_res == UPNP.UPNP_RESULT_SUCCESS:
+			upnp.delete_port_mapping(port, "UDP")
+		return
+	if map_res == UPNP.UPNP_RESULT_SUCCESS and not ext_ip.is_empty():
+		call_deferred("_on_upnp_finished", true, ext_ip, "", upnp, port)
+	else:
+		var err_str := "UPnP port mapping failed (code %d)" % map_res if map_res != UPNP.UPNP_RESULT_SUCCESS else "Could not query public IP"
+		call_deferred("_on_upnp_finished", false, ext_ip, err_str, upnp if map_res == UPNP.UPNP_RESULT_SUCCESS else null, port)
+
+
+func _on_upnp_finished(ok: bool, ext_ip: String, err_msg: String, upnp_obj: UPNP, port: int) -> void:
+	if _upnp_thread != null and _upnp_thread.is_started():
+		_upnp_thread.wait_to_finish()
+	_upnp_thread = null
+	if not in_session or not is_host or port != _host_port or _upnp_stop_requested:
+		if upnp_obj != null:
+			upnp_obj.delete_port_mapping(port, "UDP")
+		return
+	_upnp_pending = false
+	_upnp_ok = ok
+	_upnp_external_ip = ext_ip
+	_upnp_error = err_msg
+	_upnp_instance = upnp_obj
+	_upnp_mapped_port = port if ok else 0
+	host_network_ready.emit(get_host_network_addresses())
+
+
+func _cleanup_upnp() -> void:
+	_upnp_stop_requested = true
+	if _upnp_thread != null and _upnp_thread.is_started():
+		_upnp_thread.wait_to_finish()
+	_upnp_thread = null
+	if _upnp_instance != null and _upnp_mapped_port > 0:
+		_upnp_instance.delete_port_mapping(_upnp_mapped_port, "UDP")
+	_upnp_instance = null
+	_upnp_mapped_port = 0
+	_upnp_ok = false
+	_upnp_pending = false
+	_upnp_external_ip = ""
+	_upnp_error = ""
 
 
 func update_local_deck(deck_cfg: Dictionary) -> void:
@@ -284,12 +426,16 @@ func _disconnect_mp_signals() -> void:
 
 
 func _on_connected_to_server() -> void:
+	_is_connecting = false
+	_connect_elapsed = 0.0
 	my_peer_id = multiplayer.get_unique_id()
 	status_changed.emit("Connected! Joining Tavern Table...", false)
-	_rpc_register_player.rpc_id(1, local_name, local_deck_cfg)
+	_rpc_register_player.rpc_id(1, local_name, local_deck_cfg, Config.MP_PROTOCOL_VERSION)
 
 
 func _on_connection_failed() -> void:
+	_is_connecting = false
+	_connect_elapsed = 0.0
 	status_changed.emit("Connection failed (check Host IP/Port).", true)
 	leave_room(true)
 
@@ -359,10 +505,20 @@ func _broadcast_lobby() -> void:
 # ---------------------------------------------------------------------------
 
 @rpc("any_peer", "call_local", "reliable")
-func _rpc_register_player(p_name: String, dcfg: Dictionary) -> void:
+func _rpc_register_player(p_name: String, dcfg: Dictionary, client_version: String = "") -> void:
 	if not multiplayer.is_server():
 		return
 	var sender := _sender_peer()
+	if client_version != Config.MP_PROTOCOL_VERSION:
+		var shown_cver := client_version if not client_version.is_empty() else "legacy"
+		_rpc_version_mismatch.rpc_id(sender, Config.MP_PROTOCOL_VERSION, shown_cver)
+		status_changed.emit("Peer #%d rejected — version mismatch (Host: v%s, Client: v%s)" % [sender, Config.MP_PROTOCOL_VERSION, shown_cver], true)
+		get_tree().create_timer(0.2).timeout.connect(func():
+			if multiplayer != null and multiplayer.multiplayer_peer != null and is_host:
+				if sender in multiplayer.get_peers():
+					multiplayer.multiplayer_peer.disconnect_peer(sender)
+		)
+		return
 	var clean_name := p_name.strip_edges().substr(0, 18)
 	if in_match and authority != null:
 		for s in authority.seats:
@@ -492,6 +648,13 @@ func _rpc_sync_private_hand(s_idx: int, hand: Array, items: Array, meta: Diction
 @rpc("authority", "call_local", "reliable")
 func _rpc_play_vfx(evt: Dictionary) -> void:
 	vfx_event_received.emit(evt)
+
+
+@rpc("authority", "reliable")
+func _rpc_version_mismatch(host_ver: String, client_ver: String) -> void:
+	var msg := "Neshodná verze hry! Host: v%s, Ty: v%s — stáhněte oba nejnovější verzi z Gitu. (Version mismatch!)" % [host_ver, client_ver]
+	status_changed.emit(msg, true)
+	leave_room(true)
 
 
 @rpc("authority", "call_local", "reliable")

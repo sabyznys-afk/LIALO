@@ -8,7 +8,8 @@ const Catalog = preload("res://scripts/lialo_catalog.gd")
 ## to completely remove the test entry from menus. When REQUIRE_NON_RELEASE_BUILD is true,
 ## exported Release templates automatically hide it even if ENABLE_TEST_MULTIPLAYER is true.
 const ENABLE_TEST_MULTIPLAYER := true
-const REQUIRE_NON_RELEASE_BUILD := true
+const REQUIRE_NON_RELEASE_BUILD := false
+const MP_PROTOCOL_VERSION := "0.9.0-mp1"
 
 const MIN_PLAYERS := 2
 const MAX_PLAYERS := 4

@@ -25,6 +25,10 @@ var spawn_win_btn: Button
 var leave_btn: Button
 
 var status_lbl: Label
+var share_bar: PanelContainer
+var share_addr_lbl: Label
+var copy_ip_btn: Button
+var _share_copy_target: String = ""
 var arch_buttons: Dictionary = {}
 var char_buttons: Dictionary = {}
 var selected_char_id: String = "CHAR_GUILLOTINE"
@@ -60,15 +64,35 @@ func configure(network_node: Node) -> void:
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_ensure_fonts()
 	_load_vault_from_profile()
 	_build_ui()
 	if mp_net != null:
 		mp_net.lobby_updated.connect(_on_lobby_updated)
 		mp_net.status_changed.connect(_on_status_changed)
+		if mp_net.has_signal("host_network_ready"):
+			mp_net.host_network_ready.connect(_on_host_network_ready)
 		mp_net.session_closed.connect(func(_r: String): _refresh_controls())
 	_refresh_controls()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not visible:
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		var focused := get_viewport().gui_get_focus_owner()
+		if focused is LineEdit:
+			return
+		get_viewport().set_input_as_handled()
+		_close_lobby()
+
+
+func _close_lobby() -> void:
+	play_click_sfx.emit()
+	if mp_net != null and mp_net.in_session:
+		mp_net.leave_room(false)
+	close_requested.emit()
 
 
 func _ensure_fonts() -> void:
@@ -176,13 +200,15 @@ func _apply_choice_btn_style(btn: Button, is_selected: bool, accent: Color) -> v
 
 func _build_ui() -> void:
 	var dim := ColorRect.new()
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	dim.color = Color(0.03, 0.025, 0.02, 0.86)
 	add_child(dim)
 
 	var panel := PanelContainer.new()
-	panel.anchor_left = 0.05; panel.anchor_right = 0.95
-	panel.anchor_top = 0.06; panel.anchor_bottom = 0.94
+	panel.anchor_left = 0.03; panel.anchor_right = 0.97
+	panel.anchor_top = 0.03; panel.anchor_bottom = 0.97
+	panel.offset_left = 0; panel.offset_top = 0
+	panel.offset_right = 0; panel.offset_bottom = 0
 	panel.clip_contents = true
 	panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.09, 0.065, 0.048, 0.96), Color(0.72, 0.54, 0.24, 0.90), 3, 14, 18))
 	add_child(panel)
@@ -206,15 +232,20 @@ func _build_ui() -> void:
 	warn_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.56))
 	warn_hb.add_child(warn_lbl)
 
+	var ver_badge := PanelContainer.new()
+	ver_badge.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.14, 0.10, 0.06, 0.95), Color(0.78, 0.62, 0.28, 0.85), 1, 6, 8))
+	warn_hb.add_child(ver_badge)
+	var ver_lbl := Label.new()
+	ver_lbl.text = "v%s" % Config.MP_PROTOCOL_VERSION
+	_apply_font(ver_lbl, false)
+	ver_lbl.add_theme_font_size_override("font_size", 13)
+	ver_lbl.add_theme_color_override("font_color", Color(0.76, 0.92, 1.0))
+	ver_badge.add_child(ver_lbl)
+
 	var close_btn := Button.new()
 	close_btn.text = "✕ Close Lobby"
 	_style_tavern_btn(close_btn, Color(0.24, 0.10, 0.09, 0.95), Color(0.78, 0.36, 0.28, 0.85), false, 8)
-	close_btn.pressed.connect(func():
-		play_click_sfx.emit()
-		if mp_net != null and mp_net.in_session:
-			mp_net.leave_room(false)
-		close_requested.emit()
-	)
+	close_btn.pressed.connect(_close_lobby)
 	warn_hb.add_child(close_btn)
 
 	# Connection Bar
@@ -293,6 +324,36 @@ func _build_ui() -> void:
 	status_lbl.add_theme_font_size_override("font_size", 14)
 	status_lbl.add_theme_color_override("font_color", Color(0.88, 0.84, 0.72))
 	root_vb.add_child(status_lbl)
+
+	# Compact Share Address Bar (visible while Hosting)
+	share_bar = PanelContainer.new()
+	share_bar.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.10, 0.14, 0.11, 0.94), Color(0.46, 0.76, 0.56, 0.85), 1, 8, 8))
+	share_bar.visible = false
+	root_vb.add_child(share_bar)
+
+	var share_hb := HBoxContainer.new()
+	share_hb.add_theme_constant_override("separation", 10)
+	share_bar.add_child(share_hb)
+
+	share_addr_lbl = Label.new()
+	share_addr_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	share_addr_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_apply_font(share_addr_lbl, false)
+	share_addr_lbl.add_theme_font_size_override("font_size", 13)
+	share_addr_lbl.add_theme_color_override("font_color", Color(0.82, 0.96, 0.86))
+	share_hb.add_child(share_addr_lbl)
+
+	copy_ip_btn = Button.new()
+	copy_ip_btn.text = "📋 Copy IP"
+	copy_ip_btn.custom_minimum_size = Vector2(120, 32)
+	_style_tavern_btn(copy_ip_btn, Color(0.14, 0.24, 0.18, 0.96), Color(0.54, 0.86, 0.64, 0.90), false, 7)
+	copy_ip_btn.pressed.connect(func():
+		play_click_sfx.emit()
+		if not _share_copy_target.is_empty():
+			DisplayServer.clipboard_set(_share_copy_target)
+			_on_status_changed("Copied %s to clipboard!" % _share_copy_target, false)
+	)
+	share_hb.add_child(copy_ip_btn)
 
 	# Split Content: Left = Personal Deck Builder, Right = 2-4P Seat Roster & Match Rules
 	var body_hb := HBoxContainer.new()
@@ -950,12 +1011,44 @@ func _on_status_changed(msg: String, is_err: bool) -> void:
 	_refresh_controls()
 
 
+func _on_host_network_ready(info: Dictionary) -> void:
+	_update_share_bar(info)
+
+
+func _update_share_bar(info: Dictionary) -> void:
+	if share_addr_lbl == null:
+		return
+	var port := int(info.get("port", Config.DEFAULT_PORT))
+	var lan_ip := str(info.get("lan_ip", "127.0.0.1"))
+	var pub_ip := str(info.get("public_ip", ""))
+	var upnp_ok := bool(info.get("upnp_ok", false))
+	var upnp_pending := bool(info.get("upnp_pending", false))
+	var lan_str := "%s:%d" % [lan_ip, port]
+	if upnp_ok and not pub_ip.is_empty():
+		var pub_str := "%s:%d" % [pub_ip, port]
+		_share_copy_target = pub_str
+		share_addr_lbl.text = "🌐 Share Address:  LAN %s   |   Public (UPnP OK) %s" % [lan_str, pub_str]
+		copy_ip_btn.tooltip_text = "Copies %s" % pub_str
+	elif upnp_pending:
+		_share_copy_target = lan_str
+		share_addr_lbl.text = "🌐 Share Address:  LAN %s   |   Public: Checking UPnP..." % lan_str
+		copy_ip_btn.tooltip_text = "Copies %s" % lan_str
+	else:
+		_share_copy_target = lan_str
+		share_addr_lbl.text = "🌐 LAN: %s   |   UPnP unavailable — forward UDP %d on router or use Radmin VPN / Tailscale." % [lan_str, port]
+		copy_ip_btn.tooltip_text = "Copies %s" % lan_str
+
+
 func _refresh_controls() -> void:
 	var in_s: bool = (mp_net != null and bool(mp_net.get("in_session")))
 	var is_h: bool = (mp_net != null and bool(mp_net.get("is_host")))
 	host_btn.disabled = in_s
 	join_btn.disabled = in_s
 	leave_btn.disabled = not in_s
+	if share_bar != null:
+		share_bar.visible = in_s and is_h
+		if share_bar.visible and mp_net != null and mp_net.has_method("get_host_network_addresses"):
+			_update_share_bar(mp_net.get_host_network_addresses())
 	rule_btn.disabled = not (in_s and is_h)
 	add_bot_btn.visible = in_s and is_h
 	add_bot_btn.disabled = (mp_net.lobby_seats.size() >= Config.MAX_PLAYERS) if in_s else true
