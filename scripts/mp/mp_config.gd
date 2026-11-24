@@ -21,6 +21,14 @@ const START_HAND_SIZE := 6
 const TURN_TIMEOUT_SEC := 24.0
 const PARRY_WINDOW_SEC := 2.6
 
+const MP_MAX_POWER_CARDS := 3
+const MP_MAX_MYTHIC_POWER_CARDS := 1
+const MP_MAX_TABLE_RELICS := 2
+const MP_MAX_PASSIVE_RELICS := 2
+const MP_PASSIVE_MULT_CAP := 2.5
+const RULE_CAMPAIGN_VAULT := "CAMPAIGN_VAULT"
+const RULE_BALANCED_ARENA := "BALANCED_ARENA"
+
 const SUITS := [
 	{"id": "CERVEN", "name": "Srdce", "sym": "♥", "col": Color(0.90, 0.24, 0.28)},
 	{"id": "ZELEN", "name": "Listí", "sym": "♠", "col": Color(0.22, 0.72, 0.52)},
@@ -221,15 +229,151 @@ static func make_power_card(power_id: String) -> Dictionary:
 	}
 
 
-static func build_custom_deck(deck_cfg: Dictionary) -> Array:
+static func get_mp_item_info(item_id: String, lang: String = "en") -> Dictionary:
+	if MP_ITEMS.has(item_id):
+		return MP_ITEMS[item_id]
+	var trel: Dictionary = Catalog.get_table_relic_loc(item_id, lang)
+	if not trel.is_empty():
+		var needs_tgt := item_id in ["TRELIC_SOUL_BELL", "TRELIC_STAR_BOW", "TRELIC_IRON_CHAIN"]
+		return {
+			"id": item_id,
+			"name": str(trel.get("name", item_id)),
+			"short": str(trel.get("short", "USE")),
+			"desc": str(trel.get("desc", "")),
+			"needs_target": needs_tgt,
+			"col": trel.get("col", Color(0.96, 0.78, 0.34)),
+			"is_table_relic": true,
+		}
+	return {}
+
+
+static func make_mp_item_instance(item_id: String, seq: int = 0) -> Dictionary:
+	return {
+		"uid": "%s#%d" % [item_id, seq],
+		"id": item_id,
+		"uses": 0,
+	}
+
+
+static func get_item_id(entry: Variant) -> String:
+	if entry is Dictionary:
+		return str((entry as Dictionary).get("id", ""))
+	return str(entry)
+
+
+static func get_item_uid(entry: Variant, fallback_idx: int = 0) -> String:
+	if entry is Dictionary:
+		var d := entry as Dictionary
+		var u := str(d.get("uid", ""))
+		if u != "":
+			return u
+		return "%s#%d" % [str(d.get("id", "")), fallback_idx]
+	return "%s#%d" % [str(entry), fallback_idx]
+
+
+static func sanitize_deck_cfg(deck_cfg: Dictionary, rule_mode: String = RULE_CAMPAIGN_VAULT) -> Dictionary:
 	var arch := get_archetype(str(deck_cfg.get("archetype_id", "GUILLOTINE_ACES")))
+	var arch_id := str(arch.get("id", "GUILLOTINE_ACES"))
+	var char_id := str(get_character(str(deck_cfg.get("character_id", get_character_for_archetype(arch_id).get("id", "CHAR_GUILLOTINE")))).get("id", "CHAR_GUILLOTINE"))
+	var extra_aces := clampi(int(deck_cfg.get("extra_aces", arch.get("extra_aces", 2))), 0, 6)
+
+	if rule_mode == RULE_BALANCED_ARENA:
+		var bal_powers: Array = []
+		for pid in arch.get("powers", []):
+			if bal_powers.size() < MP_MAX_POWER_CARDS:
+				bal_powers.append(str(pid))
+		var bal_items: Array = []
+		for iid in arch.get("items", []):
+			if bal_items.size() < MP_MAX_TABLE_RELICS:
+				bal_items.append(str(iid))
+		return {
+			"archetype_id": arch_id,
+			"character_id": char_id,
+			"extra_aces": clampi(int(arch.get("extra_aces", 2)), 0, 6),
+			"power_cards": bal_powers,
+			"table_relics": bal_items,
+			"passive_relics": ["REL_GREED"],
+			"sword_skin": str(arch.get("sword_skin", "SWORD_IRON")),
+			"rule_mode": RULE_BALANCED_ARENA,
+		}
+
+	var clean_powers: Array = []
+	var mythic_cnt := 0
+	var raw_p = deck_cfg.get("power_cards", [])
+	if raw_p is Array:
+		for pv in raw_p:
+			var pid := str(pv)
+			if pid in Catalog.ARCHIVED_CARD_IDS:
+				continue
+			var pdata := Catalog.get_power_card(pid)
+			if pdata.is_empty():
+				continue
+			if str(pdata.get("rarity", "")) == "Mythic":
+				if mythic_cnt >= MP_MAX_MYTHIC_POWER_CARDS:
+					continue
+				mythic_cnt += 1
+			clean_powers.append(pid)
+			if clean_powers.size() >= MP_MAX_POWER_CARDS:
+				break
+	if clean_powers.is_empty() and not deck_cfg.has("power_cards"):
+		for pid in arch.get("powers", []):
+			if clean_powers.size() < MP_MAX_POWER_CARDS:
+				clean_powers.append(str(pid))
+
+	var clean_trels: Array = []
+	var raw_t = deck_cfg.get("table_relics", [])
+	if raw_t is Array:
+		for tv in raw_t:
+			var tid := str(tv)
+			if tid == "" or get_mp_item_info(tid).is_empty():
+				continue
+			if not (tid in clean_trels):
+				clean_trels.append(tid)
+			if clean_trels.size() >= MP_MAX_TABLE_RELICS:
+				break
+	if clean_trels.is_empty() and not deck_cfg.has("table_relics"):
+		for iid in arch.get("items", []):
+			if clean_trels.size() < MP_MAX_TABLE_RELICS:
+				clean_trels.append(str(iid))
+
+	var clean_prels: Array = []
+	var raw_r = deck_cfg.get("passive_relics", [])
+	if raw_r is Array:
+		for rv in raw_r:
+			var rid := str(rv)
+			if (rid in Catalog.ARCHIVED_RELIC_IDS) or Catalog.is_relic_hidden(rid) or Catalog.get_relic(rid).is_empty():
+				continue
+			if not (rid in clean_prels):
+				clean_prels.append(rid)
+			if clean_prels.size() >= MP_MAX_PASSIVE_RELICS:
+				break
+
+	var sw_id := str(deck_cfg.get("sword_skin", arch.get("sword_skin", "SWORD_IRON")))
+	if Catalog.get_sword_skin(sw_id).get("id", "") != sw_id:
+		sw_id = "SWORD_IRON"
+
+	return {
+		"archetype_id": arch_id,
+		"character_id": char_id,
+		"extra_aces": extra_aces,
+		"power_cards": clean_powers,
+		"table_relics": clean_trels,
+		"passive_relics": clean_prels,
+		"sword_skin": sw_id,
+		"rule_mode": RULE_CAMPAIGN_VAULT,
+	}
+
+
+static func build_custom_deck(deck_cfg: Dictionary) -> Array:
+	var clean_cfg := sanitize_deck_cfg(deck_cfg, str(deck_cfg.get("rule_mode", RULE_CAMPAIGN_VAULT)))
+	var arch := get_archetype(str(clean_cfg.get("archetype_id", "GUILLOTINE_ACES")))
 	var deck: Array = []
 	for s in SUITS:
 		for r in RANKS:
 			deck.append(make_card(str(s["id"]), str(r["id"]), "NORMAL"))
 
 	# Extra Aces requested by deck archetype + player slider override
-	var extra_aces := clampi(int(deck_cfg.get("extra_aces", arch.get("extra_aces", 2))), 0, 6)
+	var extra_aces := clampi(int(clean_cfg.get("extra_aces", arch.get("extra_aces", 2))), 0, 6)
 	for i in range(extra_aces):
 		var s_id := str(SUITS[i % 4]["id"])
 		deck.append(make_card(s_id, "E", "KNIGHT" if i % 2 == 0 else "NORMAL"))
@@ -269,8 +413,8 @@ static func build_custom_deck(deck_cfg: Dictionary) -> Array:
 		else:
 			break
 
-	# Signature OP Power Cards
-	var p_list: Array = arch.get("powers", [])
+	# Signature OP Power Cards (custom Vault selection or archetype fallback)
+	var p_list: Array = clean_cfg.get("power_cards", arch.get("powers", []))
 	for pid in p_list:
 		deck.append(make_power_card(str(pid)))
 

@@ -16,12 +16,45 @@ const ARCHIVED_CARD_IDS: Array[String] = ["SPEC_PRISM"]
 const ARCHIVED_RELIC_IDS: Array[String] = ["REL_PRISM_ORB"]
 const TEMPORARILY_HIDDEN_RELICS: Array[String] = ["REL_CHAMOIS", "REL_STORMCAP"]
 
+const STARTER_POWER_CARDS: Array[String] = ["SPEC_ORACLE", "SPEC_HEX"]
+const STARTER_RELICS: Array[String] = ["REL_GREED"]
+const STARTER_TABLE_RELICS: Array[String] = ["TRELIC_GOLD_SCALES"]
+const ERA_ORDER: Array[String] = ["antika", "rim", "stredovek", "objavy", "prohibicia"]
+
+const CAMPAIGN_UNLOCK_LADDER := {
+	"antika": [
+		{"power_cards": ["SPEC_SHIELD"], "relics": ["REL_FUJARA"], "table_relics": ["TRELIC_WAR_HORN"]},
+		{"power_cards": ["SPEC_VAMPIRE"], "relics": ["REL_FANG"], "table_relics": ["TRELIC_BLOOD_SEAL"]},
+		{"power_cards": ["SPEC_MIDAS"], "relics": ["REL_IRON_BOOT", "REL_RED_SEAL"], "table_relics": ["TRELIC_SOUL_BELL"]},
+	],
+	"rim": [
+		{"power_cards": ["SPEC_ALCHEMIST"], "relics": ["REL_WOODCUTTER"], "table_relics": ["TRELIC_IRON_CHAIN"]},
+		{"power_cards": ["SPEC_MAGNET"], "relics": ["REL_ROYAL", "REL_PRSI_PURIST"], "table_relics": ["TRELIC_STAR_BOW"]},
+		{"power_cards": ["SPEC_PLAGUE"], "relics": ["REL_HEX_DOLL", "REL_GREEN_CANOPY"], "table_relics": []},
+	],
+	"stredovek": [
+		{"power_cards": ["SPEC_GAMBLER"], "relics": ["REL_KNUCKLE", "REL_SEVEN_GRIMOIRE"], "table_relics": ["TRELIC_CENSER"]},
+		{"power_cards": ["SPEC_MIRROR"], "relics": ["REL_FORGEMASTER", "REL_MERCHANT_LEDGER"], "table_relics": ["TRELIC_HOLLOW_MASK"]},
+		{"power_cards": ["SPEC_CROWN"], "relics": ["REL_COURT_SOVEREIGN", "REL_CRIMSON_CHOIR"], "table_relics": []},
+	],
+	"objavy": [
+		{"power_cards": ["SPEC_STORM"], "relics": ["REL_ALEMBIC", "REL_OVERCHARGE"], "table_relics": ["TRELIC_ASH_GLASS"]},
+		{"power_cards": ["SPEC_PHOENIX"], "relics": ["REL_PHOENIX_F"], "table_relics": ["TRELIC_PHOENIX_BOX"]},
+		{"power_cards": ["SPEC_JESTER"], "relics": ["REL_FINAL_TOLL"], "table_relics": []},
+	],
+	"prohibicia": [
+		{"power_cards": [], "relics": ["REL_CHRONO_P"], "table_relics": []},
+		{"power_cards": [], "relics": [], "table_relics": []},
+		{"power_cards": ["SPEC_CHRONOS"], "relics": [], "table_relics": []},
+	],
+}
+
 const DEFAULT_UNLOCKED_CARDS := [
 	"CERVEN_7", "CERVEN_8", "CERVEN_9", "CERVEN_10", "CERVEN_D", "CERVEN_E",
 	"ZELEN_7", "ZELEN_8", "ZELEN_9", "ZELEN_10", "ZELEN_H",
 	"ZALUD_7", "ZALUD_8", "ZALUD_9", "ZALUD_D", "ZALUD_H",
 	"GULA_7", "GULA_8", "GULA_9", "GULA_10", "GULA_E",
-	"SPEC_VAMPIRE", "SPEC_STORM", "SPEC_PHOENIX", "SPEC_MIDAS"
+	"SPEC_ORACLE", "SPEC_HEX"
 ]
 
 const ERA_BASE_TARGETS := {
@@ -985,9 +1018,9 @@ static func get_default_profile() -> Dictionary:
 		"endless_ante": 0,
 		"era_stage": {"antika": 0, "rim": 0, "stredovek": 0, "objavy": 0, "prohibicia": 0},
 		"era_cleared": {"antika": false, "rim": false, "stredovek": false, "objavy": false, "prohibicia": false},
-		"custom_cards": ["SPEC_VAMPIRE", "SPEC_STORM", "SPEC_PHOENIX", "SPEC_MIDAS"],
-		"active_relics": ["REL_GREED", "REL_FANG"],
-		"table_relics": ["TRELIC_BLOOD_SEAL", "TRELIC_STAR_BOW"],
+		"custom_cards": STARTER_POWER_CARDS.duplicate(),
+		"active_relics": STARTER_RELICS.duplicate(),
+		"table_relics": STARTER_TABLE_RELICS.duplicate(),
 		"card_editions": {
 			"CERVEN_E": "MAGE",
 			"ZELEN_7": "MAGE",
@@ -999,9 +1032,19 @@ static func get_default_profile() -> Dictionary:
 		"added_cards": [],
 		"suit_overrides": {},
 		"relic_scales": {"REL_SEVEN_GRIMOIRE": 0.0, "REL_MERCHANT_LEDGER": 0},
+		"broken_relics": [],
 		"unlocked_swords": ["SWORD_IRON"],
 		"equipped_sword": "SWORD_IRON",
 		"unlocked_cards": DEFAULT_UNLOCKED_CARDS.duplicate(),
+		"unlocked_power_cards": STARTER_POWER_CARDS.duplicate(),
+		"unlocked_relics": STARTER_RELICS.duplicate(),
+		"unlocked_table_relics": STARTER_TABLE_RELICS.duplicate(),
+		"mp_loadout": {
+			"power_cards": STARTER_POWER_CARDS.duplicate(),
+			"table_relics": STARTER_TABLE_RELICS.duplicate(),
+			"passive_relics": STARTER_RELICS.duplicate(),
+			"sword_skin": "SWORD_IRON",
+		},
 		"seen_unlock_tips": [],
 	}
 
@@ -1031,6 +1074,144 @@ static func unlock_card(prof: Dictionary, card_key: String) -> bool:
 		return true
 	return false
 
+static func unlock_power_card(prof: Dictionary, card_id: String) -> bool:
+	if card_id == "" or (card_id in ARCHIVED_CARD_IDS) or get_power_card(card_id).is_empty():
+		return false
+	unlock_card(prof, card_id)
+	var raw = prof.get("unlocked_power_cards", STARTER_POWER_CARDS.duplicate())
+	var arr: Array = raw if raw is Array else STARTER_POWER_CARDS.duplicate()
+	if not (card_id in arr):
+		arr.append(card_id)
+		prof["unlocked_power_cards"] = arr
+		return true
+	return false
+
+static func unlock_relic(prof: Dictionary, rel_id: String) -> bool:
+	if rel_id == "" or (rel_id in ARCHIVED_RELIC_IDS) or is_relic_hidden(rel_id) or get_relic(rel_id).is_empty():
+		return false
+	var raw = prof.get("unlocked_relics", STARTER_RELICS.duplicate())
+	var arr: Array = raw if raw is Array else STARTER_RELICS.duplicate()
+	if not (rel_id in arr):
+		arr.append(rel_id)
+		prof["unlocked_relics"] = arr
+		return true
+	return false
+
+static func unlock_table_relic(prof: Dictionary, tid: String) -> bool:
+	if tid == "" or get_table_relic(tid).is_empty():
+		return false
+	var raw = prof.get("unlocked_table_relics", STARTER_TABLE_RELICS.duplicate())
+	var arr: Array = raw if raw is Array else STARTER_TABLE_RELICS.duplicate()
+	if not (tid in arr):
+		arr.append(tid)
+		prof["unlocked_table_relics"] = arr
+		return true
+	return false
+
+static func is_power_card_unlocked(prof: Dictionary, card_id: String) -> bool:
+	var arr = prof.get("unlocked_power_cards", STARTER_POWER_CARDS)
+	return (arr is Array) and (card_id in arr)
+
+static func is_relic_unlocked(prof: Dictionary, rel_id: String) -> bool:
+	var arr = prof.get("unlocked_relics", STARTER_RELICS)
+	return (arr is Array) and (rel_id in arr)
+
+static func is_table_relic_unlocked(prof: Dictionary, tid: String) -> bool:
+	var arr = prof.get("unlocked_table_relics", STARTER_TABLE_RELICS)
+	return (arr is Array) and (tid in arr)
+
+static func get_reached_era_index(prof: Dictionary) -> int:
+	var ec: Dictionary = prof.get("era_cleared", {})
+	var es: Dictionary = prof.get("era_stage", {})
+	var highest := 0
+	for i in range(ERA_ORDER.size()):
+		var eid := ERA_ORDER[i]
+		if bool(ec.get(eid, false)):
+			highest = maxi(highest, mini(ERA_ORDER.size() - 1, i + 1))
+		elif int(es.get(eid, 0)) > 0:
+			highest = maxi(highest, i)
+	return highest
+
+static func get_item_era_index(item_id: String) -> int:
+	if (item_id in STARTER_POWER_CARDS) or (item_id in STARTER_RELICS) or (item_id in STARTER_TABLE_RELICS):
+		return 0
+	for i in range(ERA_ORDER.size()):
+		var eid := ERA_ORDER[i]
+		var stages: Array = CAMPAIGN_UNLOCK_LADDER.get(eid, [])
+		for st in stages:
+			if (item_id in st.get("power_cards", [])) or (item_id in st.get("relics", [])) or (item_id in st.get("table_relics", [])):
+				return i
+	return 0
+
+static func get_unlock_source_label(item_id: String, lang: String = "en") -> String:
+	if (item_id in STARTER_POWER_CARDS) or (item_id in STARTER_RELICS) or (item_id in STARTER_TABLE_RELICS):
+		return "Startovní výbava" if lang == "cs" else "Starter Vault"
+	var era_names_en := {"antika": "Antiquity", "rim": "Rome", "stredovek": "Middle Ages", "objavy": "Age of Sail", "prohibicia": "Prohibition"}
+	var era_names_cs := {"antika": "Antika", "rim": "Řím", "stredovek": "Středověk", "objavy": "Zámořské objevy", "prohibicia": "Prohibice"}
+	for eid in ERA_ORDER:
+		var stages: Array = CAMPAIGN_UNLOCK_LADDER.get(eid, [])
+		for st_idx in range(stages.size()):
+			var st: Dictionary = stages[st_idx]
+			if (item_id in st.get("power_cards", [])) or (item_id in st.get("relics", [])) or (item_id in st.get("table_relics", [])):
+				var era_stages: Array = ERA_STAGES.get(eid, [])
+				var boss_name := ""
+				if st_idx >= 0 and st_idx < era_stages.size():
+					boss_name = str(era_stages[st_idx].get("stage_name_cs" if lang == "cs" else "stage_name", ""))
+				var e_lbl := str((era_names_cs if lang == "cs" else era_names_en).get(eid, eid))
+				if boss_name != "":
+					return ("%s • %s (nebo Obchod)" if lang == "cs" else "%s • %s (or Shop)") % [e_lbl, boss_name]
+				return ("%s • Stádium %d" if lang == "cs" else "%s • Stage %d") % [e_lbl, st_idx + 1]
+	return "Krčmový obchod" if lang == "cs" else "Tavern Shop"
+
+static func claim_stage_unlocks(prof: Dictionary, era_id: String, stage_idx: int, allow_discovery_roll: bool = true) -> Array[Dictionary]:
+	var unlocked_now: Array[Dictionary] = []
+	var stages: Array = CAMPAIGN_UNLOCK_LADDER.get(era_id, [])
+	if stage_idx >= 0 and stage_idx < stages.size():
+		var entry: Dictionary = stages[stage_idx]
+		for pid in entry.get("power_cards", []):
+			var pid_s := str(pid)
+			if unlock_power_card(prof, pid_s):
+				var pinfo := get_power_card(pid_s)
+				unlocked_now.append({"kind": "power_card", "id": pid_s, "name": str(pinfo.get("name", pid_s)), "name_cs": str(pinfo.get("name_cs", pid_s)), "col": pinfo.get("accent", Color(1.0, 0.84, 0.34))})
+		for rid in entry.get("relics", []):
+			var rid_s := str(rid)
+			if unlock_relic(prof, rid_s):
+				var rinfo := get_relic(rid_s)
+				unlocked_now.append({"kind": "relic", "id": rid_s, "name": str(rinfo.get("name", rid_s)), "name_cs": str(rinfo.get("name_cs", rid_s)), "col": rinfo.get("col", Color(1.0, 0.84, 0.34))})
+		for tid in entry.get("table_relics", []):
+			var tid_s := str(tid)
+			if unlock_table_relic(prof, tid_s):
+				var tinfo := get_table_relic(tid_s)
+				unlocked_now.append({"kind": "table_relic", "id": tid_s, "name": str(tinfo.get("name", tid_s)), "name_cs": str(tinfo.get("name_cs", tid_s)), "col": tinfo.get("col", Color(0.36, 0.90, 1.0))})
+
+	if unlocked_now.is_empty() and allow_discovery_roll:
+		var max_era := mini(ERA_ORDER.size() - 1, get_reached_era_index(prof) + 1)
+		var candidates: Array[Dictionary] = []
+		for pc in POWER_CARDS:
+			var pid_s := str(pc.get("id", ""))
+			if not (pid_s in ARCHIVED_CARD_IDS) and not is_power_card_unlocked(prof, pid_s) and get_item_era_index(pid_s) <= max_era:
+				candidates.append({"kind": "power_card", "id": pid_s, "name": str(pc.get("name", pid_s)), "name_cs": str(pc.get("name_cs", pid_s)), "col": pc.get("accent", Color(1.0, 0.84, 0.34))})
+		for r in get_visible_relics():
+			var rid_s := str(r.get("id", ""))
+			if not is_relic_unlocked(prof, rid_s) and get_item_era_index(rid_s) <= max_era:
+				candidates.append({"kind": "relic", "id": rid_s, "name": str(r.get("name", rid_s)), "name_cs": str(r.get("name_cs", rid_s)), "col": r.get("col", Color(1.0, 0.84, 0.34))})
+		for tr in TABLE_RELICS:
+			var tid_s := str(tr.get("id", ""))
+			if not is_table_relic_unlocked(prof, tid_s) and get_item_era_index(tid_s) <= max_era:
+				candidates.append({"kind": "table_relic", "id": tid_s, "name": str(tr.get("name", tid_s)), "name_cs": str(tr.get("name_cs", tid_s)), "col": tr.get("col", Color(0.36, 0.90, 1.0))})
+		if not candidates.is_empty():
+			candidates.shuffle()
+			var pick: Dictionary = candidates[0]
+			match str(pick["kind"]):
+				"power_card":
+					unlock_power_card(prof, str(pick["id"]))
+				"relic":
+					unlock_relic(prof, str(pick["id"]))
+				"table_relic":
+					unlock_table_relic(prof, str(pick["id"]))
+			unlocked_now.append(pick)
+	return unlocked_now
+
 static func get_default_options() -> Dictionary:
 	return {
 		"language": "en",
@@ -1039,6 +1220,8 @@ static func get_default_options() -> Dictionary:
 		"visual_mode": 3, # 3=Liar's Bar Cinematic PBR, 0=Woodcut, 1=Sepia, 2=Clean
 		"high_fx": true,
 		"cam_sensitivity": 1.0,
+		"mp_freelook_enabled": true,
+		"mp_freelook_sensitivity": 1.0,
 		"game_pace": "relaxed", # "relaxed" (default), "normal", "fast"
 		"fullscreen": true,
 		"tutorial_done": false,
@@ -1056,6 +1239,8 @@ static func load_options() -> Dictionary:
 	opts["visual_mode"] = clampi(int(cfg.get_value("video", "visual_mode", 3)), 0, 3)
 	opts["high_fx"] = bool(cfg.get_value("video", "high_fx", true))
 	opts["cam_sensitivity"] = clampf(float(cfg.get_value("controls", "cam_sensitivity", 1.0)), 0.4, 2.2)
+	opts["mp_freelook_enabled"] = bool(cfg.get_value("controls", "mp_freelook_enabled", true))
+	opts["mp_freelook_sensitivity"] = clampf(float(cfg.get_value("controls", "mp_freelook_sensitivity", 1.0)), 0.4, 2.0)
 	var gp := str(cfg.get_value("general", "game_pace", "relaxed"))
 	opts["game_pace"] = gp if (gp in ["relaxed", "normal", "fast"]) else "relaxed"
 	opts["fullscreen"] = bool(cfg.get_value("video", "fullscreen", true))
@@ -1073,6 +1258,8 @@ static func save_options(opts: Dictionary) -> void:
 	cfg.set_value("video", "high_fx", bool(opts.get("high_fx", true)))
 	cfg.set_value("video", "fullscreen", bool(opts.get("fullscreen", true)))
 	cfg.set_value("controls", "cam_sensitivity", clampf(float(opts.get("cam_sensitivity", 1.0)), 0.4, 2.2))
+	cfg.set_value("controls", "mp_freelook_enabled", bool(opts.get("mp_freelook_enabled", true)))
+	cfg.set_value("controls", "mp_freelook_sensitivity", clampf(float(opts.get("mp_freelook_sensitivity", 1.0)), 0.4, 2.0))
 	cfg.save(OPTIONS_PATH)
 
 static func sanitize_profile(prof: Dictionary) -> Dictionary:
@@ -1148,6 +1335,80 @@ static func sanitize_profile(prof: Dictionary) -> Dictionary:
 			if not (did in clean_ud):
 				clean_ud.append(did)
 		prof["unlocked_decks"] = clean_ud
+
+	# Sanitize meta-collection unlock arrays (ensure starters + valid non-archived IDs)
+	var clean_upc: Array = STARTER_POWER_CARDS.duplicate()
+	var raw_upc = prof.get("unlocked_power_cards", [])
+	if raw_upc is Array:
+		for pid_v in raw_upc:
+			var pid := str(pid_v)
+			if not (pid in ARCHIVED_CARD_IDS) and not get_power_card(pid).is_empty() and not (pid in clean_upc):
+				clean_upc.append(pid)
+	prof["unlocked_power_cards"] = clean_upc
+
+	var clean_ur: Array = STARTER_RELICS.duplicate()
+	var raw_ur = prof.get("unlocked_relics", [])
+	if raw_ur is Array:
+		for rid_v in raw_ur:
+			var rid := str(rid_v)
+			if not (rid in ARCHIVED_RELIC_IDS) and not is_relic_hidden(rid) and not get_relic(rid).is_empty() and not (rid in clean_ur):
+				clean_ur.append(rid)
+	prof["unlocked_relics"] = clean_ur
+
+	var clean_utr: Array = STARTER_TABLE_RELICS.duplicate()
+	var raw_utr = prof.get("unlocked_table_relics", [])
+	if raw_utr is Array:
+		for tid_v in raw_utr:
+			var tid := str(tid_v)
+			if not get_table_relic(tid).is_empty() and not (tid in clean_utr):
+				clean_utr.append(tid)
+	prof["unlocked_table_relics"] = clean_utr
+
+	# Sanitize broken_relics
+	var clean_br: Array = []
+	var raw_br = prof.get("broken_relics", [])
+	if raw_br is Array:
+		for br_v in raw_br:
+			var bid := str(br_v)
+			if bid != "" and not (bid in clean_br):
+				clean_br.append(bid)
+	prof["broken_relics"] = clean_br
+
+	# Sanitize mp_loadout against unlocked meta-collection & slot caps
+	var raw_mp = prof.get("mp_loadout", {})
+	var mp_in: Dictionary = raw_mp if raw_mp is Dictionary else {}
+	var mp_pc: Array = []
+	var mythic_cnt := 0
+	for pv in mp_in.get("power_cards", STARTER_POWER_CARDS):
+		var ps := str(pv)
+		if (ps in clean_upc) and mp_pc.size() < 3:
+			var pdata := get_power_card(ps)
+			if str(pdata.get("rarity", "")) == "Mythic":
+				if mythic_cnt >= 1:
+					continue
+				mythic_cnt += 1
+			mp_pc.append(ps)
+	if mp_pc.is_empty():
+		mp_pc = STARTER_POWER_CARDS.duplicate()
+	var mp_tr: Array = []
+	for tv in mp_in.get("table_relics", STARTER_TABLE_RELICS):
+		var ts := str(tv)
+		if (ts in clean_utr) and not (ts in mp_tr) and mp_tr.size() < 2:
+			mp_tr.append(ts)
+	var mp_pr: Array = []
+	for rv in mp_in.get("passive_relics", STARTER_RELICS):
+		var rs := str(rv)
+		if (rs in clean_ur) and not (rs in mp_pr) and mp_pr.size() < 2:
+			mp_pr.append(rs)
+	var mp_sw := str(mp_in.get("sword_skin", prof.get("equipped_sword", "SWORD_IRON")))
+	if not (mp_sw in prof.get("unlocked_swords", ["SWORD_IRON"])):
+		mp_sw = str(prof.get("equipped_sword", "SWORD_IRON"))
+	prof["mp_loadout"] = {
+		"power_cards": mp_pc,
+		"table_relics": mp_tr,
+		"passive_relics": mp_pr,
+		"sword_skin": mp_sw,
+	}
 
 	# Sanitize seen_unlock_tips as Array of unique non-empty Strings
 	var raw_sut = prof.get("seen_unlock_tips", [])
@@ -1226,6 +1487,49 @@ static func load_profile() -> Dictionary:
 	var sut = cfg.get_value("collection", "seen_unlock_tips", prof["seen_unlock_tips"])
 	if sut is Array:
 		prof["seen_unlock_tips"] = sut
+	var br_saved = cfg.get_value("run", "broken_relics", prof["broken_relics"])
+	if br_saved is Array:
+		prof["broken_relics"] = br_saved
+
+	var has_meta_pc := cfg.has_section_key("meta", "unlocked_power_cards")
+	var has_meta_rel := cfg.has_section_key("meta", "unlocked_relics")
+	var has_meta_trel := cfg.has_section_key("meta", "unlocked_table_relics")
+	if has_meta_pc:
+		var mpc = cfg.get_value("meta", "unlocked_power_cards", prof["unlocked_power_cards"])
+		if mpc is Array:
+			prof["unlocked_power_cards"] = mpc
+	if has_meta_rel:
+		var mr = cfg.get_value("meta", "unlocked_relics", prof["unlocked_relics"])
+		if mr is Array:
+			prof["unlocked_relics"] = mr
+	if has_meta_trel:
+		var mtr = cfg.get_value("meta", "unlocked_table_relics", prof["unlocked_table_relics"])
+		if mtr is Array:
+			prof["unlocked_table_relics"] = mtr
+	if cfg.has_section_key("meta", "mp_loadout"):
+		var mpl = cfg.get_value("meta", "mp_loadout", prof["mp_loadout"])
+		if mpl is Dictionary:
+			prof["mp_loadout"] = mpl
+
+	# Legacy save migration: preserve existing owned cards/relics & grant ladder unlocks for already-cleared eras
+	if not has_meta_pc or not has_meta_rel or not has_meta_trel:
+		for pid_v in prof.get("custom_cards", []):
+			unlock_power_card(prof, str(pid_v))
+		for ucid_v in prof.get("unlocked_cards", []):
+			var ucid := str(ucid_v)
+			if ucid.begins_with("SPEC_"):
+				unlock_power_card(prof, ucid)
+		for rid_v in prof.get("active_relics", []):
+			unlock_relic(prof, str(rid_v))
+		for tid_v in prof.get("table_relics", []):
+			unlock_table_relic(prof, str(tid_v))
+		var ec_map: Dictionary = prof.get("era_cleared", {})
+		var es_map: Dictionary = prof.get("era_stage", {})
+		for eid in ERA_ORDER:
+			var cleared_cnt := 3 if bool(ec_map.get(eid, false)) else clampi(int(es_map.get(eid, 0)), 0, 3)
+			for st_i in range(cleared_cnt):
+				claim_stage_unlocks(prof, eid, st_i, false)
+
 	return sanitize_profile(prof)
 
 static func save_profile(prof: Dictionary) -> void:
@@ -1243,6 +1547,7 @@ static func save_profile(prof: Dictionary) -> void:
 	cfg.set_value("run", "endless_ante", maxi(0, int(prof.get("endless_ante", 0))))
 	cfg.set_value("run", "era_stage", prof.get("era_stage", {}))
 	cfg.set_value("run", "era_cleared", prof.get("era_cleared", {}))
+	cfg.set_value("run", "broken_relics", prof.get("broken_relics", []))
 	cfg.set_value("deck", "custom_cards", prof.get("custom_cards", []))
 	cfg.set_value("deck", "active_relics", prof.get("active_relics", []))
 	cfg.set_value("deck", "table_relics", prof.get("table_relics", []))
@@ -1255,16 +1560,26 @@ static func save_profile(prof: Dictionary) -> void:
 	cfg.set_value("gear", "equipped_sword", str(prof.get("equipped_sword", "SWORD_IRON")))
 	cfg.set_value("collection", "unlocked_cards", prof.get("unlocked_cards", DEFAULT_UNLOCKED_CARDS))
 	cfg.set_value("collection", "seen_unlock_tips", prof.get("seen_unlock_tips", []))
+	cfg.set_value("meta", "unlocked_power_cards", prof.get("unlocked_power_cards", STARTER_POWER_CARDS))
+	cfg.set_value("meta", "unlocked_relics", prof.get("unlocked_relics", STARTER_RELICS))
+	cfg.set_value("meta", "unlocked_table_relics", prof.get("unlocked_table_relics", STARTER_TABLE_RELICS))
+	cfg.set_value("meta", "mp_loadout", prof.get("mp_loadout", {}))
 	cfg.save(PROFILE_PATH)
 
 static func generate_shop_offers(_prof: Dictionary, lang: String = "en") -> Array[Dictionary]:
 	var offers: Array[Dictionary] = []
-	# Focused 3-Card Campaign Upgrade Selection (1 Power Card + 2 Card Class/Deck Upgrades)
+	var max_era := mini(ERA_ORDER.size() - 1, get_reached_era_index(_prof) + 1)
+
+	# 1 Power Card gated by reached_era + 1
 	var pool_pc: Array[Dictionary] = []
 	for pc_raw in POWER_CARDS:
 		var pid := str(pc_raw.get("id", ""))
-		if not (pid in ARCHIVED_CARD_IDS):
+		if not (pid in ARCHIVED_CARD_IDS) and get_item_era_index(pid) <= max_era:
 			pool_pc.append(pc_raw)
+	if pool_pc.is_empty():
+		for pc_raw in POWER_CARDS:
+			if not (str(pc_raw.get("id", "")) in ARCHIVED_CARD_IDS):
+				pool_pc.append(pc_raw)
 	pool_pc.shuffle()
 	var pc0 := get_power_card_loc(str(pool_pc[0]["id"]), lang)
 	offers.append({
@@ -1278,12 +1593,17 @@ static func generate_shop_offers(_prof: Dictionary, lang: String = "en") -> Arra
 		"bought": false,
 	})
 
-	# 1 Buyable Active Tabletop Relic (prioritize unowned relics from the 10 TABLE_RELICS!)
+	# 1 Buyable Active Tabletop Relic (prioritize unowned relics up to reached_era + 1)
 	var owned_tr: Array = _prof.get("table_relics", [])
 	var pool_tr: Array[Dictionary] = []
 	for tr_raw in TABLE_RELICS:
-		if not (str(tr_raw["id"]) in owned_tr):
+		var tid := str(tr_raw["id"])
+		if not (tid in owned_tr) and get_item_era_index(tid) <= max_era:
 			pool_tr.append(tr_raw)
+	if pool_tr.is_empty():
+		for tr_raw in TABLE_RELICS:
+			if get_item_era_index(str(tr_raw["id"])) <= max_era:
+				pool_tr.append(tr_raw)
 	if pool_tr.is_empty():
 		for tr_raw in TABLE_RELICS:
 			pool_tr.append(tr_raw)
@@ -1299,6 +1619,41 @@ static func generate_shop_offers(_prof: Dictionary, lang: String = "en") -> Arra
 		"col": tr0["col"],
 		"bought": false,
 	})
+
+	# 1 Passive Relic offer gated by reached_era + 1 (or Blacksmith Repair if any relic is broken!)
+	var broken_arr: Array = _prof.get("broken_relics", [])
+	if not broken_arr.is_empty():
+		var rep_cost := mini(45, 16 * broken_arr.size())
+		offers.append({
+			"kind": "repair_relic",
+			"id": "BLACKSMITH_REPAIR",
+			"title": ("🔨 Kovář: Opravit relikvie (%d)" if lang == "cs" else "🔨 Blacksmith: Repair Relics (%d)") % broken_arr.size(),
+			"sub": "Obnoví rozbité relikvie" if lang == "cs" else "Restores Shattered Relics",
+			"desc": ("Opraví všechny rozbité relikvie (%d) na plnou výdrž 3/3 a obnoví jejich pasivní efekty." if lang == "cs" else "Reforges all %d shattered relic(s) to full 3/3 durability and restores passive effects.") % broken_arr.size(),
+			"cost": rep_cost,
+			"col": Color(1.0, 0.56, 0.22),
+			"bought": false,
+		})
+	else:
+		var owned_rel: Array = _prof.get("active_relics", [])
+		var pool_rel: Array[Dictionary] = []
+		for rel_raw in get_visible_relics():
+			var rid := str(rel_raw.get("id", ""))
+			if not (rid in owned_rel) and get_item_era_index(rid) <= max_era:
+				pool_rel.append(rel_raw)
+		if not pool_rel.is_empty():
+			pool_rel.shuffle()
+			var r0 := get_relic_loc(str(pool_rel[0]["id"]), lang)
+			offers.append({
+				"kind": "relic",
+				"id": r0["id"],
+				"title": ("Relikvie: " if lang == "cs" else "Passive Relic: ") + str(r0["name"]),
+				"sub": r0["category"],
+				"desc": r0["desc"],
+				"cost": int(r0["cost"]),
+				"col": r0["col"],
+				"bought": false,
+			})
 
 	var sculpt_infusions: Array[Dictionary] = []
 	var sculpt_utils: Array[Dictionary] = []
