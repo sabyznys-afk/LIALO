@@ -162,7 +162,28 @@ static func build_burn_crown_aura(parent: Node3D) -> Node3D:
 	if crown == null:
 		return null
 	crown.name = "BlenderBurnCrown"
+	crown.scale = Vector3(0.42, 0.34, 0.42)
 	_disable_shadows_recursive(crown)
+	var stack: Array[Node] = [crown]
+	while not stack.is_empty():
+		var cur: Node = stack.pop_back()
+		if cur is MeshInstance3D:
+			var mi := cur as MeshInstance3D
+			if mi.mesh != null:
+				for si in range(mi.mesh.get_surface_count()):
+					var base_mat := mi.get_surface_override_material(si)
+					if base_mat == null:
+						base_mat = mi.mesh.surface_get_material(si)
+					if base_mat is BaseMaterial3D:
+						var dup := base_mat.duplicate() as BaseMaterial3D
+						if dup.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED:
+							dup.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+						dup.albedo_color.a = clampf(dup.albedo_color.a * 0.52, 0.15, 0.65)
+						if dup.emission_enabled:
+							dup.emission_energy_multiplier = clampf(dup.emission_energy_multiplier * 0.40, 0.25, 1.1)
+						mi.set_surface_override_material(si, dup)
+		for ch in cur.get_children():
+			stack.append(ch)
 	parent.add_child(crown)
 	_play_embedded_anim(crown, 1.0, true)
 	return crown

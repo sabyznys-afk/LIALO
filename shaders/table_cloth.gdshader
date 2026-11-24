@@ -53,8 +53,8 @@ void fragment() {
 	// --- Fixed carved gold inlay ---
 	float ring_outer = smoothstep(0.013, 0.002, abs(r - 0.835));
 	float ring_inner = smoothstep(0.008, 0.001, abs(r - 0.790));
-	float ticks = step(0.86, cos(ang * 16.0)) * smoothstep(0.025, 0.002, abs(r - 0.812));
-	float sub_ticks = step(0.92, cos(ang * 48.0)) * smoothstep(0.014, 0.002, abs(r - 0.770));
+	float ticks = smoothstep(0.78, 0.92, cos(ang * 16.0)) * smoothstep(0.025, 0.002, abs(r - 0.812));
+	float sub_ticks = smoothstep(0.85, 0.96, cos(ang * 48.0)) * smoothstep(0.014, 0.002, abs(r - 0.770));
 	float gold_mask = clamp(ring_outer + ring_inner * 0.75 + ticks * 0.70 + sub_ticks * 0.45, 0.0, 1.0);
 
 	// --- Animated astrolabe rings around discard pile ---
@@ -63,9 +63,9 @@ void fragment() {
 	float da = atan(dp.y, dp.x);
 	float a_ring1 = smoothstep(0.0045, 0.0008, abs(dr - 0.30));
 	float a_ring2 = smoothstep(0.0035, 0.0006, abs(dr - 0.345));
-	float a_ticks = step(0.80, cos(da * 24.0 + TIME * 0.35)) * smoothstep(0.016, 0.002, abs(dr - 0.322));
-	float a_runes = step(0.93, cos(da * 8.0 - TIME * 0.22)) * smoothstep(0.012, 0.002, abs(dr - 0.372));
-	float a_dash = step(0.0, sin(da * 36.0 - TIME * 0.6)) * smoothstep(0.003, 0.0005, abs(dr - 0.40));
+	float a_ticks = smoothstep(0.68, 0.88, cos(da * 24.0 + TIME * 0.35)) * smoothstep(0.016, 0.002, abs(dr - 0.322));
+	float a_runes = smoothstep(0.86, 0.97, cos(da * 8.0 - TIME * 0.22)) * smoothstep(0.012, 0.002, abs(dr - 0.372));
+	float a_dash = smoothstep(-0.22, 0.22, sin(da * 36.0 - TIME * 0.6)) * smoothstep(0.003, 0.0005, abs(dr - 0.40));
 	float astro = clamp(a_ring1 + a_ring2 * 0.8 + a_ticks * 0.8 + a_runes + a_dash * 0.6, 0.0, 1.0);
 	gold_mask = max(gold_mask, astro * 0.9);
 
@@ -85,7 +85,9 @@ void fragment() {
 	float ripple2 = smoothstep(0.04, 0.0, abs(dr - rip_rad * 0.62)) * rip_fade * 0.6 * suit_pulse_power;
 	float suit_halo = smoothstep(0.42, 0.18, dr) * 0.10;
 
-	float pulse_ring = smoothstep(0.055, 0.005, abs(r - (0.22 + fract(TIME * 0.45) * 0.55))) * pulse_strength;
+	float pulse_t = fract(TIME * 0.45);
+	float pulse_env = sin(pulse_t * 3.14159265);
+	float pulse_ring = smoothstep(0.055, 0.005, abs(r - (0.22 + pulse_t * 0.55))) * pulse_env * pulse_strength;
 	float spec_burn = smoothstep(0.58, 0.0, r) * pulse_strength * 0.30;
 
 	ALBEDO = col;
