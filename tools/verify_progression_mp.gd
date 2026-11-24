@@ -4,6 +4,7 @@ const Catalog = preload("res://scripts/lialo_catalog.gd")
 const MpConfig = preload("res://scripts/mp/mp_config.gd")
 const MpAuthority = preload("res://scripts/mp/mp_authority.gd")
 const MpLobbyOverlay = preload("res://scripts/mp/mp_lobby_overlay.gd")
+const MpNetwork = preload("res://scripts/mp/mp_network.gd")
 const TableRelicMgr = preload("res://scripts/battle/table_relic_manager.gd")
 
 var _failures: Array[String] = []
@@ -172,6 +173,15 @@ func _run_all() -> void:
 	var eff := tmgr.get_effective_passive_relics(["REL_GREED", "TRELIC_SOUL_BELL"])
 	_assert(eff == ["REL_GREED"], "Broken relic filtered from effective passive relics")
 	print("  OK 6: TableRelicManager Overcharge & broken passive filtering verified")
+
+	# 7. MP protocol version & host address discovery
+	_assert(MpConfig.MP_PROTOCOL_VERSION != "", "MP_PROTOCOL_VERSION must be non-empty")
+	_assert(MpConfig.is_test_mp_available(), "MP must be available in exported and debug builds")
+	var net := MpNetwork.new()
+	var addrs: Dictionary = net.get_host_network_addresses()
+	_assert(addrs.has("lan_ips"), "get_host_network_addresses returns lan_ips")
+	net.free()
+	print("  OK 7: MP_PROTOCOL_VERSION (%s) & host address helper verified" % MpConfig.MP_PROTOCOL_VERSION)
 
 	if _failures.is_empty():
 		print("=== VERIFY PROGRESSION & MP: ALL CHECKS PASSED ===")
