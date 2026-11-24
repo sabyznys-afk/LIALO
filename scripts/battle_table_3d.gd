@@ -29,6 +29,8 @@ const RelicMesh = preload("res://scripts/relic_mesh_factory.gd")
 const HeartbeatHpScript := preload("res://scripts/heartbeat_hp_display.gd")
 const CinematicDirectorScript := preload("res://scripts/cinematic_director.gd")
 const HandwritingQuillScript := preload("res://scripts/handwriting_quill.gd")
+const TableRelicMgrScript := preload("res://scripts/battle/table_relic_manager.gd")
+const CombatLogDrawerScript := preload("res://scripts/battle/combat_log_drawer.gd")
 const OUTLINE_SHADER := preload("res://shaders/outline.gdshader")
 const CARD_FX_SHADER := preload("res://shaders/card_fx.gdshader")
 const SCREEN_JUICE_SHADER := preload("res://shaders/screen_juice.gdshader")
@@ -510,9 +512,9 @@ var table_arcane_spin_boost: float = 0.0
 var table_relic_rack_root: Node3D
 var relic_3d_nodes: Dictionary = {}
 var invoked_table_relics: Dictionary = {}
-const MAX_TABLE_ITEM_USES: int = 3
-var table_item_uses: Dictionary = {}
-var broken_table_items: Dictionary = {}
+const MAX_TABLE_ITEM_USES: int = TableRelicMgrScript.MAX_TABLE_ITEM_USES
+var relic_mgr: TableRelicMgrScript = TableRelicMgrScript.new()
+var combat_log_drawer: CombatLogDrawerScript = null
 var active_player_count: int = 2
 var run_table_relics: Array = []
 var table_relic_blood_seal_active: bool = false
@@ -806,6 +808,7 @@ func _begin_player_item_review_stage(play_fx: bool = true) -> void:
 	staged_card_indices.clear()
 	is_player_turn = true
 	busy_animating = false
+	relic_mgr.reset_turn()
 	if tutorial_mode and tutorial_step < 7:
 		turn_stage = TurnStage.CARD_PLAY
 		set_camera_view_mode(CameraViewMode.CARDS, false)
@@ -875,9 +878,33 @@ func _play_table_items_intro_showcase() -> void:
 		tw.parallel().tween_property(sn, "scale", bs, 0.18)
 
 func _can_use_table_item(item_id: String) -> bool:
-	if broken_table_items.has(item_id):
-		return false
-	return int(table_item_uses.get(item_id, 0)) < MAX_TABLE_ITEM_USES
+	return relic_mgr.can_use(item_id)
+
+func _refresh_combat_log_relic_pill() -> void:
+	if combat_log_drawer == null:
+		return
+	var entries: Array = []
+	for tid in run_table_relics:
+		var t_s := str(tid)
+		var t_inf := Catalog.get_table_relic_loc(t_s, opts_language)
+		var ic_s := str(t_inf.get("icon", "⚔"))
+		entries.append({
+			"icon": ic_s,
+			"rem": relic_mgr.get_remaining(t_s),
+			"max": TableRelicMgrScript.MAX_TABLE_ITEM_USES,
+			"broken": relic_mgr.is_broken(t_s),
+		})
+	for rid in run_active_relics:
+		var r_s := str(rid)
+		var r_inf := Catalog.get_relic_loc(r_s, opts_language)
+		var ic_r := str(r_inf.get("icon", "✦"))
+		entries.append({
+			"icon": ic_r,
+			"rem": relic_mgr.get_remaining(r_s),
+			"max": TableRelicMgrScript.MAX_TABLE_ITEM_USES,
+			"broken": relic_mgr.is_broken(r_s),
+		})
+	combat_log_drawer.update_relic_pill(entries)
 
 func _record_table_item_activation(item_id: String, item_node: Variant, target_override: Vector3 = Vector3.ZERO, anim_key: String = "") -> int:
 	var n_node: Node3D = item_node as Node3D if item_node is Node3D else null
@@ -902,9 +929,10 @@ func _record_table_item_activation(item_id: String, item_node: Variant, target_o
 
 	Fx.play_complex_table_item_anim(self, n_node, origin, target, anim_key if anim_key != "" else item_id, col)
 
-	var new_uses := int(table_item_uses.get(item_id, 0)) + 1
-	table_item_uses[item_id] = new_uses
-	var rem := maxi(0, MAX_TABLE_ITEM_USES - new_uses)
+	var use_res := relic_mgr.record_use(item_id)
+	var rem := int(use_res.get("rem", 0))
+	var shattered := bool(use_res.get("shattered", false))
+	var overcharged := bool(use_res.get("overcharged", false))
 
 	if is_instance_valid(n_node):
 		var rtag := n_node.get_node_or_null("RelicHoverTag") as Label3D
@@ -918,8 +946,12 @@ func _record_table_item_activation(item_id: String, item_node: Variant, target_o
 				else:
 					rtag.text = "%s [%d/%d]" % [item_name, rem, MAX_TABLE_ITEM_USES]
 
-	if rem <= 0:
-		broken_table_items[item_id] = true
+	if overcharged:
+		_show_stagger_callout(_tr("⚡ OVERCHARGE (-2 dur): %s" % item_name, "⚡ PŘETÍŽENÍ (-2 výdrž): %s" % item_name), Color(1.0, 0.62, 0.18), 1.35)
+		if not shattered:
+			Fx.float_number(self, origin + Vector3(0.0, 0.36, 0.0), _tr("⚡ OVERCHARGE (-2 dur)", "⚡ PŘETÍŽENÍ (-2 výdrž)"), Color(1.0, 0.66, 0.18), 46, 0.18, 0.80, 1.35)
+
+	if shattered:
 		invoked_table_relics[item_id] = true
 		Fx.float_number(self, origin + Vector3(0.0, 0.26, 0.0), _tr("💥 SHATTERED! (0/3)", "💥 ROZBITO! (0/3)"), Color(1.0, 0.36, 0.24), 52, 0.20, 0.90, 1.45)
 		get_tree().create_timer(0.50).timeout.connect(func():
@@ -930,6 +962,12 @@ func _record_table_item_activation(item_id: String, item_node: Variant, target_o
 	else:
 		invoked_table_relics.erase(item_id)
 		Fx.float_number(self, origin + Vector3(0.0, 0.26, 0.0), "%d/%d" % [rem, MAX_TABLE_ITEM_USES], col.lightened(0.32), 46, 0.16, 0.65, 1.25)
+
+	if combat_log_drawer != null:
+		var ov_tag := " ⚡OVERCHARGE (-2 dur)" if overcharged else ""
+		var sh_tag := " 💥SHATTERED!" if shattered else (" (%d/%d)" % [rem, MAX_TABLE_ITEM_USES])
+		combat_log_drawer.add_entry("✦ %s%s%s" % [item_name, ov_tag, sh_tag], Color(1.0, 0.50, 0.34) if shattered else (Color(1.0, 0.72, 0.28) if overcharged else col.lightened(0.25)))
+	_refresh_combat_log_relic_pill()
 	return rem
 
 func _confirm_item_review_to_cards(play_fx: bool = true) -> void:
@@ -4777,13 +4815,13 @@ func _rebuild_relic_visuals() -> void:
 	]
 	for ti in range(run_table_relics.size()):
 		var tid: String = str(run_table_relics[ti])
-		if broken_table_items.has(tid):
+		if relic_mgr.is_broken(tid):
 			continue
 		var t_info: Dictionary = Catalog.get_table_relic_loc(tid, opts_language)
 		if t_info.is_empty() or not table_relic_rack_root:
 			continue
 		var tcol: Color = t_info.get("col", Color(0.96, 0.24, 0.34))
-		var t_rem := maxi(0, MAX_TABLE_ITEM_USES - int(table_item_uses.get(tid, 0)))
+		var t_rem := relic_mgr.get_remaining(tid)
 		var tped := Node3D.new()
 		tped.name = "TableRelic_" + tid
 		tped.position = trelic_arc_slots[ti % trelic_arc_slots.size()]
@@ -4831,13 +4869,13 @@ func _rebuild_relic_visuals() -> void:
 	var df := _get_font(true)
 	for i in range(run_active_relics.size()):
 		var rel_id: String = str(run_active_relics[i])
-		if broken_table_items.has(rel_id):
+		if relic_mgr.is_broken(rel_id):
 			continue
 		var r_info: Dictionary = Catalog.get_relic_loc(rel_id, opts_language)
 		if r_info.is_empty():
 			continue
 		var rcol: Color = r_info.get("col", Color(1.0, 0.84, 0.32))
-		var r_rem := maxi(0, MAX_TABLE_ITEM_USES - int(table_item_uses.get(rel_id, 0)))
+		var r_rem := relic_mgr.get_remaining(rel_id)
 		var r_art_p := Catalog.get_relic_art_path(rel_id)
 		var r_tex: Texture2D = Toon.tex(r_art_p) if ResourceLoader.exists(r_art_p) else null
 
@@ -5313,7 +5351,15 @@ func _refresh_score_ledger_ui() -> void:
 		else:
 			score_delta_lbl.visible = false
 	if is_instance_valid(score_history_lbl):
-		score_history_lbl.visible = false
+		if hud_score_revealed and not turn_score_history.is_empty():
+			var start_hi := maxi(0, turn_score_history.size() - 5)
+			var h_parts: Array[String] = []
+			for hi in range(start_hi, turn_score_history.size()):
+				h_parts.append("+%d" % int(turn_score_history[hi]))
+			score_history_lbl.text = _tr("Turns: ", "Tahy: ") + " • ".join(h_parts)
+			score_history_lbl.visible = true
+		else:
+			score_history_lbl.visible = false
 	if not hud_score_revealed:
 		score_ledger_state_lbl.text = _tr("✦ SCORE LEDGER (HIDDEN)", "✦ ZÁPIS BODŮ (SKRYTO)")
 		score_ledger_eq_lbl.text = "---"
@@ -6471,11 +6517,13 @@ func _get_prop_hover_info(prop_id: String) -> Array[String]:
 		var tr_l := Catalog.get_table_relic_loc(tid, opts_language)
 		var t_title := _tr("⚔ TABLE RELIC: ", "⚔ RELIKVIE NA STŮL: ") + str(tr_l.get("name", tid))
 		var t_body := str(tr_l.get("desc", ""))
-		var t_rem := maxi(0, MAX_TABLE_ITEM_USES - int(table_item_uses.get(tid, 0)))
-		if broken_table_items.has(tid) or t_rem <= 0:
-			t_body += _tr("  (Shattered! 0/3 uses)", "  (Rozbito! 0/3 použití)")
+		var t_rem := relic_mgr.get_remaining(tid)
+		if relic_mgr.is_broken(tid) or t_rem <= 0:
+			t_body += _tr("  [Shattered (0/3) — passive disabled until Shop repair]", "  [Rozbito (0/3) — pasivní efekt vypnut do opravy v Obchodě]")
 		else:
 			t_body += _tr("  [Click on Table: %d/%d uses]" % [t_rem, MAX_TABLE_ITEM_USES], "  [Klikni na stole: %d/%d použití]" % [t_rem, MAX_TABLE_ITEM_USES])
+			if relic_mgr.is_overcharge(tid):
+				t_body += _tr("  [⚡ Next use this turn: OVERCHARGE (-2 dur)]", "  [⚡ Další použití v tahu: PŘETÍŽENÍ (-2 výdrž)]")
 		return [t_title, t_body]
 	if prop_id.begins_with("relic:"):
 		var rel_id := prop_id.substr(6)
@@ -6488,21 +6536,25 @@ func _get_prop_hover_info(prop_id: String) -> Array[String]:
 		elif rel_id == "REL_MERCHANT_LEDGER":
 			var scm := maxi(ScoreEng.MERCHANT_LEDGER_CHIP_STEP, int(match_relic_scales.get("REL_MERCHANT_LEDGER", run_shop_rerolls * ScoreEng.MERCHANT_LEDGER_CHIP_STEP)) + ScoreEng.MERCHANT_LEDGER_CHIP_STEP)
 			body_s += _tr(" (Current: +%d)" % scm, " (Aktuálně: +%d)" % scm)
-		var r_rem := maxi(0, MAX_TABLE_ITEM_USES - int(table_item_uses.get(rel_id, 0)))
-		if broken_table_items.has(rel_id) or r_rem <= 0:
-			body_s += _tr("  (Shattered! 0/3 uses)", "  (Rozbito! 0/3 použití)")
+		var r_rem := relic_mgr.get_remaining(rel_id)
+		if relic_mgr.is_broken(rel_id) or r_rem <= 0:
+			body_s += _tr("  [Shattered (0/3) — passive disabled until Shop repair]", "  [Rozbito (0/3) — pasivní efekt vypnut do opravy v Obchodě]")
 		else:
 			body_s += _tr("  [Click on Table: %d/%d uses]" % [r_rem, MAX_TABLE_ITEM_USES], "  [Klikni na stole: %d/%d použití]" % [r_rem, MAX_TABLE_ITEM_USES])
+			if relic_mgr.is_overcharge(rel_id):
+				body_s += _tr("  [⚡ Next use this turn: OVERCHARGE (-2 dur)]", "  [⚡ Další použití v tahu: PŘETÍŽENÍ (-2 výdrž)]")
 		return [title_s, body_s]
 	for p_item_n in purchased_table_item_nodes:
 		var pn_node := p_item_n as Node3D
 		if is_instance_valid(pn_node) and str(pn_node.get_meta("prop_id", "")) == prop_id:
 			var item_desc := str(pn_node.get_meta("hover_desc", ""))
-			var p_rem := maxi(0, MAX_TABLE_ITEM_USES - int(table_item_uses.get(prop_id, 0)))
-			if broken_table_items.has(prop_id) or p_rem <= 0:
-				item_desc += _tr("  (Shattered! 0/3 uses)", "  (Rozbito! 0/3 použití)")
+			var p_rem := relic_mgr.get_remaining(prop_id)
+			if relic_mgr.is_broken(prop_id) or p_rem <= 0:
+				item_desc += _tr("  [Shattered (0/3) — passive disabled until Shop repair]", "  [Rozbito (0/3) — pasivní efekt vypnut do opravy v Obchodě]")
 			else:
 				item_desc += _tr("  [Click on Table: %d/%d uses]" % [p_rem, MAX_TABLE_ITEM_USES], "  [Klikni na stole: %d/%d použití]" % [p_rem, MAX_TABLE_ITEM_USES])
+				if relic_mgr.is_overcharge(prop_id):
+					item_desc += _tr("  [⚡ Next use this turn: OVERCHARGE (-2 dur)]", "  [⚡ Další použití v tahu: PŘETÍŽENÍ (-2 výdrž)]")
 			return [
 				str(pn_node.get_meta("hover_title", "Table Artifact")),
 				item_desc
@@ -7314,8 +7366,8 @@ func _setup_minimal_overlay_hud() -> void:
 	# ZONE 2 INSIDE SCORE BOARD: Fixed Permanent Score Ledger & Equation Display (x: 162..464, y: 52..158)
 	combo_hud_grp = Control.new()
 	combo_hud_grp.position = Vector2(162, 52)
-	combo_hud_grp.size = Vector2(302, 106)
-	combo_hud_grp.pivot_offset = Vector2(151, 53)
+	combo_hud_grp.size = Vector2(302, 118)
+	combo_hud_grp.pivot_offset = Vector2(151, 59)
 	combo_hud_grp.clip_contents = true
 	combo_hud_grp.mouse_filter = Control.MOUSE_FILTER_PASS
 	combo_hud_grp.mouse_entered.connect(func():
@@ -7350,7 +7402,7 @@ func _setup_minimal_overlay_hud() -> void:
 
 	combo_flame_rect = ColorRect.new()
 	combo_flame_rect.position = Vector2(5, 5)
-	combo_flame_rect.size = Vector2(292, 96)
+	combo_flame_rect.size = Vector2(292, 108)
 	combo_flame_rect.modulate.a = 0.44
 	combo_flame_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	combo_flame_mat = ShaderMaterial.new()
@@ -7431,6 +7483,16 @@ func _setup_minimal_overlay_hud() -> void:
 
 	score_history_lbl = Label.new()
 	score_history_lbl.text = ""
+	score_history_lbl.position = Vector2(8, 99)
+	score_history_lbl.size = Vector2(286, 16)
+	score_history_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	score_history_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	score_history_lbl.clip_text = true
+	score_history_lbl.add_theme_font_override("font", _get_font(true))
+	score_history_lbl.add_theme_font_size_override("font_size", 10)
+	score_history_lbl.add_theme_color_override("font_color", Color(0.84, 0.92, 0.72))
+	score_history_lbl.add_theme_color_override("font_outline_color", Color(0.03, 0.02, 0.02))
+	score_history_lbl.add_theme_constant_override("outline_size", 3)
 	score_history_lbl.visible = false
 	combo_hud_grp.add_child(score_history_lbl)
 
@@ -7529,6 +7591,9 @@ func _setup_minimal_overlay_hud() -> void:
 	rival_hp_heart.call("setup", _get_font(true), true, false)
 	rival_hp_heart.call("set_hp_with_status", ai_hp, ai_max_hp, 0, "", false)
 	_position_rival_hp_heart(false)
+
+	combat_log_drawer = CombatLogDrawerScript.new()
+	combat_log_drawer.setup(hud_root, _get_font(true), opts_language)
 
 	ai_score_lbl = Label.new()
 	ai_score_lbl.text = "RIVAL: 0 / 120"
@@ -8915,8 +8980,13 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 	opening_turn_committed = false
 	opening_veto_used = false
 	invoked_table_relics.clear()
-	table_item_uses.clear()
-	broken_table_items.clear()
+	relic_mgr.reset_all()
+	relic_mgr.load_broken_list(run_loadout.get("broken_relics", []))
+	if combat_log_drawer != null:
+		combat_log_drawer.set_language(opts_language)
+		combat_log_drawer.clear_log()
+		combat_log_drawer.set_open(false)
+		_refresh_combat_log_relic_pill()
 	table_relic_blood_seal_active = false
 	table_relic_hollow_mask_active = false
 	turn_score_history.clear()
@@ -11096,7 +11166,7 @@ func _update_3d_hover(mouse_pos: Vector2, delta: float) -> void:
 				"is_preview": true,
 				"lang": opts_language,
 			}
-			var prev_res := ScoreEng.calculate_hand_score([hc], run_active_relics, rem_hand, p_ctx)
+			var prev_res := ScoreEng.calculate_hand_score([hc], relic_mgr.get_effective_passive_relics(run_active_relics), rem_hand, p_ctx)
 			var p_chips := int(prev_res["total_chips"])
 			var p_flat := float(prev_res["flat_mult"])
 			var p_xm := float(prev_res["x_mult_product"])
@@ -11560,6 +11630,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			toggle_camera_view_mode(true)
 			get_viewport().set_input_as_handled()
 			return
+		if event.keycode == KEY_L:
+			if combat_log_drawer != null:
+				combat_log_drawer.toggle()
+			get_viewport().set_input_as_handled()
+			return
 		if event.keycode == KEY_SPACE:
 			if unlock_tip_panel and unlock_tip_panel.visible:
 				_dismiss_unlock_tip()
@@ -11944,13 +12019,13 @@ func _trigger_tavern_prop_click(prop_id: String) -> void:
 			trtw.tween_property(trn, "position:y", bp_y, 0.18).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 
 		if is_player_turn and not busy_animating and not tutorial_mode and _can_use_table_item(tid):
-			_record_table_item_activation(tid, relic_3d_nodes.get(tid))
+			var t_rem := _record_table_item_activation(tid, relic_3d_nodes.get(tid))
 			var t_origin := trn.global_position + Vector3(0.0, 0.10, 0.0) if is_instance_valid(trn) else Vector3(0.35, 0.90, 0.45)
 			var t_target := opp_hands_anchor.global_position + Vector3(0.0, 0.08, 0.0) if is_instance_valid(opp_hands_anchor) else Vector3(0.0, 1.05, -1.0)
 			if is_instance_valid(trn):
 				var t_halo := trn.get_node_or_null("RelicModel3D/ReadyHalo") as Node3D
 				if t_halo:
-					t_halo.visible = false
+					t_halo.visible = (t_rem > 0)
 			Fx.relic_tybw_ritual(self, t_origin, t_target, tid, tcol)
 			emit_signal("play_sfx_pitched_requested", "chord_lute", 1.24)
 			var tr_msg := ""
@@ -12047,11 +12122,11 @@ func _trigger_tavern_prop_click(prop_id: String) -> void:
 			Fx.burst(self, rn.global_position + Vector3(0.0, 0.09, 0.0), col.lightened(0.25), 18, 0.95, 0.48, 0.025, 1.8, true, 140.0, Vector3.UP, true)
 
 		if is_player_turn and not busy_animating and not tutorial_mode and _can_use_table_item(rel_id):
-			_record_table_item_activation(rel_id, relic_3d_nodes.get(rel_id))
+			var r_rem := _record_table_item_activation(rel_id, relic_3d_nodes.get(rel_id))
 			if is_instance_valid(rn):
 				var halo_n := rn.get_node_or_null("RelicModel3D/ReadyHalo") as Node3D
 				if halo_n:
-					halo_n.visible = false
+					halo_n.visible = (r_rem > 0)
 				var r_target := discard_pile_root.global_position + Vector3(0.0, 0.05, 0.0) if is_instance_valid(discard_pile_root) else rn.global_position + Vector3(0.0, 0.25, -0.35)
 				Fx.item_ritual_activation(self, rn.global_position + Vector3(0.0, 0.08, 0.0), r_target, col.lightened(0.35))
 			emit_signal("play_sfx_pitched_requested", "prop_coins" if rel_id in ["REL_GREED", "REL_MERCHANT_LEDGER", "REL_COURT_SOVEREIGN", "REL_RED_SEAL"] else "chord_lute", 1.18)
@@ -12237,6 +12312,11 @@ func _sync_peek_ui_visibility() -> void:
 		dock_backdrop_panel.visible = false
 	if key_hint_lbl:
 		key_hint_lbl.visible = false
+	if combat_log_drawer != null:
+		var show_log_pill := (cam_view_mode == CameraViewMode.CARDS) and (not intro_animating) and (not peddler_open) and (not shop_gate_open) and (not tutorial_mode) and (not (victory_summary_overlay and victory_summary_overlay.visible)) and (not (defeat_summary_overlay and defeat_summary_overlay.visible))
+		combat_log_drawer.sync_visibility(show_log_pill, cine_active)
+		if show_log_pill:
+			_refresh_combat_log_relic_pill()
 	if is_instance_valid(item_review_bar):
 		var show_ir := (not cine_active) and (not intro_animating) and (not peddler_open) and (not shop_gate_open) and (not tutorial_mode) and is_player_turn and (not busy_animating) and (turn_stage == TurnStage.ITEM_REVIEW) and not (is_instance_valid(view_toggle_btn) and view_toggle_btn.visible)
 		item_review_bar.visible = show_ir
@@ -12404,7 +12484,7 @@ func _play_player_cards_3d(play_indices: Array, chosen_suit: String) -> void:
 				"duel_chalice_mult": duel_chalice_mult, "duel_whetstone_stacks": duel_whetstone_stacks,
 				"duel_next_xmult": duel_next_xmult, "is_preview": true, "lang": opts_language,
 			}
-			var ev_res := ScoreEng.calculate_hand_score([hc_ev], run_active_relics, rem_ev, ev_ctx)
+			var ev_res := ScoreEng.calculate_hand_score([hc_ev], relic_mgr.get_effective_passive_relics(run_active_relics), rem_ev, ev_ctx)
 			var ev_pts := int(ev_res.get("final_score", 0))
 			if ev_pts > match_optimal_possible_slam:
 				match_optimal_possible_slam = ev_pts
@@ -12431,7 +12511,7 @@ func _play_player_cards_3d(play_indices: Array, chosen_suit: String) -> void:
 				"duel_chalice_mult": duel_chalice_mult, "duel_whetstone_stacks": duel_whetstone_stacks,
 				"duel_next_xmult": duel_next_xmult, "is_preview": true, "lang": opts_language,
 			}
-			var e8_res := ScoreEng.calculate_hand_score(eights_in_hand, run_active_relics, [], e8_ctx)
+			var e8_res := ScoreEng.calculate_hand_score(eights_in_hand, relic_mgr.get_effective_passive_relics(run_active_relics), [], e8_ctx)
 			var e8_pts := int(e8_res.get("final_score", 0))
 			if e8_pts > match_optimal_possible_slam:
 				match_optimal_possible_slam = e8_pts
@@ -12494,7 +12574,7 @@ func _play_player_cards_3d(play_indices: Array, chosen_suit: String) -> void:
 		"lang": opts_language,
 	}
 	var had_blood_seal := table_relic_blood_seal_active
-	var score_res := ScoreEng.calculate_hand_score(chosen_cards, run_active_relics, player_hand, ctx)
+	var score_res := ScoreEng.calculate_hand_score(chosen_cards, relic_mgr.get_effective_passive_relics(run_active_relics), player_hand, ctx)
 	table_relic_blood_seal_active = false
 	table_relic_hollow_mask_active = false
 	if had_blood_seal and not tutorial_mode:
@@ -12519,6 +12599,10 @@ func _play_player_cards_3d(play_indices: Array, chosen_suit: String) -> void:
 		duel_next_xmult = 1.0
 	var eff_mult := float(score_res["effective_mult"])
 	var total_pts := int(score_res["final_score"])
+	if combat_log_drawer != null and not chosen_cards.is_empty():
+		var p_slam := str(score_res.get("slam_name", chosen_cards[0].get("rname", "Card")))
+		var p_fsum := str(score_res.get("formula_summary", "+%d" % total_pts))
+		combat_log_drawer.add_entry(_tr("▶ YOU: %s (%s)" % [p_slam, p_fsum], "▶ TY: %s (%s)" % [p_slam, p_fsum]), Color(0.56, 0.94, 1.0))
 	var force_lightning := bool(score_res["lightning"]) or is_combo_slam
 
 	if not phoenix_cleared:
@@ -13107,6 +13191,7 @@ func _execute_balatro_stagger_timeline(
 		else:
 			busy_animating = false
 			is_player_turn = true
+			relic_mgr.reset_turn()
 	elif bool(score_res.get("thief_heist_triggered", false)) and not tutorial_mode and not ai_hand.is_empty():
 		_open_thief_heist_modal()
 	else:
@@ -13731,6 +13816,8 @@ func _apply_ai_card_play_state(play_idx: int) -> int:
 			ai_pts += crown_add
 			_trigger_boss_modifier_flare(_tr("Crown Decree: +%d Rival pts!" % crown_add, "Královský dekret: +%d b. soupeři!" % crown_add))
 		_award_ai_score_immediately(ai_pts, "+%d %s" % [ai_pts, _tr("RIVAL", "SOUPEŘ")], Color(1.0, 0.44, 0.38))
+		if combat_log_drawer != null:
+			combat_log_drawer.add_entry(_tr("◀ RIVAL: %s (+%d pts)", "◀ SOUPEŘ: %s (+%d b.)") % [str(c.get("rname", "Card")), ai_pts], Color(1.0, 0.54, 0.46))
 	var shielded_hit := false
 	if not tutorial_mode and player_shields > 0 and (c["rank"] in ["7", "E"] or ai_pts >= 15):
 		player_shields -= 1
@@ -13952,6 +14039,7 @@ func _finish_ai_3d_turn() -> void:
 		return
 	busy_animating = false
 	is_player_turn = true
+	relic_mgr.reset_turn()
 	if tutorial_mode:
 		if tutorial_step <= 6:
 			pending_draw = 0
@@ -15334,6 +15422,7 @@ func _check_win_or_redeal() -> bool:
 			"endless_ante": active_endless_ante,
 			"relic_scales": match_relic_scales.duplicate(),
 			"table_relics": run_table_relics.duplicate(),
+			"broken_relics": relic_mgr.export_broken_list(),
 		})
 		emit_signal("battle_won", player_score)
 		return true
@@ -15353,6 +15442,7 @@ func _check_win_or_redeal() -> bool:
 			"era_id": str(active_era.get("id", "stredovek")),
 			"stage_idx": int(active_stage_data.get("stage_idx", 0)),
 			"table_relics": run_table_relics.duplicate(),
+			"broken_relics": relic_mgr.export_broken_list(),
 		})
 		var loss_title := _tr("☠ SLAIN IN BATTLE (0 ♥ HP) ☠", "☠ ZABIT V BOJI (0 ♥ HP) ☠") if ko_loss else _tr("☠ DEFEATED — SPOILS GRANTED ☠", "☠ PORÁŽKA — ÚTĚŠNÁ KOŘIST ☠")
 		_flash_turn_toast(loss_title, _tr("Carry-Out: %d pts — Witness the Final Blow!" % player_score, "Odnášíš: %d b — Sleduj závěrečný úder!" % player_score), Color(0.95, 0.38, 0.38), 3.6, true)
@@ -15513,7 +15603,7 @@ func _refresh_table_labels() -> void:
 				"is_preview": true,
 				"lang": opts_language,
 			}
-			var prev_res := ScoreEng.calculate_hand_score(st_cards, run_active_relics, rem_hand, p_ctx)
+			var prev_res := ScoreEng.calculate_hand_score(st_cards, relic_mgr.get_effective_passive_relics(run_active_relics), rem_hand, p_ctx)
 			var p_chips := int(prev_res["total_chips"])
 			var p_flat := float(prev_res["flat_mult"])
 			var p_xm := float(prev_res["x_mult_product"])
