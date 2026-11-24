@@ -25,7 +25,7 @@ var local_name: String = "Duelist"
 var local_deck_cfg: Dictionary = {"archetype_id": "GUILLOTINE_ACES", "extra_aces": 4}
 
 var lobby_seats: Array = []
-var room_settings: Dictionary = {"rule_mode": "OP_CHAOS"}
+var room_settings: Dictionary = {"rule_mode": Config.RULE_CAMPAIGN_VAULT}
 var authority: AuthorityScript = null
 var _bot_seq: int = 1
 var last_public_state: Dictionary = {}
@@ -59,7 +59,8 @@ func host_room(port: int, player_name: String, deck_cfg: Dictionary) -> Error:
 	local_name = player_name.strip_edges()
 	if local_name.is_empty():
 		local_name = "Host Knight"
-	local_deck_cfg = deck_cfg.duplicate(true)
+	var rmode := str(room_settings.get("rule_mode", Config.RULE_CAMPAIGN_VAULT))
+	local_deck_cfg = Config.sanitize_deck_cfg(deck_cfg, rmode)
 	_bot_seq = 1
 
 	lobby_seats = [{
@@ -213,6 +214,10 @@ func start_match() -> void:
 		_rpc_end_match.rpc(winner_seat, summary)
 	)
 
+	var rmode := str(room_settings.get("rule_mode", Config.RULE_CAMPAIGN_VAULT))
+	for s in lobby_seats:
+		s["deck_cfg"] = Config.sanitize_deck_cfg(s.get("deck_cfg", {}), rmode)
+
 	in_match = true
 	_rpc_begin_match.rpc()
 	authority.setup_match(lobby_seats, room_settings)
@@ -305,9 +310,14 @@ func _on_peer_disconnected(id: int) -> void:
 	if in_match and authority != null:
 		for s in authority.seats:
 			if int(s.get("peer_id", 0)) == id and not bool(s.get("is_bot", false)):
+				var orig_name := str(s.get("orig_name", ""))
+				if orig_name == "":
+					orig_name = str(s.get("name", "Player"))
+					s["orig_name"] = orig_name
+				s["disconnected_human"] = true
 				s["is_bot"] = true
-				s["name"] = "%s [BOT]" % str(s["name"])
-				authority.banner_text = "%s disconnected — Bot took over!" % str(s["name"])
+				s["name"] = "%s [BOT]" % orig_name
+				authority.banner_text = "%s disconnected — Bot took over!" % orig_name
 				authority._sync_all()
 				authority._queue_bot_if_needed()
 				break
@@ -330,9 +340,11 @@ func _reindex_lobby() -> void:
 
 
 func _apply_deck_for_peer(pid: int, dcfg: Dictionary) -> void:
+	var rmode := str(room_settings.get("rule_mode", Config.RULE_CAMPAIGN_VAULT))
+	var clean_dcfg := Config.sanitize_deck_cfg(dcfg, rmode)
 	for s in lobby_seats:
 		if int(s["peer_id"]) == pid:
-			s["deck_cfg"] = dcfg.duplicate(true)
+			s["deck_cfg"] = clean_dcfg
 			break
 	_broadcast_lobby()
 
@@ -350,23 +362,47 @@ func _broadcast_lobby() -> void:
 func _rpc_register_player(p_name: String, dcfg: Dictionary) -> void:
 	if not multiplayer.is_server():
 		return
-	var pid := _sender_peer()
+	var sender := _sender_peer()
+	var clean_name := p_name.strip_edges().substr(0, 18)
+	if in_match and authority != null:
+		for s in authority.seats:
+			if bool(s.get("disconnected_human", false)) and (str(s.get("orig_name", "")) == clean_name or str(s.get("orig_name", "")) == p_name):
+				var reclaimed_name := clean_name if not clean_name.is_empty() else str(s.get("orig_name", "Player"))
+				s["peer_id"] = sender
+				s["is_bot"] = false
+				s["disconnected_human"] = false
+				s["name"] = reclaimed_name
+				var s_idx := int(s.get("seat_idx", 0))
+				if s_idx >= 0 and s_idx < lobby_seats.size():
+					lobby_seats[s_idx]["peer_id"] = sender
+					lobby_seats[s_idx]["is_bot"] = false
+					lobby_seats[s_idx]["name"] = reclaimed_name
+				_rpc_begin_match.rpc_id(sender)
+				if authority.has_method("reclaim_seat"):
+					authority.reclaim_seat(s_idx, sender)
+				authority.banner_text = "%s reconnected and reclaimed their seat!" % reclaimed_name
+				authority._sync_all()
+				_broadcast_lobby()
+				return
+		multiplayer.multiplayer_peer.disconnect_peer(sender)
+		return
 	if in_match or lobby_seats.size() >= Config.MAX_PLAYERS:
-		multiplayer.multiplayer_peer.disconnect_peer(pid)
+		multiplayer.multiplayer_peer.disconnect_peer(sender)
 		return
 	for s in lobby_seats:
-		if int(s["peer_id"]) == pid:
+		if int(s["peer_id"]) == sender:
 			return
-	var clean_name := p_name.strip_edges().substr(0, 18)
 	if clean_name.is_empty():
 		clean_name = "Player %d" % (lobby_seats.size() + 1)
+	var rmode := str(room_settings.get("rule_mode", Config.RULE_CAMPAIGN_VAULT))
+	var clean_dcfg := Config.sanitize_deck_cfg(dcfg, rmode)
 	lobby_seats.append({
 		"seat_idx": lobby_seats.size(),
-		"peer_id": pid,
+		"peer_id": sender,
 		"name": clean_name,
 		"is_bot": false,
 		"ready": false,
-		"deck_cfg": dcfg.duplicate(true),
+		"deck_cfg": clean_dcfg,
 	})
 	_reindex_lobby()
 	_broadcast_lobby()
