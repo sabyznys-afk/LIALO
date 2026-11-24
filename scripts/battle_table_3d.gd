@@ -1042,6 +1042,7 @@ func _setup_tutorial_beacon_3d() -> void:
 	bmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	bmat.albedo_color = Color(1.0, 0.86, 0.28, 0.88)
 	bmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bmat.render_priority = 1
 	tutorial_beacon_mesh.material_override = bmat
 	tutorial_beacon_mesh.visible = false
 	add_child(tutorial_beacon_mesh)
@@ -1166,7 +1167,7 @@ func _setup_tutorial_beacon_3d() -> void:
 	var w_plane := PlaneMesh.new(); w_plane.size = Vector2(0.46, 0.46)
 	wager_3d_ring.mesh = w_plane
 	wager_3d_ring.material_override = _make_arrow_compass_ring_mat(Color(1.0, 0.82, 0.28, 0.92), 8.0, 1.35)
-	wager_3d_ring.position = Vector3(-0.56, 0.818, 0.44)
+	wager_3d_ring.position = Vector3(-0.56, 0.822, 0.44)
 	wager_3d_ring.visible = false
 	add_child(wager_3d_ring)
 
@@ -1766,11 +1767,11 @@ func _setup_opponent_shadow_and_hands() -> void:
 	add_child(opp_fire_fx_root)
 	var fp := CPUParticles3D.new()
 	fp.name = "FireParticles"
-	fp.amount = 36
+	fp.amount = 20
 	fp.lifetime = 0.72
 	fp.local_coords = true
 	var fq := QuadMesh.new()
-	fq.size = Vector2(0.09, 0.12)
+	fq.size = Vector2(0.045, 0.06)
 	fp.mesh = fq
 	var fm := StandardMaterial3D.new()
 	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -1786,7 +1787,7 @@ func _setup_opponent_shadow_and_hands() -> void:
 	f_grad.set_color(1, Color(0.55, 0.08, 0.02, 0.0))
 	fp.color_ramp = f_grad
 	fp.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	fp.emission_box_extents = Vector3(0.28, 0.22, 0.16)
+	fp.emission_box_extents = Vector3(0.18, 0.12, 0.10)
 	fp.direction = Vector3.UP
 	fp.spread = 24.0
 	fp.gravity = Vector3(0.0, -0.6, 0.0)
@@ -5827,9 +5828,9 @@ func _attach_sword_hover_area(sw: Node3D) -> void:
 	s_area.name = "SwordArea"
 	var s_col := CollisionShape3D.new()
 	var s_box := BoxShape3D.new()
-	s_box.size = Vector3(0.36, 0.26, 0.84)
+	s_box.size = Vector3(0.13, 0.08, 0.50)
 	s_col.shape = s_box
-	s_col.position = Vector3(0.0, 0.05, 0.08)
+	s_col.position = Vector3(0.0, 0.03, 0.0)
 	s_area.add_child(s_col)
 	sw.add_child(s_area)
 
@@ -5845,25 +5846,26 @@ void fragment() {
 	vec2 p = (UV - vec2(0.5)) * 2.0;
 	float r = length(p);
 	float ang = atan(p.y, p.x);
-	float outer_ring = smoothstep(0.022, 0.004, abs(r - 0.90));
-	float mid_ring = smoothstep(0.016, 0.003, abs(r - 0.74));
-	float inner_ring = smoothstep(0.018, 0.003, abs(r - 0.54));
-	float ticks = step(0.55, cos(ang * 36.0 + TIME * 0.4 * anim_spd)) * smoothstep(0.05, 0.01, abs(r - 0.82));
-	float runes = step(0.25, sin(ang * 16.0 - TIME * 0.8 * anim_spd)) * smoothstep(0.028, 0.006, abs(r - 0.64));
+	float outer_ring = smoothstep(0.024, 0.004, abs(r - 0.90));
+	float mid_ring = smoothstep(0.018, 0.003, abs(r - 0.74));
+	float inner_ring = smoothstep(0.020, 0.003, abs(r - 0.54));
+	float ticks = smoothstep(0.42, 0.68, cos(ang * 36.0 + TIME * 0.4 * anim_spd)) * smoothstep(0.05, 0.01, abs(r - 0.82));
+	float runes = smoothstep(0.12, 0.38, sin(ang * 16.0 - TIME * 0.8 * anim_spd)) * smoothstep(0.028, 0.006, abs(r - 0.64));
 	// Animated inward-pointing chevron arrows around the circle!
 	float a_cell = fract((ang / 6.2831853) * num_arrows) * 2.0 - 1.0;
 	float pulse_r = 0.78 - 0.055 * sin(TIME * 3.4 * anim_spd);
 	float chev_dist = abs(r - (pulse_r - abs(a_cell) * 0.11));
-	float chev = smoothstep(0.026, 0.005, chev_dist) * step(abs(a_cell), 0.62) * step(0.56, r) * step(r, 0.92);
+	float chev = smoothstep(0.026, 0.005, chev_dist) * smoothstep(0.66, 0.56, abs(a_cell)) * smoothstep(0.53, 0.59, r) * smoothstep(0.95, 0.89, r);
 	float chev2_dist = abs(r - (pulse_r - 0.12 - abs(a_cell) * 0.09));
-	float chev2 = smoothstep(0.020, 0.004, chev2_dist) * step(abs(a_cell), 0.48) * step(0.46, r) * step(r, 0.84) * 0.75;
+	float chev2 = smoothstep(0.020, 0.004, chev2_dist) * smoothstep(0.52, 0.42, abs(a_cell)) * smoothstep(0.43, 0.49, r) * smoothstep(0.87, 0.81, r) * 0.75;
 	float alpha = clamp(outer_ring * 0.95 + mid_ring * 0.75 + inner_ring * 0.65 + ticks * 0.70 + runes * 0.55 + (chev + chev2) * 1.15, 0.0, 1.0);
 	ALBEDO = mix(ring_color.rgb, vec3(1.0, 0.97, 0.84), clamp(chev + chev2, 0.0, 1.0) * 0.55);
-	ALPHA = alpha * ring_color.a * step(r, 0.98);
+	ALPHA = alpha * ring_color.a * smoothstep(1.0, 0.94, r);
 }
 """
 	var sm := ShaderMaterial.new()
 	sm.shader = sh
+	sm.render_priority = 1
 	sm.set_shader_parameter("ring_color", ring_col)
 	sm.set_shader_parameter("num_arrows", arrow_cnt)
 	sm.set_shader_parameter("anim_spd", spd)
@@ -6454,6 +6456,11 @@ func _get_prop_hover_info(prop_id: String) -> Array[String]:
 				_tr("Match active Suit (%s) or Rank (%s). Hover cards [SPACE] to play.", "Dej kartu stejné barvy (%s) nebo hodnoty (%s). Karty zvedneš [SPACE].") % [str(s_obj["name"]), r_str]
 			]
 		"deck":
+			if pending_skip:
+				return [
+					_tr("❄ SKIP TURN (Frozen by Ace)", "❄ PŘESKOČIT TAH (Zmrazen Esem)"),
+					_tr("Click to pass your frozen turn.", "Klikni pro přeskočení zmrazeného tahu.")
+				]
 			return [
 				_tr("Draw Deck (%d cards)", "Tahací balíček (%d karet)") % deck.size(),
 				_tr("Click to draw 1 card (+draw stack if hit by a 7) and pass turn.", "Klikni pro líznutí 1 karty (nebo +2 za 7) a ukončení kola.")
@@ -6602,6 +6609,8 @@ func _update_prop_hover_and_edge_peek(delta: float, mouse_pos: Vector2, _vp_size
 						"TavernDiceArea": next_prop = "dice"
 						"TavernMugArea": next_prop = "mug"
 						"BossPlaqueArea": next_prop = "plaque"
+	if hovered_draw_deck and next_prop == "sword":
+		next_prop = "deck"
 	hovered_prop_id = next_prop
 
 	# 3. Physically lift hovered 3D table prop (+0.075m) & highlight scale
@@ -6630,11 +6639,15 @@ func _update_prop_hover_and_edge_peek(delta: float, mouse_pos: Vector2, _vp_size
 
 	# 4. Update Floating Prop Hover Pill
 	if prop_hover_pill and prop_hover_title and prop_hover_desc:
-		if hovered_prop_id != "" and not peddler_open and hovered_card_idx < 0 and (not tutorial_mode or tutorial_step >= 1):
+		var tut_vis := tutorial_ghost_center_panel and tutorial_ghost_center_panel.visible
+		if hovered_prop_id != "" and not peddler_open and hovered_card_idx < 0 and not tut_vis and (not tutorial_mode or tutorial_step >= 1):
 			var info: Array[String] = _get_prop_hover_info(hovered_prop_id)
 			if info[0] != "":
 				prop_hover_title.text = info[0]
 				prop_hover_desc.text = info[1]
+				var top_y := 396 if (unlock_tip_panel and unlock_tip_panel.visible) else 252
+				prop_hover_pill.offset_top = top_y
+				prop_hover_pill.offset_bottom = top_y + 76
 				prop_hover_pill.visible = true
 			else:
 				prop_hover_pill.visible = false
@@ -6662,9 +6675,13 @@ func _update_prop_hover_and_edge_peek(delta: float, mouse_pos: Vector2, _vp_size
 		if is_instance_valid(opp_head_node):
 			opp_head_node.rotation_degrees.y = sin(t_sec * 0.85) * 6.5
 			opp_head_node.rotation_degrees.x = 4.0 + opp_play_anim_t * 12.0 + sin(t_sec * 1.9) * 2.0
+		if is_instance_valid(opp_arm_left_node):
+			opp_arm_left_node.rotation_degrees.x = -12.0 + sin(t_sec * 1.9) * 1.5
+			opp_arm_left_node.rotation_degrees.y = -10.0
 		if is_instance_valid(opp_arm_right_node):
-			opp_arm_right_node.position.z = 0.02 + opp_play_anim_t * 0.24
-			opp_arm_right_node.rotation_degrees.x = opp_play_anim_t * 28.0
+			opp_arm_right_node.position.z = 0.02 + opp_play_anim_t * 0.22
+			opp_arm_right_node.rotation_degrees.x = -12.0 + opp_play_anim_t * 28.0
+			opp_arm_right_node.rotation_degrees.y = 10.0
 
 func _trigger_ghost_ok_flash() -> void:
 	tutorial_ghost_ok_flash = 1.0
@@ -6768,17 +6785,17 @@ func _get_tutorial_ghost_copy(step: int, sub: int = 0) -> Dictionary:
 				}
 		7:
 			return {
-				"en": "✓ OK! 3 ways to win: 0 ♥ HP, Chalice Score Goal (e.g. 520), or 3× Aces = Instant Kill (chosen target in MP)! Shop opens every 3rd round.",
-				"cs": "✓ OK! 3 cesty k výhře: 0 ♥ HP, Cíl Kalicha (např. 520) nebo 3× Eso = Okamžitá smrt (v MP zvolený cíl)! Obchod je každé 3. kolo.",
-				"task_en": "FINAL TASK: Play your last card (0 in hand = Finisher + Sword Execution)!",
-				"task_cs": "POSLEDNÍ ÚKOL: Vyhoď poslední kartu (0 karet = Finisher + Poprava mečem)!",
+				"en": "✓ OK! 3 ways to win: 0 ♥ HP, Chalice Score Goal (e.g. 520), or 3× Aces = Instant Kill! New round starts whenever ANY player reaches 0 cards. Shop opens every 3rd round.",
+				"cs": "✓ OK! 3 cesty k výhře: 0 ♥ HP, Cíl Kalicha (např. 520) nebo 3× Eso = Okamžitá smrt! Nové kolo začíná, jakmile komukoli dojdou karty! Obchod je každé 3. kolo.",
+				"task_en": "FINAL TASK: Play your last card (0 in hand = Round Won! +bonus & next round)!",
+				"task_cs": "POSLEDNÍ ÚKOL: Vyhoď poslední kartu (0 karet = Kolo vyhráno! +bonus a nové kolo)!",
 				"btn_en": "Finish", "btn_cs": "Dokončit",
 				"show_btn": false,
 			}
 		_:
 			return {
-				"en": "✓ OK! Round won and Rival executed by the blade — you master all of LIALO! (Replay anytime from Options ⚙.)",
-				"cs": "✓ OK! Kolo vyhráno a soupeř popraven mečem — ovládáš celé LIALO! (Tutoriál můžeš kdykoliv zopakovat v Nastavení ⚙.)",
+				"en": "✓ OK! 0 cards — Round Won! (+bonus & next round) — you master all of LIALO! (Replay anytime from Options ⚙.)",
+				"cs": "✓ OK! 0 karet — Kolo vyhráno! (+bonus a nové kolo) — ovládáš celé LIALO! (Tutoriál můžeš kdykoliv zopakovat v Nastavení ⚙.)",
 				"task_en": "", "task_cs": "",
 				"btn_en": "Play Now! ▸", "btn_cs": "Hrát naplno! ▸",
 				"show_btn": true,
@@ -7365,7 +7382,7 @@ func _setup_minimal_overlay_hud() -> void:
 
 	# ZONE 2 INSIDE SCORE BOARD: Fixed Permanent Score Ledger & Equation Display (x: 162..464, y: 52..158)
 	combo_hud_grp = Control.new()
-	combo_hud_grp.position = Vector2(162, 52)
+	combo_hud_grp.position = Vector2(162, 68)
 	combo_hud_grp.size = Vector2(302, 118)
 	combo_hud_grp.pivot_offset = Vector2(151, 59)
 	combo_hud_grp.clip_contents = true
@@ -7393,11 +7410,7 @@ func _setup_minimal_overlay_hud() -> void:
 	score_ledger_panel.offset_right = -4
 	score_ledger_panel.offset_bottom = -4
 	score_ledger_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var sl_sb := StyleBoxFlat.new()
-	sl_sb.bg_color = Color(0.020, 0.015, 0.022, 0.58)
-	sl_sb.set_border_width_all(0)
-	sl_sb.set_corner_radius_all(8)
-	score_ledger_panel.add_theme_stylebox_override("panel", sl_sb)
+	score_ledger_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	combo_hud_grp.add_child(score_ledger_panel)
 
 	combo_flame_rect = ColorRect.new()
@@ -7948,15 +7961,17 @@ func _setup_minimal_overlay_hud() -> void:
 	hud_shop_btn.visible = false
 	hud_root.add_child(hud_shop_btn)
 
-	# PROP HOVER PILL (Top-Down Table View: floating description when hovering 3D items)
+	# PROP HOVER PILL (Top-Down Table View: floating description when hovering 3D items, anchored cleanly on right below Rival Heart)
 	prop_hover_pill = PanelContainer.new()
-	prop_hover_pill.anchor_left = 0.5
+	prop_hover_pill.anchor_left = 1.0
 	prop_hover_pill.anchor_top = 0.0
-	prop_hover_pill.anchor_right = 0.5
-	prop_hover_pill.offset_left = -215
-	prop_hover_pill.offset_top = 156
-	prop_hover_pill.offset_right = 215
-	prop_hover_pill.offset_bottom = 228
+	prop_hover_pill.anchor_right = 1.0
+	prop_hover_pill.anchor_bottom = 0.0
+	prop_hover_pill.grow_vertical = Control.GROW_DIRECTION_END
+	prop_hover_pill.offset_left = -384
+	prop_hover_pill.offset_top = 252
+	prop_hover_pill.offset_right = -16
+	prop_hover_pill.offset_bottom = 328
 	prop_hover_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var ph_sb := StyleBoxFlat.new()
 	ph_sb.bg_color = Color(0.08, 0.055, 0.045, 0.94)
@@ -8074,7 +8089,7 @@ func _setup_minimal_overlay_hud() -> void:
 	gc_hdr.add_child(gc_spacer)
 
 	var spirko_tag := Label.new()
-	spirko_tag.text = "👻 SPIRKO"
+	spirko_tag.text = "SPIRKO"
 	spirko_tag.add_theme_font_override("font", _get_font(true))
 	spirko_tag.add_theme_font_size_override("font_size", 12)
 	spirko_tag.add_theme_color_override("font_color", Color(0.62, 0.88, 0.96, 0.86))
@@ -8639,9 +8654,9 @@ func _setup_minimal_overlay_hud() -> void:
 	suit_modal.anchor_right = 0.5
 	suit_modal.anchor_bottom = 0.5
 	suit_modal.offset_left = -275
-	suit_modal.offset_top = -165
+	suit_modal.offset_top = -188
 	suit_modal.offset_right = 275
-	suit_modal.offset_bottom = 165
+	suit_modal.offset_bottom = 188
 	suit_modal.z_index = 45
 	suit_modal.visible = false
 	var sm_sb := _make_plaque_style(Color(0.065, 0.045, 0.042, 0.97), Color(0.95, 0.78, 0.32), 26)
@@ -8722,6 +8737,18 @@ func _setup_minimal_overlay_hud() -> void:
 				_play_player_cards_3d([idx], sid_str)
 		)
 		sg.add_child(b)
+
+	var cancel_btn := Button.new()
+	cancel_btn.name = "SuitModalCancelBtn"
+	cancel_btn.text = _tr("✕ Cancel [ESC]", "✕ Zrušit [ESC]")
+	cancel_btn.custom_minimum_size = Vector2(180, 36)
+	cancel_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	cancel_btn.add_theme_font_override("font", _get_font(true))
+	cancel_btn.add_theme_font_size_override("font_size", 14)
+	cancel_btn.add_theme_color_override("font_color", Color(0.98, 0.86, 0.72))
+	_style_action_button(cancel_btn, Color(0.16, 0.08, 0.08, 0.95), Color(0.86, 0.44, 0.38), 14)
+	cancel_btn.pressed.connect(_cancel_suit_modal)
+	sv.add_child(cancel_btn)
 
 	# 6. Top-most 2D Mystical Particle Effects Canvas
 	hud_fx_layer = Control.new()
@@ -9111,7 +9138,7 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 		ai_score_lbl.modulate.a = 1.0
 	if combo_hud_grp:
 		combo_hud_grp.visible = hud_combo_revealed
-		combo_hud_grp.position = Vector2(162, 52)
+		combo_hud_grp.position = Vector2(162, 68)
 		combo_hud_grp.scale = Vector2.ONE
 		combo_hud_grp.modulate.a = 1.0
 	if tutorial_callout_grp:
@@ -9261,6 +9288,10 @@ var _tutorial_action_done: String = ""
 func _refresh_suit_modal_labels() -> void:
 	if suit_modal_title_lbl:
 		suit_modal_title_lbl.text = _tr("✦ QUEEN — CHOOSE SUIT ✦", "✦ SVRŠEK — ZVOL BARVU ✦")
+	if is_instance_valid(suit_modal):
+		var cbtn := suit_modal.find_child("SuitModalCancelBtn", true, false) as Button
+		if cbtn:
+			cbtn.text = _tr("✕ Cancel [ESC]", "✕ Zrušit [ESC]")
 	for s in SUITS:
 		var sid := str(s["id"])
 		if suit_modal_btn_lbls.has(sid):
@@ -9426,7 +9457,7 @@ func set_duel_wager(w_type: String, silent: bool = false) -> void:
 			player_sword_root.set_meta("base_pos", player_sword_root.position)
 			if is_instance_valid(wager_3d_ring):
 				wager_3d_ring.visible = true
-				wager_3d_ring.position = Vector3(-0.56, 0.818, 0.44)
+				wager_3d_ring.position = Vector3(-0.56, 0.822, 0.44)
 				if wager_3d_ring.material_override is ShaderMaterial:
 					(wager_3d_ring.material_override as ShaderMaterial).set_shader_parameter("ring_color", Color(1.0, 0.24, 0.20, 0.86))
 				elif wager_3d_ring.material_override is StandardMaterial3D:
@@ -9440,7 +9471,7 @@ func set_duel_wager(w_type: String, silent: bool = false) -> void:
 			player_sword_root.set_meta("base_pos", player_sword_root.position)
 			if is_instance_valid(wager_3d_ring):
 				wager_3d_ring.visible = (active_wager_type == "GOLD")
-				wager_3d_ring.position = Vector3(-0.24, 0.818, -0.34)
+				wager_3d_ring.position = Vector3(-0.24, 0.822, -0.34)
 				if wager_3d_ring.material_override is ShaderMaterial:
 					(wager_3d_ring.material_override as ShaderMaterial).set_shader_parameter("ring_color", Color(1.0, 0.84, 0.24, 0.72))
 				elif wager_3d_ring.material_override is StandardMaterial3D:
@@ -9894,7 +9925,7 @@ func _advance_tutorial_to(next_step: int) -> void:
 		hud_score_revealed = true
 		hud_combo_revealed = true
 		if combo_hud_grp:
-			combo_hud_grp.position = Vector2(162, 52)
+			combo_hud_grp.position = Vector2(162, 68)
 		_ensure_tutorial_combo_pair()
 		_reveal_combo_hud_magic()
 	elif next_step == 5:
@@ -9951,7 +9982,7 @@ func _skip_tutorial_immediately() -> void:
 		ai_score_lbl.visible = true
 	if combo_hud_grp:
 		combo_hud_grp.visible = true
-		combo_hud_grp.position = Vector2(162, 52)
+		combo_hud_grp.position = Vector2(162, 68)
 	if magic_puf_bottle:
 		magic_puf_bottle.visible = true
 		magic_puf_bottle.scale = Vector3.ONE
@@ -10252,8 +10283,8 @@ func _rebuild_all_3d_hands() -> void:
 	for i in range(o_cnt):
 		var c_ai: Dictionary = ai_hand[i] if show_rival else {"suit": "CERVEN", "rank": "7", "pts": 0, "rname": ""}
 		var back_node := _build_3d_card_node(c_ai, show_rival, Color(0.45, 0.96, 0.85) if show_rival else opp_border, "" if show_rival else opp_back_p)
-		back_node.position = Vector3((i - o_mid) * (0.105 if show_rival else 0.072), -absf(i - o_mid) * 0.010, i * 0.003)
-		back_node.rotation_degrees = Vector3(14.0 if show_rival else 12.0, 0.0, (i - o_mid) * 6.0)
+		back_node.position = Vector3((i - o_mid) * (0.095 if show_rival else 0.062), -absf(i - o_mid) * 0.009, -i * 0.002)
+		back_node.rotation_degrees = Vector3(16.0 if show_rival else 14.0, 0.0, -(i - o_mid) * 5.0)
 		opp_hands_anchor.add_child(back_node)
 		opp_card_nodes.append(back_node)
 
@@ -10325,14 +10356,22 @@ func _sort_player_hand(mode: String) -> void:
 
 	var rank_order := {"7": 0, "8": 1, "9": 2, "10": 3, "D": 4, "H": 5, "K": 6, "E": 7, "PWR": 8}
 	var suit_order := {"CERVEN": 0, "ZELEN": 1, "ZALUD": 2, "GULA": 3}
+	var rank_has_playable: Dictionary = {}
+	for c_chk in player_hand:
+		if _can_play(c_chk):
+			rank_has_playable[str(c_chk.get("rank", "8"))] = true
 
 	player_hand.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		var ra := int(rank_order.get(str(a.get("rank", "8")), 9))
 		var rb := int(rank_order.get(str(b.get("rank", "8")), 9))
 		var sa := -1 if str(a.get("suit", "")) == active_suit_id else int(suit_order.get(str(a.get("suit", "")), 5))
 		var sb := -1 if str(b.get("suit", "")) == active_suit_id else int(suit_order.get(str(b.get("suit", "")), 5))
-		var pa := (200 if str(a.get("power_id", "")) != "" else 0) + (80 if str(a.get("edition", "STD")) != "STD" else 0) + (40 if str(a.get("rank", "")) in ["7", "E", "H"] else 0) + int(a.get("pts", 0))
-		var pb := (200 if str(b.get("power_id", "")) != "" else 0) + (80 if str(b.get("edition", "STD")) != "STD" else 0) + (40 if str(b.get("rank", "")) in ["7", "E", "H"] else 0) + int(b.get("pts", 0))
+		var play_a := _can_play(a)
+		var play_b := _can_play(b)
+		var ed_a := Catalog.normalize_card_class(str(a.get("edition", "NORMAL")))
+		var ed_b := Catalog.normalize_card_class(str(b.get("edition", "NORMAL")))
+		var pa := (1000 if play_a else 0) + (300 if str(a.get("power_id", "")) != "" else 0) + (120 if ed_a != "NORMAL" else 0) + (40 if str(a.get("rank", "")) in ["7", "E", "H"] else 0) + int(a.get("pts", 0))
+		var pb := (1000 if play_b else 0) + (300 if str(b.get("power_id", "")) != "" else 0) + (120 if ed_b != "NORMAL" else 0) + (40 if str(b.get("rank", "")) in ["7", "E", "H"] else 0) + int(b.get("pts", 0))
 		if mode == "suit":
 			if sa != sb:
 				return sa < sb
@@ -10342,8 +10381,14 @@ func _sort_player_hand(mode: String) -> void:
 				return pa > pb
 			return ra < rb
 		else:
+			var rpa := bool(rank_has_playable.get(str(a.get("rank", "8")), false))
+			var rpb := bool(rank_has_playable.get(str(b.get("rank", "8")), false))
+			if rpa != rpb:
+				return rpa
 			if ra != rb:
 				return ra < rb
+			if play_a != play_b:
+				return play_a
 			return sa < sb
 	)
 
@@ -10439,7 +10484,10 @@ func _draw_from_deck() -> Dictionary:
 		deck = discard_pile.duplicate()
 		deck.shuffle()
 		discard_pile = [top]
-	return deck.pop_back()
+	var drawn = deck.pop_back()
+	if not (drawn is Dictionary) or drawn.is_empty():
+		return {"suit": "CERVEN", "rank": "8", "pts": 8, "rname": _get_rank_name("8")}
+	return drawn
 
 # ============================================================================
 # 6. 3D RAYCAST INTERAKCIA, VOĽNÝ POHĽAD PRAVÝM KLIKOM A LET KARIET
@@ -10893,11 +10941,15 @@ func _process(delta: float) -> void:
 	_animate_3d_hand_rig(player_glove_right_mesh, t, p_grip, p_flick, p_pinch_r, 2.4, delta)
 
 	# Opponent hands snugly grip the lower-outer edges of opp_card_nodes (zero floating/chest clipping)
+	if is_instance_valid(opp_hands_anchor) and _has_sculpted_opp_glb and is_instance_valid(opp_arm_left_node) and is_instance_valid(opp_arm_right_node):
+		var arm_mid := (opp_arm_left_node.global_position + opp_arm_right_node.global_position) * 0.5
+		var target_opp_hand_pos := Vector3(arm_mid.x, clampf(arm_mid.y - 0.14, 1.02, 1.16), clampf(arm_mid.z + 0.34, -1.16, -0.98))
+		opp_hands_anchor.global_position = opp_hands_anchor.global_position.lerp(target_opp_hand_pos, 10.0 * delta)
 	var o_left_x := -0.18
 	var o_right_x := 0.18
 	if not opp_card_nodes.is_empty():
-		o_left_x = clampf(opp_card_nodes[0].position.x - 0.085, -0.34, -0.13)
-		o_right_x = clampf(opp_card_nodes[opp_card_nodes.size() - 1].position.x + 0.085, 0.13, 0.34)
+		o_left_x = clampf(opp_card_nodes[0].position.x - 0.075, -0.32, -0.11)
+		o_right_x = clampf(opp_card_nodes[opp_card_nodes.size() - 1].position.x + 0.075, 0.11, 0.32)
 	if is_instance_valid(opp_glove_left_mesh) and is_instance_valid(opp_glove_right_mesh):
 		var o_has_cards := (not opp_card_nodes.is_empty()) and (not _has_sculpted_opp_glb)
 		opp_glove_left_mesh.visible = o_has_cards
@@ -10905,9 +10957,9 @@ func _process(delta: float) -> void:
 		var o_lunge_z := sin(opp_play_anim_t * PI) * 0.11
 		var o_lunge_y := sin(opp_play_anim_t * PI) * 0.04
 		opp_glove_left_mesh.position = opp_glove_left_mesh.position.lerp(
-			Vector3(o_left_x, -0.076 + sin(t * 2.5) * 0.004 + o_lunge_y, -0.026 + o_lunge_z), 10.0 * delta)
+			Vector3(o_left_x, -0.068 + sin(t * 2.5) * 0.004 + o_lunge_y, 0.014 + o_lunge_z), 10.0 * delta)
 		opp_glove_right_mesh.position = opp_glove_right_mesh.position.lerp(
-			Vector3(o_right_x, -0.076 + cos(t * 2.5) * 0.004 + o_lunge_y, -0.026 + o_lunge_z * 0.6), 10.0 * delta)
+			Vector3(o_right_x, -0.068 + cos(t * 2.5) * 0.004 + o_lunge_y, 0.014 + o_lunge_z * 0.6), 10.0 * delta)
 		opp_glove_left_mesh.rotation_degrees = opp_glove_left_mesh.rotation_degrees.lerp(Vector3(22.0, 152.0, -16.0), 10.0 * delta)
 		opp_glove_right_mesh.rotation_degrees = opp_glove_right_mesh.rotation_degrees.lerp(Vector3(22.0, -152.0, 16.0), 10.0 * delta)
 		var o_flick := sin(opp_play_anim_t * PI) * 1.15
@@ -11578,6 +11630,15 @@ func _find_best_playable_idx_for_w() -> int:
 			return i
 	return -1
 
+func _cancel_suit_modal() -> void:
+	if suit_modal:
+		suit_modal.visible = false
+	pending_play_indices.clear()
+	pending_hornik_idx = -1
+	busy_animating = false
+	emit_signal("play_sfx_requested", "ui_click")
+	_rebuild_all_3d_hands()
+
 func _unhandled_input(event: InputEvent) -> void:
 	if victory_summary_overlay and victory_summary_overlay.visible:
 		if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_SPACE, KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE]:
@@ -11596,7 +11657,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			_toggle_card_guide_modal(true)
 			get_viewport().set_input_as_handled()
 		return
-	if not visible or suit_modal.visible or mist_guess_open or thief_heist_open:
+	if visible and suit_modal and suit_modal.visible:
+		if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+			_cancel_suit_modal()
+			get_viewport().set_input_as_handled()
+		return
+	if not visible or mist_guess_open or thief_heist_open:
 		return
 	if _is_cinematic_playing():
 		if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_SPACE, KEY_ESCAPE, KEY_ENTER, KEY_KP_ENTER]:
@@ -11799,7 +11865,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if hovered_tavern_prop != "":
 			_trigger_tavern_prop_click(hovered_tavern_prop)
 			return
-		if hovered_prop_id in ["bell", "discard", "sword", "coins", "phial"] or hovered_prop_id.begins_with("shop_item_") or hovered_prop_id.begins_with("relic:") or hovered_prop_id.begins_with("trelic:"):
+		if not (hovered_draw_deck and hovered_prop_id == "sword") and (hovered_prop_id in ["bell", "discard", "sword", "coins", "phial"] or hovered_prop_id.begins_with("shop_item_") or hovered_prop_id.begins_with("relic:") or hovered_prop_id.begins_with("trelic:")):
 			if hovered_prop_id == "phial" and not _can_change_opening_wager():
 				if is_player_turn and puf_revealed:
 					staged_card_indices.clear()
@@ -13186,12 +13252,11 @@ func _execute_balatro_stagger_timeline(
 		_spawn_score_popup(_tr("⏳ CHRONOS TURN AGAIN!", "⏳ CHRONOS: TAH NAVÍC!"), Color(1.0, 0.88, 0.36), true)
 		_rebuild_all_3d_hands()
 		_refresh_table_labels()
-		if not tutorial_mode:
-			_begin_player_item_review_stage(true)
-		else:
-			busy_animating = false
-			is_player_turn = true
-			relic_mgr.reset_turn()
+		busy_animating = false
+		is_player_turn = true
+		relic_mgr.reset_turn()
+		turn_stage = TurnStage.CARD_PLAY
+		set_camera_view_mode(CameraViewMode.CARDS, true)
 	elif bool(score_res.get("thief_heist_triggered", false)) and not tutorial_mode and not ai_hand.is_empty():
 		_open_thief_heist_modal()
 	else:
@@ -13288,7 +13353,9 @@ func _player_draw_from_3d_deck() -> void:
 	if pending_skip:
 		pending_skip_turns = maxi(0, pending_skip_turns - 1)
 		pending_skip = (pending_skip_turns > 0)
-		emit_signal("play_sfx_requested", "ui_click")
+		emit_signal("play_sfx_requested", "error")
+		_show_stagger_callout(_tr("❄ FROZEN BY ACE — TURN SKIPPED!", "❄ ZMRAZEN ESEM — TAH PŘESKOČEN!"), Color(0.45, 0.90, 1.0), 1.4)
+		_spawn_score_popup(_tr("❄ FROZEN BY ACE!", "❄ ZMRAZEN ESEM!"), Color(0.45, 0.90, 1.0), true)
 		table_status_label3d.text = _tr("Frozen by Rival's Ace! (%d turn(s) lock)" % (pending_skip_turns + 1), "Zmrazen soupeřovým Esem! (%d tah(y) stop)" % (pending_skip_turns + 1))
 		_rebuild_all_3d_hands()
 		_refresh_table_labels()
@@ -13315,11 +13382,14 @@ func _player_draw_from_3d_deck() -> void:
 		_trigger_boss_modifier_flare(_tr("Scroll Tax: -4 pts!", "Daň svitků: -4 b.!"))
 		_spawn_score_popup(_tr("-4 SCROLL TAX!", "-4 DAŇ SVITKŮ!"), Color(0.95, 0.45, 0.35), true)
 
+	emit_signal("play_sfx_requested", "card_draw")
 	var drawn_cards: Array = []
 	for i in range(cnt):
 		var c := _draw_from_deck()
 		player_hand.append(c)
 		drawn_cards.append(c)
+	_rebuild_all_3d_hands()
+	_refresh_table_labels()
 
 	var my_sess := _battle_session_token
 	_animate_magical_card_draw_3d(drawn_cards, true, func():
@@ -13392,7 +13462,7 @@ func _activate_magic_puf_3d() -> void:
 		if is_instance_valid(opp_fire_fx_root):
 			opp_fire_fx_root.visible = true
 		if is_instance_valid(opp_fire_light):
-			opp_fire_light.light_energy = 2.6
+			opp_fire_light.light_energy = 1.1
 		emit_signal("play_sfx_pitched_requested", "puf", 0.96)
 		emit_signal("play_sfx_pitched_requested", "card_slam", 0.85)
 		_trigger_screen_juice(Color(1.0, 0.44, 0.12), 0.85, 0.65, 0.45)
@@ -14073,8 +14143,8 @@ func _finish_ai_3d_turn() -> void:
 	emit_signal("play_sfx_requested", "turn_player")
 	_rebuild_all_3d_hands()
 	_refresh_table_labels()
-	if not tutorial_mode or tutorial_step >= 5:
-		_begin_player_item_review_stage(true)
+	turn_stage = TurnStage.CARD_PLAY
+	set_camera_view_mode(CameraViewMode.CARDS, true)
 
 func _build_shop_gate_overlay() -> void:
 	shop_gate_overlay = Control.new()
@@ -14374,7 +14444,7 @@ func _build_peddler_modal() -> void:
 	gh_hb.add_child(peddler_ghost_ctrl)
 
 	peddler_ghost_lbl = Label.new()
-	peddler_ghost_lbl.text = _tr("👻 Spirko: \"Checkpoint saved! Hover 3D items to inspect them.\"", "👻 Spirko: \"Checkpoint uložen! Najeď na předmět pro detail.\"")
+	peddler_ghost_lbl.text = _tr("Spirko: \"Checkpoint saved! Hover 3D items to inspect them.\"", "Spirko: \"Checkpoint uložen! Najeď na předmět pro detail.\"")
 	peddler_ghost_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	peddler_ghost_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	peddler_ghost_lbl.add_theme_font_override("font", _get_font(false))
@@ -14434,7 +14504,7 @@ func _open_peddler_modal() -> void:
 	if peddler_title_lbl:
 		peddler_title_lbl.text = _tr("☾ ROUND %d CROSSROADS SHOP ☽" % current_round_num, "☾ OBCHOD PO %d. KOLE ☽" % current_round_num)
 	if peddler_ghost_lbl:
-		_start_handwriting_anim(peddler_ghost_lbl, _tr("👻 Spirko: \"Checkpoint saved (+15g)! Hover items to inspect & buy.\"", "👻 Spirko: \"Checkpoint uložen (+15g)! Najeď na předmět a vyber si.\""), 46.0, false)
+		_start_handwriting_anim(peddler_ghost_lbl, _tr("Spirko: \"Checkpoint saved (+15g)! Hover items to inspect & buy.\"", "Spirko: \"Checkpoint uložen (+15g)! Najeď na předmět a vyber si.\""), 46.0, false)
 	_rebuild_peddler_ui()
 	peddler_modal.visible = true
 	peddler_modal.scale = Vector2.ONE
@@ -14473,7 +14543,7 @@ func _rebuild_peddler_ui() -> void:
 		card_pc.add_theme_stylebox_override("panel", csb)
 		card_pc.mouse_entered.connect(func():
 			if peddler_ghost_lbl:
-				_start_handwriting_anim(peddler_ghost_lbl, "👻 Spirko — %s: \"%s\"" % [loc_name, loc_desc], 52.0, false)
+				_start_handwriting_anim(peddler_ghost_lbl, "Spirko — %s: \"%s\"" % [loc_name, loc_desc], 52.0, false)
 		)
 		peddler_cards_hbox.add_child(card_pc)
 
@@ -14641,15 +14711,19 @@ func _build_mist_guess_modal() -> void:
 	mist_guess_modal.anchor_top = 0.5
 	mist_guess_modal.anchor_right = 0.5
 	mist_guess_modal.anchor_bottom = 0.5
-	mist_guess_modal.offset_left = -360
-	mist_guess_modal.offset_top = -135
-	mist_guess_modal.offset_right = 360
-	mist_guess_modal.offset_bottom = 115
+	mist_guess_modal.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	mist_guess_modal.grow_vertical = Control.GROW_DIRECTION_BOTH
+	mist_guess_modal.custom_minimum_size = Vector2(700, 0)
+	mist_guess_modal.offset_left = -350
+	mist_guess_modal.offset_top = -100
+	mist_guess_modal.offset_right = 350
+	mist_guess_modal.offset_bottom = 100
+	mist_guess_modal.z_index = 46
 	mist_guess_modal.visible = false
-	var msb := _make_plaque_style(Color(0.06, 0.08, 0.12, 0.96), Color(0.60, 0.88, 0.98), 14)
+	var msb := _make_plaque_style(Color(0.06, 0.08, 0.12, 0.97), Color(0.60, 0.88, 0.98), 14)
 	msb.set_border_width_all(3)
 	msb.content_margin_left = 20; msb.content_margin_right = 20
-	msb.content_margin_top = 16; msb.content_margin_bottom = 16
+	msb.content_margin_top = 14; msb.content_margin_bottom = 14
 	mist_guess_modal.add_theme_stylebox_override("panel", msb)
 	hud_root.add_child(mist_guess_modal)
 
@@ -14661,17 +14735,17 @@ func _build_mist_guess_modal() -> void:
 	ttl.text = _tr("🌫 BATTLE MIST — GUESS THE KNIGHT!", "🌫 BOJOVÁ MLHA — UHÁDNI RYTÍŘE!")
 	ttl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ttl.add_theme_font_override("font", _get_font(true))
-	ttl.add_theme_font_size_override("font_size", 21)
+	ttl.add_theme_font_size_override("font_size", 20)
 	ttl.add_theme_color_override("font_color", Color(0.74, 0.94, 1.0))
 	vb.add_child(ttl)
 	mist_guess_title_lbl = ttl
 
 	var sub := Label.new()
-	sub.text = _tr("Right guess = +10 pts! Wrong = Draw +1 card!", "Správně = +10 b.! Špatně = Lízáš +1 kartu!")
+	sub.text = _tr("Rival hid a Knight card in Battle Mist — guess which card they played! Correct = +10 pts | Wrong = draw +1 & Rival +15 pts.", "Soupeř zahrál skrytého Rytíře v mlze — tipni, jakou kartu položil! Správně = +10 b. | Špatně = +1 karta & soupeř +15 b.")
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	sub.add_theme_font_override("font", _get_font(false))
-	sub.add_theme_font_size_override("font_size", 16)
+	sub.add_theme_font_size_override("font_size", 14)
 	sub.add_theme_color_override("font_color", Color(0.88, 0.90, 0.94))
 	vb.add_child(sub)
 	mist_guess_sub_lbl = sub
@@ -14712,6 +14786,10 @@ func _open_mist_guess_modal(true_card: Dictionary) -> void:
 
 	for ch in mist_guess_options_box.get_children():
 		ch.queue_free()
+	if mist_guess_title_lbl:
+		mist_guess_title_lbl.text = _tr("🌫 BATTLE MIST — GUESS THE KNIGHT!", "🌫 BOJOVÁ MLHA — UHÁDNI RYTÍŘE!")
+	if mist_guess_sub_lbl:
+		mist_guess_sub_lbl.text = _tr("Rival hid a Knight card in Battle Mist — guess which card they played! Correct = +10 pts | Wrong = draw +1 & Rival +15 pts.", "Soupeř zahrál skrytého Rytíře v mlze — tipni, jakou kartu položil! Správně = +10 b. | Špatně = +1 karta & soupeř +15 b.")
 	for i in range(mist_guess_options.size()):
 		var opt: Dictionary = mist_guess_options[i]
 		var sobj := _get_suit_obj(str(opt["suit"]))
@@ -14721,9 +14799,20 @@ func _open_mist_guess_modal(true_card: Dictionary) -> void:
 		btn.add_theme_font_override("font", _get_font(true))
 		btn.add_theme_font_size_override("font_size", 14)
 		var bcol: Color = sobj["col"]
-		btn.add_theme_color_override("font_color", bcol.lightened(0.4))
-		btn.add_theme_stylebox_override("normal", _make_ink_btn_style(bcol, false))
-		btn.add_theme_stylebox_override("hover", _make_ink_btn_style(bcol, true))
+		btn.add_theme_color_override("font_color", bcol.lightened(0.45))
+		var btn_norm := StyleBoxFlat.new()
+		btn_norm.bg_color = Color(0.11, 0.085, 0.07, 0.96)
+		btn_norm.border_color = bcol
+		btn_norm.set_border_width_all(2)
+		btn_norm.set_corner_radius_all(10)
+		btn_norm.content_margin_left = 10; btn_norm.content_margin_right = 10
+		btn_norm.content_margin_top = 6; btn_norm.content_margin_bottom = 6
+		var btn_hov := btn_norm.duplicate() as StyleBoxFlat
+		btn_hov.bg_color = Color(0.19, 0.145, 0.11, 0.98)
+		btn_hov.border_color = bcol.lightened(0.35)
+		btn.add_theme_stylebox_override("normal", btn_norm)
+		btn.add_theme_stylebox_override("hover", btn_hov)
+		btn.add_theme_stylebox_override("pressed", btn_norm)
 		var ci := i
 		btn.pressed.connect(func(): submit_mist_guess(ci))
 		mist_guess_options_box.add_child(btn)
@@ -15087,17 +15176,14 @@ func _show_victory_summary_overlay(wager_payout: int, win_gold: int) -> void:
 	if not victory_summary_overlay:
 		return
 	var best_played := maxi(10, match_best_slam)
-	var best_opt := maxi(best_played, match_optimal_possible_slam)
-	var eff_pct := clampi(int(round((float(best_played) / float(maxi(1, best_opt))) * 100.0)), 65, 100)
 	var your_desc := match_best_move_desc if match_best_move_desc != "" else ("+%d pts Slam" % best_played)
-	var opt_desc := match_optimal_move_desc if match_optimal_move_desc != "" else your_desc
 	if victory_title_lbl:
 		victory_title_lbl.text = _tr("👑 YOU WON! 👑", "👑 VÍTĚZSTVÍ! 👑")
 	if victory_stats_lbl:
 		victory_stats_lbl.text = _tr(
-			"Carry-Out Score: %d / %d pts   •   ♥ Survived: %d/%d HP   •   Spoils: +%d 🪙 (+%dg Wager)\n★ Your Best Move: %s\n✦ Best Possible Move in Hand: %s\n⚡ Tactical Move Efficiency: %d%%",
-			"Odnášené skóre: %d / %d b   •   ♥ Přežil s: %d/%d HP   •   Kořist: +%d 🪙 (+%dg Sázka)\n★ Tvůj nejlepší tah: %s\n✦ Nejlepší možný tah v ruce: %s\n⚡ Taktická úspěšnost tahů: %d%%"
-		) % [player_score, target_score, player_hp, player_max_hp, win_gold, wager_payout, your_desc, opt_desc, eff_pct]
+			"Carry-Out Score: %d / %d pts   •   ♥ Survived: %d/%d HP   •   Spoils: +%d 🪙 (+%dg Wager)\n★ Your Best Move: %s",
+			"Odnášené skóre: %d / %d b   •   ♥ Přežil s: %d/%d HP   •   Kořist: +%d 🪙 (+%dg Sázka)\n★ Tvůj nejlepší tah: %s"
+		) % [player_score, target_score, player_hp, player_max_hp, win_gold, wager_payout, your_desc]
 	if victory_continue_btn:
 		victory_continue_btn.text = _tr("CLAIM SPOILS & CONTINUE ›", "SEBRAT KOŘIST A POKRAČOVAT ›")
 	victory_summary_overlay.visible = false
@@ -15357,7 +15443,7 @@ func _check_win_or_redeal() -> bool:
 	var round_cycled := false
 	if player_hand.is_empty():
 		if tutorial_mode and tutorial_step == 7:
-			_spawn_score_popup(_tr("★ SHEDDING FINISHER +120 & ×2.44!", "★ SHEDDING FINISHER +120 & ×2.44!"), Color(1.0, 0.88, 0.34), true)
+			_spawn_score_popup(_tr("★ 0 CARDS — ROUND WON! (+120 & ×2.44)", "★ 0 KARET — KOLO VYHRÁNO! (+120 & ×2.44)"), Color(1.0, 0.88, 0.34), true)
 			_advance_tutorial_to(8)
 			_refresh_table_labels()
 			return false
@@ -15373,8 +15459,8 @@ func _check_win_or_redeal() -> bool:
 				var shed_ko := 16
 				_award_player_score_immediately(shed_ko, _tr("Round %d Clear" % current_round_num, "Výhra %d. kola" % current_round_num), Color(0.45, 1.0, 0.68), shed_ko, _tr("Round %d Clear (+%d pts)" % [current_round_num, shed_ko], "Výhra %d. kola (+%d b.)" % [current_round_num, shed_ko]))
 				match_bonus_gold += 35
-				_spawn_score_popup(_tr("★ ROUND %d WON! +%s & +35g!" % [current_round_num, _format_pts_ui(shed_ko)], "★ %d. KOLO VYHRÁNO! +%s a +35g!" % [current_round_num, _format_pts_ui(shed_ko)]), Color(0.45, 1.0, 0.68), true)
-			table_status_label3d.text = _tr("Hand emptied — Round %d complete!" % current_round_num, "Prázdná ruka — %d. kolo dokončeno!" % current_round_num)
+				_spawn_score_popup(_tr("★ 0 CARDS — ROUND %d WON! (+%s & +35g, next round)" % [current_round_num, _format_pts_ui(shed_ko)], "★ 0 KARET — %d. KOLO VYHRÁNO! (+%s a +35g, nové kolo)" % [current_round_num, _format_pts_ui(shed_ko)]), Color(0.45, 1.0, 0.68), true)
+			table_status_label3d.text = _tr("0 cards — Round %d Won! (+bonus & next round)" % current_round_num, "0 karet — %d. kolo vyhráno! (+bonus a nové kolo)" % current_round_num)
 	elif ai_hand.is_empty():
 		if tutorial_mode and tutorial_step < 8:
 			for _i in range(3):
@@ -15462,7 +15548,8 @@ func _check_win_or_redeal() -> bool:
 		if not tutorial_mode and finished_r % 3 == 0:
 			_open_shop_gate_prompt()
 		elif not tutorial_mode:
-			_begin_player_item_review_stage(true)
+			turn_stage = TurnStage.CARD_PLAY
+			set_camera_view_mode(CameraViewMode.CARDS, true)
 	return false
 
 func _play_round_transition_anim(finished_r: int, next_r: int, player_won_round: bool) -> void:
@@ -15481,7 +15568,7 @@ func _play_round_transition_anim(finished_r: int, next_r: int, player_won_round:
 	var pips := ""
 	for pi in range(1, MAX_MATCH_ROUNDS + 1):
 		pips += ("● " if pi <= next_r else "○ ")
-	round_transition_sub_lbl.text = _tr("✦ ROUND %d COMPLETE ✦" % finished_r, "✦ %d. KOLO DOKONČENO ✦" % finished_r)
+	round_transition_sub_lbl.text = _tr("✦ ROUND %d COMPLETE (0 cards!) — New round starts! ✦" % finished_r, "✦ %d. KOLO DOKONČENO (0 karet!) — Nové kolo začíná! ✦" % finished_r)
 	round_transition_sub_lbl.add_theme_color_override("font_color", Color(0.48, 0.96, 0.66) if player_won_round else Color(1.0, 0.58, 0.44))
 	round_transition_main_lbl.text = _tr("⚔ ROUND %d / %d ⚔" % [next_r, MAX_MATCH_ROUNDS], "⚔ %d. / %d KOLO ⚔" % [next_r, MAX_MATCH_ROUNDS])
 	round_transition_pips_lbl.text = pips.strip_edges()
@@ -15809,9 +15896,9 @@ func _setup_unlock_tip_banner() -> void:
 	unlock_tip_panel.anchor_right = 1.0
 	unlock_tip_panel.anchor_bottom = 0.0
 	unlock_tip_panel.offset_left = -384
-	unlock_tip_panel.offset_top = 132
+	unlock_tip_panel.offset_top = 252
 	unlock_tip_panel.offset_right = -16
-	unlock_tip_panel.offset_bottom = 264
+	unlock_tip_panel.offset_bottom = 384
 	unlock_tip_panel.z_index = 28
 	unlock_tip_panel.visible = false
 	var sb := StyleBoxFlat.new()
@@ -16201,6 +16288,7 @@ func _populate_card_guide_modal() -> void:
 	_add_guide_row(card_guide_scroll_vb, _tr("0 ♥ HP", "0 ♥ HP"), _tr("Drain Rival's 3D Heart to 0 HP using Kings (1–3 HP), Aces (1/4 HP), or Special Power Cards.", "Sraz soupeřovo 3D Srdce na 0 HP pomocí Králů (1–3 HP), Es (1/4 HP) nebo Mocných karet."), Color(1.0, 0.42, 0.44))
 	_add_guide_row(card_guide_scroll_vb, _tr("Chalice Goal", "Cíl Kalicha"), _tr("Reach the target Chalice Score (currently %d pts) by chaining combos & settling turn points." % target_score, "Dosáhni bodového Cíle Kalicha (aktuálně %d b.) řetězením komb a sčítáním bodů." % target_score), Color(0.42, 0.96, 0.72))
 	_add_guide_row(card_guide_scroll_vb, _tr("3× Aces KILL", "3× Eso SMRT"), _tr("Play 3 Aces (E) in one combo for an INSTANT KILL! In Multiplayer, kills your chosen target.", "Zahraj 3 Esa (E) v jednom kombu pro OKAMŽITOU SMRT! V Multiplayeru zabije zvolený cíl."), Color(1.0, 0.32, 0.36))
+	_add_guide_row(card_guide_scroll_vb, _tr("New Round", "Nové kolo"), _tr("A new round starts whenever ANY player (you or Rival) runs out of cards (0 cards in hand)!", "Nové kolo začíná, jakmile komukoli (tobě nebo soupeři) dojdou karty (0 karet v ruce)!"), Color(0.96, 0.84, 0.44))
 
 	# 2. ALL 8 RANKS & 4 CLASSES
 	_add_guide_section_header(card_guide_scroll_vb, _tr("2. ALL 8 RANKS & 4 CARD CLASSES", "2. VŠECH 8 HODNOT A 4 TŘÍDY KARET"), Color(0.42, 0.90, 1.0))
