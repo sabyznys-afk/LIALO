@@ -547,8 +547,13 @@ func _setup_audio_engine() -> void:
 	bgm_cache["battle"] = _load_audio("res://assets/audio/bgm_battle_tavern", true)
 	bgm_cache["battle_calm"] = _load_audio("res://assets/audio/bgm_battle_calm", true)
 	bgm_cache["battle_epic"] = _load_audio("res://assets/audio/bgm_battle_epic", true)
-	bgm_cache["battle_climax"] = _load_audio("res://assets/audio/bgm_battle_climax", true)
+	# Intense-battle theme (snake theme) drives the climax layer; boss fights use it too.
+	bgm_cache["battle_climax"] = _load_audio("res://assets/audio/bgm_battle_intense", true)
+	if bgm_cache["battle_climax"] == null:
+		bgm_cache["battle_climax"] = _load_audio("res://assets/audio/bgm_battle_climax", true)
 	bgm_cache["battle_boss"] = _load_audio("res://assets/audio/bgm_battle_boss", true)
+	if bgm_cache["battle_boss"] == null:
+		bgm_cache["battle_boss"] = bgm_cache["battle_climax"]
 	bgm_cache["amb_tavern"] = _load_audio("res://assets/audio/amb_tavern", true)
 
 	for sfx_key in [
