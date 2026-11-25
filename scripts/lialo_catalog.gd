@@ -1077,7 +1077,7 @@ static func get_default_profile() -> Dictionary:
 		"era_stage": {"antika": 0, "rim": 0, "stredovek": 0, "objavy": 0, "prohibicia": 0},
 		"era_cleared": {"antika": false, "rim": false, "stredovek": false, "objavy": false, "prohibicia": false},
 		"custom_cards": STARTER_POWER_CARDS.duplicate(),
-		"active_relics": STARTER_RELICS.duplicate(),
+		"active_relics": [],
 		"table_relics": STARTER_TABLE_RELICS.duplicate(),
 		"card_editions": {
 			"CERVEN_E": "MAGE",
@@ -1103,7 +1103,7 @@ static func get_default_profile() -> Dictionary:
 			"archetype_id": "GUILLOTINE_ACES",
 			"power_cards": STARTER_POWER_CARDS.duplicate(),
 			"table_relics": STARTER_TABLE_RELICS.duplicate(),
-			"passive_relics": STARTER_RELICS.duplicate(),
+			"passive_relics": [],
 			"bankai_combo": ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"],
 			"sword_skin": "SWORD_IRON",
 		},

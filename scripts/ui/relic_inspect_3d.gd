@@ -143,6 +143,8 @@ func _ready() -> void:
 
 	_title_lbl = Label.new()
 	_title_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if ResourceLoader.exists("res://assets/fonts/LialoDisplay.ttf"):
+		_title_lbl.add_theme_font_override("font", load("res://assets/fonts/LialoDisplay.ttf") as Font)
 	_title_lbl.add_theme_font_size_override("font_size", 24)
 	_title_lbl.add_theme_color_override("font_color", Color(0.98, 0.94, 0.84))
 	info.add_child(_title_lbl)
@@ -152,14 +154,19 @@ func _ready() -> void:
 	meta_box.add_theme_constant_override("separation", 6)
 	info.add_child(meta_box)
 
+	var body_font: Font = load("res://assets/fonts/LialoBody.ttf") as Font if ResourceLoader.exists("res://assets/fonts/LialoBody.ttf") else null
 	_status_lbl = Label.new()
 	_status_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if body_font != null:
+		_status_lbl.add_theme_font_override("font", body_font)
 	_status_lbl.add_theme_font_size_override("font_size", 13)
 	_status_lbl.add_theme_color_override("font_color", Color(0.52, 0.92, 0.64))
 	meta_box.add_child(_status_lbl)
 
 	_source_lbl = Label.new()
 	_source_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if body_font != null:
+		_source_lbl.add_theme_font_override("font", body_font)
 	_source_lbl.add_theme_font_size_override("font_size", 12)
 	_source_lbl.add_theme_color_override("font_color", Color(0.76, 0.74, 0.68))
 	meta_box.add_child(_source_lbl)
@@ -170,11 +177,15 @@ func _ready() -> void:
 	_desc_lbl = Label.new()
 	_desc_lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if body_font != null:
+		_desc_lbl.add_theme_font_override("font", body_font)
 	_desc_lbl.add_theme_font_size_override("font_size", 15)
 	_desc_lbl.add_theme_color_override("font_color", Color(0.90, 0.87, 0.80))
 	info.add_child(_desc_lbl)
 
 	_hint_lbl = Label.new()
+	if body_font != null:
+		_hint_lbl.add_theme_font_override("font", body_font)
 	_hint_lbl.add_theme_font_size_override("font_size", 12)
 	_hint_lbl.add_theme_color_override("font_color", Color(0.65, 0.60, 0.52))
 	info.add_child(_hint_lbl)
@@ -249,6 +260,34 @@ func inspect_relic(relic_id: String, lang: String = "en", is_unlocked: bool = tr
 	_zoom_dist = 1.45
 	_auto_spin = true
 	_load_relic_mesh(relic_id, data.get("col", Color(0.85, 0.68, 0.32)) as Color)
+	visible = true
+
+
+func inspect_prop(prop_id: String, title: String, category: String, desc: String, glb_path: String = "", accent: Color = Color(0.85, 0.68, 0.32), lang: String = "en", custom_node: Node3D = null) -> void:
+	var cs := lang == "cs"
+	_title_lbl.text = title if title != "" else prop_id
+	_cat_lbl.text = (category if category != "" else ("TAVERN PROP" if not cs else "STOLNÍ PŘEDMĚT")).to_upper()
+	_desc_lbl.text = desc
+	_status_lbl.text = "3D TABLETOP INSPECT" if not cs else "3D PROHLÍDKA PŘEDMĚTU"
+	_status_lbl.add_theme_color_override("font_color", Color(0.96, 0.82, 0.38))
+	_source_lbl.text = ("Table Item: " if not cs else "Předmět na stole: ") + prop_id
+	_hint_lbl.text = "Drag to rotate 360° • Scroll to zoom • ESC to close" if not cs else "Táhni myší pro 360° rotaci • Kolečko: zoom • ESC: zavřít"
+	_rot_yaw = 0.45
+	_rot_pitch = -0.22
+	_zoom_dist = 1.45
+	_auto_spin = true
+	for c in _pivot.get_children():
+		c.queue_free()
+	if is_instance_valid(custom_node):
+		_normalize_and_add(custom_node)
+	elif glb_path != "" and ResourceLoader.exists(glb_path):
+		var packed := load(glb_path) as PackedScene
+		if packed != null:
+			var inst := packed.instantiate()
+			if inst is Node3D:
+				_normalize_and_add(inst as Node3D)
+	else:
+		_load_relic_mesh(prop_id, accent)
 	visible = true
 
 

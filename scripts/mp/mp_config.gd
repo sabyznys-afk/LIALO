@@ -315,7 +315,7 @@ static func sanitize_deck_cfg(deck_cfg: Dictionary, rule_mode: String = RULE_CAM
 			"extra_aces": clampi(int(arch.get("extra_aces", 2)), 0, 6),
 			"power_cards": bal_powers,
 			"table_relics": bal_items,
-			"passive_relics": ["REL_GREED"],
+			"passive_relics": [],
 			"bankai_combo": (bal_build.get("default_bankai", ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"]) as Array).duplicate(),
 			"sword_skin": str(arch.get("sword_skin", "SWORD_IRON")),
 			"rule_mode": RULE_BALANCED_ARENA,

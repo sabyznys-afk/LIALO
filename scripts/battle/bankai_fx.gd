@@ -30,7 +30,7 @@ func _ready() -> void:
 	layer = 18
 	_rng.randomize()
 	_font_disp = load("res://assets/fonts/LialoDisplay.ttf") as Font if ResourceLoader.exists("res://assets/fonts/LialoDisplay.ttf") else ThemeDB.fallback_font
-	_font_body = load("res://assets/fonts/LialoUI.ttf") as Font if ResourceLoader.exists("res://assets/fonts/LialoUI.ttf") else ThemeDB.fallback_font
+	_font_body = load("res://assets/fonts/LialoBody.ttf") as Font if ResourceLoader.exists("res://assets/fonts/LialoBody.ttf") else ThemeDB.fallback_font
 
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
