@@ -44,3 +44,8 @@ Sdílený seznam úkolů a poznámek mezi námi v repozitáři.
 2. **Lobby vizuální doladění:** Přidat 3D/2D portréty MP postav (`CHAR_GUILLOTINE`, `CHAR_MONARCH`, `CHAR_JESTER`, `CHAR_MISTBLADE`) k výběru postav a případně klasické textové pole pro chat vedle rychlých emotů.
 3. **Singleplayer test (`tools/verify_battle_redesign.gd`):** Opravit pre-existující selhání 5 assertů u `CinematicDirector` v singleplayeru (`battle_table_3d.gd`).
 4. **Export Windows buildu (`build/windows/LIALO.exe`):** Po finálním otestování MP znovu vyexportovat `.exe`, aby obsahovalo `v0.9.1-mp2` i nové audio.
+   ### BATTLE quality of life overhaul 0.192v
+      pridat casovy limit na jeden turn 30-45 sekund pokud vyprsi tak automativke liznutie karty
+      v arzenale odstranit vsetky relics urobit 8 zkaladnych pre kazdy deck build 2 hlavne
+      vytvorit sub kategoriu deck builder kde si hrac bude moct postavit vlastny deck do campaignu aj do mp vizualne prepacovane effekty a animacie kazdy hrac si moze psotavit 4 kartove comb oktore ak zahraju bude to popdobne ako v anime bleach bankai buffne to ich current build taktiez v settings ak sa hrac rychlo pohybuje po tlacitkach tak sa obraz pohladu seka tiez treba zmenit
+   
