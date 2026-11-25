@@ -18,6 +18,7 @@ signal close_requested()
 signal sfx_requested(sfx_name: String)
 
 const Toon := preload("res://scripts/toon_style.gd")
+const LialoIcons := preload("res://scripts/ui/lialo_icons.gd")
 const WOODCUT_POST_SHADER := preload("res://shaders/woodcut_post.gdshader")
 const OUTLINE_SHADER := preload("res://shaders/outline.gdshader")
 const FONT_QUILL_PATH := "res://assets/fonts/LialoQuill.ttf"
@@ -652,8 +653,10 @@ func _build_hybrid_codex_overlay() -> void:
 	hdr.add_theme_constant_override("separation", 12)
 	top_bar.add_child(hdr)
 
+	hdr.add_child(LialoIcons.make_icon_rect("gear", 22, Color(0.98, 0.82, 0.38)))
+
 	_title_lbl = Label.new()
-	_title_lbl.text = "⚙ LIALO — OPTIONS"
+	_title_lbl.text = "LIALO — OPTIONS"
 	_title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_title_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_title_lbl.add_theme_font_override("font", _disp_font)
@@ -662,7 +665,8 @@ func _build_hybrid_codex_overlay() -> void:
 	hdr.add_child(_title_lbl)
 
 	_close_btn = Button.new()
-	_close_btn.text = "✕ Close [ESC]"
+	_close_btn.text = "Close [ESC]"
+	LialoIcons.apply_button_icon(_close_btn, "cross", 16)
 	_close_btn.custom_minimum_size = Vector2(148, 36)
 	_close_btn.add_theme_font_override("font", _disp_font)
 	_close_btn.add_theme_font_size_override("font_size", 15)
@@ -836,7 +840,8 @@ func _build_hybrid_codex_overlay() -> void:
 	bot_hb.add_child(spacer)
 
 	_done_btn = Button.new()
-	_done_btn.text = "✓ Save & Resume"
+	_done_btn.text = "Save & Resume"
+	LialoIcons.apply_button_icon(_done_btn, "check", 16)
 	_done_btn.custom_minimum_size = Vector2(220, 38)
 	_done_btn.add_theme_font_override("font", _disp_font)
 	_done_btn.add_theme_font_size_override("font_size", 16)
@@ -1163,11 +1168,11 @@ func _refresh_all_visuals() -> void:
 	var sens := float(_opts.get("cam_sensitivity", 1.0))
 
 	if is_instance_valid(_title_lbl):
-		_title_lbl.text = "⚙ LIALO — NASTAVENÍ HRY" if cs else "⚙ LIALO — OPTIONS"
+		_title_lbl.text = "LIALO — NASTAVENÍ HRY" if cs else "LIALO — OPTIONS"
 	if is_instance_valid(_close_btn):
-		_close_btn.text = "✕ Zavřít [ESC]" if cs else "✕ Close [ESC]"
+		_close_btn.text = "Zavřít [ESC]" if cs else "Close [ESC]"
 	if is_instance_valid(_done_btn):
-		_done_btn.text = "✓ Uložit a zpět" if cs else "✓ Save & Resume"
+		_done_btn.text = "Uložit a zpět" if cs else "Save & Resume"
 	if is_instance_valid(_replay_tut_btn):
 		_replay_tut_btn.text = "Zopakovat Tutoriál" if cs else "Replay Tutorial"
 	if is_instance_valid(_return_btn):
@@ -1224,7 +1229,7 @@ func _refresh_all_visuals() -> void:
 		"turn_timer_sec":  "%d s (Auto-líz)" % t_sec if cs else "%ds (Auto-Draw)" % t_sec,
 		"difficulty":      ("Poutník (Lehčí)" if is_trav else "Klasická (Těžší)") if cs else ("Traveler (Easy)" if is_trav else "Classic (Hard)"),
 		"game_pace":       str(pnames.get(gp, pnames["relaxed"])),
-		"mute":            ("🔇 Ztlumeno" if cs else "🔇 Muted") if (_muted or _vol_pct <= 0) else ("🔊 Zapnuto" if cs else "🔊 Audio ON"),
+		"mute":            ("Ztlumeno" if cs else "Muted") if (_muted or _vol_pct <= 0) else ("Zapnuto" if cs else "Audio ON"),
 	}
 
 	for k in _row_widgets.keys():
@@ -1235,6 +1240,8 @@ func _refresh_all_visuals() -> void:
 		var bt: Button = w_map.get("btn", null) as Button
 		if is_instance_valid(bt) and btn_texts.has(k):
 			bt.text = str(btn_texts[k])
+			if k == "mute":
+				LialoIcons.apply_button_icon(bt, "sound_off" if (_muted or _vol_pct <= 0) else "sound_on", 16)
 		var vl: Label = w_map.get("val_lbl", null) as Label
 		if is_instance_valid(vl):
 			if k == "volume":

@@ -12,6 +12,8 @@ const MpDevEntry := preload("res://scripts/mp/mp_dev_entry.gd")
 const LobbyOptions3DScript := preload("res://scripts/lobby_options_3d.gd")
 const SnakeLoadingScreenScript := preload("res://scripts/ui/snake_loading_screen.gd")
 const DeckBuilderPanelScript := preload("res://scripts/ui/deck_builder_panel.gd")
+const RELIC_INSPECT_PATH := "res://scripts/ui/relic_inspect_3d.gd"
+const LialoIcons := preload("res://scripts/ui/lialo_icons.gd")
 
 enum ScreenState { SPLASH, MAIN_MENU, WORLD_3D, MATCH_3D }
 
@@ -152,6 +154,7 @@ var collection_grid: GridContainer
 var collection_decks_box: VBoxContainer
 var collection_blades_box: VBoxContainer
 var collection_deck_builder: DeckBuilderPanelScript
+var relic_inspect_3d: Control
 var collection_tab_btns: Array[Button] = []
 var collection_scroll: ScrollContainer
 var collection_stats_lbl: Label
@@ -681,10 +684,10 @@ func _apply_audio_state() -> void:
 	var arrow_sym := "▴" if audio_drawer_open else "▾"
 	for tb in audio_toggle_btns:
 		if is_instance_valid(tb):
-			tb.text = ("🔇 OFF %s" % arrow_sym) if is_off else ("🔊 %d%% %s" % [audio_volume_pct, arrow_sym])
+			tb.text = ("OFF %s" % arrow_sym) if is_off else ("%d%% %s" % [audio_volume_pct, arrow_sym])
 	for mb in mute_buttons:
 		if is_instance_valid(mb):
-			mb.text = "🔇 Muted" if is_off else "🔊 Mute"
+			mb.text = "Muted" if is_off else "Mute"
 	for sl in audio_sliders:
 		if is_instance_valid(sl) and int(round(sl.value)) != audio_volume_pct:
 			sl.set_value_no_signal(float(audio_volume_pct))
@@ -867,7 +870,7 @@ func _create_audio_control_pill() -> PanelContainer:
 	h.add_child(drawer)
 
 	var mute_b := Button.new()
-	mute_b.text = "🔇 Muted" if (audio_muted or audio_volume_pct <= 0) else "🔊 Mute"
+	mute_b.text = "Muted" if (audio_muted or audio_volume_pct <= 0) else "Mute"
 	mute_b.custom_minimum_size = Vector2(82, 30)
 	mute_b.add_theme_font_size_override("font_size", 14)
 	mute_b.pressed.connect(_toggle_audio_mute)
@@ -908,7 +911,7 @@ func _create_audio_control_pill() -> PanelContainer:
 	var toggle_btn := Button.new()
 	var is_off := (audio_muted or audio_volume_pct <= 0)
 	var arr := "▴" if audio_drawer_open else "▾"
-	toggle_btn.text = ("🔇 OFF %s" % arr) if is_off else ("🔊 %d%% %s" % [audio_volume_pct, arr])
+	toggle_btn.text = ("OFF %s" % arr) if is_off else ("%d%% %s" % [audio_volume_pct, arr])
 	toggle_btn.custom_minimum_size = Vector2(102, 30)
 	toggle_btn.add_theme_font_size_override("font_size", 14)
 	toggle_btn.pressed.connect(_toggle_audio_drawer)
@@ -2027,7 +2030,8 @@ func _build_main_menu() -> void:
 	menu_control.add_child(audio_pill)
 
 	lobby_options_btn = Button.new()
-	lobby_options_btn.text = "⚙ OPTIONS" if str(game_options.get("language", "en")) != "cs" else "⚙ NASTAVENÍ"
+	lobby_options_btn.text = "OPTIONS" if str(game_options.get("language", "en")) != "cs" else "NASTAVENÍ"
+	LialoIcons.apply_button_icon(lobby_options_btn, "gear", 16)
 	lobby_options_btn.anchor_left = 0.0
 	lobby_options_btn.anchor_top = 0.0
 	lobby_options_btn.offset_left = 18
@@ -2133,7 +2137,8 @@ func _build_deck_selector_modal() -> void:
 	top_hb.add_child(collection_flip_btn)
 
 	collection_close_btn = Button.new()
-	collection_close_btn.text = _tr("✕ Close [ESC]", "✕ Zavřít [ESC]")
+	collection_close_btn.text = _tr("Close [ESC]", "Zavřít [ESC]")
+	LialoIcons.apply_button_icon(collection_close_btn, "cross", 16)
 	collection_close_btn.custom_minimum_size = Vector2(144, 40)
 	collection_close_btn.add_theme_color_override("font_color", Color(1.0, 0.78, 0.70))
 	collection_close_btn.pressed.connect(func():
@@ -2151,12 +2156,14 @@ func _build_deck_selector_modal() -> void:
 		"Power Cards (%d)" % Catalog.POWER_CARDS.size(),
 		"Choose Deck (5)",
 		"Relics (8) & Blades",
-		"🛠 Deck Builder & Bankai",
+		"Deck Builder & Grand Seal",
 	]
+	var t_icons: Array[String] = ["cards", "bolt", "cards", "relic", "seal"]
 	for ti in range(t_arr.size()):
 		var t_txt: String = t_arr[ti]
 		var tb := Button.new()
 		tb.text = t_txt
+		LialoIcons.apply_button_icon(tb, t_icons[ti], 16)
 		tb.custom_minimum_size = Vector2(182, 42)
 		tb.pressed.connect(func():
 			_play_sfx("ui_click")
@@ -2412,7 +2419,7 @@ func _draw_custom_arsenal_illustration(ctrl: Control, entry: Dictionary, show_fr
 			var sw: Dictionary = entry.get("raw_data", {})
 			var sid := str(sw.get("id", entry.get("key", "")))
 			art_p = Catalog.get_sword_art_path(sid)
-			cat_lbl = _tr("⚔ BLADE", "⚔ ČEPEL")
+			cat_lbl = _tr("BLADE", "ČEPEL")
 			title_lbl = _tr(str(sw.get("name", "Blade")), str(sw.get("name_cs", sw.get("name", "Čepel"))))
 		elif kind == "table_relic":
 			var tr_d: Dictionary = entry.get("raw_data", {})
@@ -2471,7 +2478,7 @@ func _draw_custom_arsenal_illustration(ctrl: Control, entry: Dictionary, show_fr
 			else:
 				ctrl.draw_rect(mini_r, b_col.darkened(0.4))
 			ctrl.draw_rect(mini_r, b_col if fi == 2 else ink, false, 2.4 if fi == 2 else 1.6)
-		ctrl.draw_string(df, Vector2(10, 26), _tr("🂠 BESPOKE SET", "🂠 UNIKÁTNÍ SADA"), HORIZONTAL_ALIGNMENT_CENTER, sz.x - 20, 12, ink)
+		ctrl.draw_string(df, Vector2(10, 26), _tr("BESPOKE SET", "UNIKÁTNÍ SADA"), HORIZONTAL_ALIGNMENT_CENTER, sz.x - 20, 12, ink)
 		ctrl.draw_string(df, Vector2(10, sz.y - 18), _tr(str(d.get("name", "Deck")), str(d.get("name_cs", d.get("name", "Balíček")))), HORIZONTAL_ALIGNMENT_CENTER, sz.x - 20, 14, ink)
 
 func _build_collection_card_slot(entry: Dictionary) -> Control:
@@ -2511,7 +2518,7 @@ func _build_collection_card_slot(entry: Dictionary) -> Control:
 
 	if is_equipped:
 		var eq_badge := Label.new()
-		eq_badge.text = "✓ EQUIPPED" if not _is_cs() else "✓ VYBAVENO"
+		eq_badge.text = "EQUIPPED" if not _is_cs() else "VYBAVENO"
 		eq_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		eq_badge.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		eq_badge.custom_minimum_size = Vector2(0, 26)
@@ -2680,7 +2687,7 @@ func _build_48_card_fanned_ribbon(all_entries: Array[Dictionary]) -> Control:
 
 	var info_lbl := Label.new()
 	var cs := _is_cs()
-	info_lbl.text = "🂠 CELÁ SADA KARET (48 KARET V ŘADĚ) — Najeď myší na libovolnou kartu v balíčku pro vytažení a otočení!" if cs else "🂠 FULL 48-CARD FANNED SET — Glide your mouse across the deck to pull out & reveal any card!"
+	info_lbl.text = "CELÁ SADA KARET (48 KARET V ŘADĚ) — Najeď myší na libovolnou kartu v balíčku pro vytažení a otočení!" if cs else "FULL 48-CARD FANNED SET — Glide your mouse across the deck to pull out & reveal any card!"
 	info_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	info_lbl.add_theme_font_override("font", _get_font(true))
 	info_lbl.add_theme_font_size_override("font_size", 15)
@@ -2705,7 +2712,7 @@ func _build_48_card_fanned_ribbon(all_entries: Array[Dictionary]) -> Control:
 				fan_canvas.set_meta("hov_idx", idx)
 				_play_sfx("card_hover", -13.0, 0.92 + float(idx) * 0.008)
 				var he: Dictionary = all_entries[idx]
-				var st_tag := (" [UNLOCKED]" if not cs else " [ODEMČENO]") if bool(he["unlocked"]) else (" [⛓ CHAINED]" if not cs else " [⛓ V ŘETĚZECH]")
+				var st_tag := (" [UNLOCKED]" if not cs else " [ODEMČENO]") if bool(he["unlocked"]) else (" [CHAINED]" if not cs else " [V ŘETĚZECH]")
 				info_lbl.text = "✦ %s  •  %s%s" % [str(he["title"]), str(he["sub"]), st_tag]
 				fan_canvas.queue_redraw()
 		elif ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
@@ -2716,7 +2723,7 @@ func _build_48_card_fanned_ribbon(all_entries: Array[Dictionary]) -> Control:
 	)
 	fan_canvas.mouse_exited.connect(func():
 		fan_canvas.set_meta("hov_idx", -1)
-		info_lbl.text = "🂠 CELÁ SADA KARET (48 KARET V ŘADĚ) — Najeď myší na libovolnou kartu v balíčku pro vytažení a otočení!" if cs else "🂠 FULL 48-CARD FANNED SET — Glide your mouse across the deck to pull out & reveal any card!"
+		info_lbl.text = "CELÁ SADA KARET (48 KARET V ŘADĚ) — Najeď myší na libovolnou kartu v balíčku pro vytažení a otočení!" if cs else "FULL 48-CARD FANNED SET — Glide your mouse across the deck to pull out & reveal any card!"
 		fan_canvas.queue_redraw()
 	)
 	fan_canvas.draw.connect(func():
@@ -2766,6 +2773,23 @@ func _build_48_card_fanned_ribbon(all_entries: Array[Dictionary]) -> Control:
 
 func _open_card_collection_detail(entry: Dictionary) -> void:
 	_clear_active_collection_hover()
+	var custom_kind_pre := str(entry.get("custom_kind", ""))
+	if (custom_kind_pre == "relic" or custom_kind_pre == "table_relic") and arsenal_layer:
+		if not is_instance_valid(relic_inspect_3d):
+			var ri_script := load(RELIC_INSPECT_PATH) as GDScript
+			if ri_script != null:
+				relic_inspect_3d = ri_script.new() as Control
+				arsenal_layer.add_child(relic_inspect_3d)
+		if is_instance_valid(relic_inspect_3d) and relic_inspect_3d.has_method("inspect_relic"):
+			relic_inspect_3d.call(
+				"inspect_relic",
+				str(entry.get("key", "")),
+				str(game_options.get("language", "en")),
+				bool(entry.get("unlocked", false)),
+				bool(entry.get("equipped", false)),
+				str(entry.get("unlock_source", ""))
+			)
+			return
 	if collection_detail_modal and arsenal_layer:
 		collection_detail_modal.mouse_filter = Control.MOUSE_FILTER_STOP
 		var backdrop := arsenal_layer.get_node_or_null("CollectionDetailBackdrop") as ColorRect
@@ -2816,9 +2840,9 @@ func _open_card_collection_detail(entry: Dictionary) -> void:
 	if bool(entry.get("mp_badge", false)):
 		var src_info := str(entry.get("unlock_source", ""))
 		var src_suffix := (" • " + src_info) if src_info != "" else ""
-		col_det_badge.text = (_tr("✓ Unlocked (MP Ready)", "✓ Odemčeno (MP)") if unlocked else _tr("⛓ Locked", "⛓ Zamčeno")) + src_suffix
+		col_det_badge.text = (_tr("Unlocked (MP Ready)", "Odemčeno (MP)") if unlocked else _tr("Locked", "Zamčeno")) + src_suffix
 	else:
-		col_det_badge.text = ("✓ UNLOCKED IN COLLECTION" if not _is_cs() else "✓ ODEMČENO VE SBÍRCE") if unlocked else ("⛓ CHAINED (LOCKED) — Win campaign matches or visit Bazaar to unlock!" if not _is_cs() else "⛓ ZAMČENO V ŘETĚZECH — Vyhraj zápasy v kampani nebo navštiv Obchod!")
+		col_det_badge.text = ("UNLOCKED IN COLLECTION" if not _is_cs() else "ODEMČENO VE SBÍRCE") if unlocked else ("CHAINED (LOCKED) — Win campaign matches or visit Bazaar to unlock!" if not _is_cs() else "ZAMČENO V ŘETĚZECH — Vyhraj zápasy v kampani nebo navštiv Obchod!")
 	col_det_badge.add_theme_color_override("font_color", Color(0.46, 0.96, 0.62) if unlocked else Color(0.86, 0.62, 0.36))
 	col_det_desc.text = str(entry["desc"])
 	_open_animated_modal(collection_detail_modal)
@@ -2858,7 +2882,8 @@ func _rebuild_collection_view() -> void:
 	if collection_flip_btn:
 		collection_flip_btn.text = _tr("Turn Back", "Otočit zpět") if collection_flip_all else _tr("Flip All", "Otočit vše")
 	if collection_close_btn:
-		collection_close_btn.text = _tr("✕ Close [ESC]", "✕ Zavřít [ESC]")
+		collection_close_btn.text = _tr("Close [ESC]", "Zavřít [ESC]")
+		LialoIcons.apply_button_icon(collection_close_btn, "cross", 16)
 	if collection_det_close_btn:
 		collection_det_close_btn.text = _tr("Close Card", "Zavřít kartu")
 	var ul_arr: Array = run_profile.get("unlocked_cards", Catalog.DEFAULT_UNLOCKED_CARDS)
@@ -2871,7 +2896,7 @@ func _rebuild_collection_view() -> void:
 
 	var vis_rel_cnt := Catalog.get_visible_relics().size()
 	var pwr_cnt := Catalog.POWER_CARDS.size()
-	var tab_labels := ["Klasické karty (32)", "Mocné karty (%d)" % pwr_cnt, "Sady balíčků (5)", "Relikvie (%d) & Meče" % vis_rel_cnt, "🛠 Deck Builder & Bankai"] if cs else ["Classic Cards (32)", "Power Cards (%d)" % pwr_cnt, "Choose Deck (5)", "Relics (%d) & Blades" % vis_rel_cnt, "🛠 Deck Builder & Bankai"]
+	var tab_labels := ["Klasické karty (32)", "Mocné karty (%d)" % pwr_cnt, "Sady balíčků (5)", "Relikvie (%d) & Meče" % vis_rel_cnt, "Tvorba balíčku & Velká Pečeť"] if cs else ["Classic Cards (32)", "Power Cards (%d)" % pwr_cnt, "Choose Deck (5)", "Relics (%d) & Blades" % vis_rel_cnt, "Deck Builder & Grand Seal"]
 	for ti in range(collection_tab_btns.size()):
 		var tb: Button = collection_tab_btns[ti]
 		if is_instance_valid(tb):
@@ -2997,7 +3022,7 @@ func _rebuild_collection_view() -> void:
 				"col": d["border_col"],
 				"cap": d_name,
 				"title": d_name,
-				"sub": _tr("✓ ACTIVE DECK" if is_sel else "CLICK TO EQUIP DECK", "✓ AKTIVNÍ BALÍČEK" if is_sel else "KLIKNUTÍM VYBER BALÍČEK"),
+				"sub": _tr("ACTIVE DECK" if is_sel else "CLICK TO EQUIP DECK", "AKTIVNÍ BALÍČEK" if is_sel else "KLIKNUTÍM VYBER BALÍČEK"),
 				"desc": d_desc,
 				"on_select": func():
 					selected_deck_idx = deck_idx_cap
@@ -3033,9 +3058,9 @@ func _rebuild_collection_view() -> void:
 				"unlock_source": src_r,
 				"tex": null,
 				"col": r["col"],
-				"cap": "⛓ %dg" % int(r["cost"]),
+				"cap": "%dg" % int(r["cost"]),
 				"title": "✦ " + str(r["name"]),
-				"sub": _tr("%s • %s", "%s • %s") % [str(r.get("category", "Build Relic")), _tr("✓ EQUIPPED (Click to Unequip)" if is_eq_r else ("UNLOCKED — Click to Equip (Max 2)" if is_own else ("Locked • Bazaar: %d 🪙" % int(r["cost"]))), "✓ VYBAVENO (Klikni pro odebrání)" if is_eq_r else ("ODEMČENO — Klikni pro výběr (Max 2)" if is_own else ("Zamčeno • Obchod: %d 🪙" % int(r["cost"]))))],
+				"sub": _tr("%s • %s", "%s • %s") % [str(r.get("category", "Build Relic")), _tr("EQUIPPED (Click to Unequip)" if is_eq_r else ("UNLOCKED — Click to Equip (Max 2)" if is_own else ("Locked • Bazaar: %d" % int(r["cost"]))), "VYBAVENO (Klikni pro odebrání)" if is_eq_r else ("ODEMČENO — Klikni pro výběr (Max 2)" if is_own else ("Zamčeno • Obchod: %d" % int(r["cost"]))))],
 				"desc": str(r["desc"]),
 				"on_select": func():
 					if is_own:
@@ -3071,9 +3096,9 @@ func _rebuild_collection_view() -> void:
 				"equipped": is_eq,
 				"tex": null,
 				"col": sw["trail_col"],
-				"cap": "⛓ %dg" % int(sw["cost"]),
-				"title": "⚔ " + str(sw["name"]),
-				"sub": _tr("✓ EQUIPPED BLADE" if is_eq else ("UNLOCKED — Click to Equip" if is_own else ("Locked Blade • Bazaar: %d 🪙" % int(sw["cost"]))), "✓ VYBAVENÁ ČEPEL" if is_eq else ("ODEMČENO — Klikni pro výběr" if is_own else ("Zamčeno • Obchod: %d 🪙" % int(sw["cost"])))),
+				"cap": "%dg" % int(sw["cost"]),
+				"title": "" + str(sw["name"]),
+				"sub": _tr("EQUIPPED BLADE" if is_eq else ("UNLOCKED — Click to Equip" if is_own else ("Locked Blade • Bazaar: %d" % int(sw["cost"]))), "VYBAVENÁ ČEPEL" if is_eq else ("ODEMČENO — Klikni pro výběr" if is_own else ("Zamčeno • Obchod: %d" % int(sw["cost"])))),
 				"desc": str(sw["desc"]),
 				"on_select": func():
 					if is_own:
@@ -3179,7 +3204,8 @@ func _open_options_modal() -> void:
 func _refresh_options_ui(full_rebuild: bool = true) -> void:
 	var cs := _is_cs()
 	if lobby_options_btn:
-		lobby_options_btn.text = "⚙ NASTAVENÍ" if cs else "⚙ OPTIONS"
+		lobby_options_btn.text = "NASTAVENÍ" if cs else "OPTIONS"
+		LialoIcons.apply_button_icon(lobby_options_btn, "gear", 16)
 	if is_instance_valid(options_3d):
 		var sk := "MAIN_MENU"
 		if current_screen == ScreenState.MATCH_3D:
@@ -5261,7 +5287,8 @@ func _build_3d_hud() -> void:
 	map_btn_back = btn_back
 
 	var btn_guide := Button.new()
-	btn_guide.text = _tr("📜 Duel Laws", "📜 Pravidla")
+	btn_guide.text = _tr("Duel Laws", "Pravidla")
+	LialoIcons.apply_button_icon(btn_guide, "scroll", 16)
 	btn_guide.add_theme_font_size_override("font_size", 17)
 	btn_guide.pressed.connect(func():
 		_play_sfx("ui_click")
@@ -5274,7 +5301,8 @@ func _build_3d_hud() -> void:
 	map_btn_guide = btn_guide
 
 	var btn_nav := Button.new()
-	btn_nav.text = _tr("🧭 Wayfinder", "🧭 Ovládání")
+	btn_nav.text = _tr("Wayfinder", "Ovládání")
+	LialoIcons.apply_button_icon(btn_nav, "help", 16)
 	btn_nav.add_theme_font_size_override("font_size", 17)
 	btn_nav.pressed.connect(func():
 		_play_sfx("ui_click")
@@ -5296,7 +5324,7 @@ func _build_3d_hud() -> void:
 	map_btn_shop = btn_shop
 
 	map_gold_lbl = Label.new()
-	map_gold_lbl.text = "🪙 65"
+	map_gold_lbl.text = "65"
 	map_gold_lbl.add_theme_font_override("font", _get_font(true))
 	map_gold_lbl.add_theme_font_size_override("font_size", 18)
 	map_gold_lbl.add_theme_color_override("font_color", Color(1.0, 0.86, 0.30))
@@ -5307,7 +5335,7 @@ func _build_3d_hud() -> void:
 	hbox.add_child(map_relics_row)
 
 	map_print_btn = Button.new()
-	map_print_btn.text = _tr("🎨 Woodcut", "🎨 Dřevoryt")
+	map_print_btn.text = _tr("Woodcut", "Dřevoryt")
 	map_print_btn.tooltip_text = _tr("Cycle Visual Mode [F8]", "Přepnout vzhled [F8]")
 	map_print_btn.add_theme_font_size_override("font_size", 16)
 	map_print_btn.pressed.connect(func():
@@ -5404,7 +5432,7 @@ func _build_3d_hud() -> void:
 	campaign_tier_row.add_child(endless_toggle_btn)
 
 	campaign_diff_btn = Button.new()
-	campaign_diff_btn.text = _tr("🌿 Mode: Traveler  [Switch]", "🌿 Režim: Poutník  [Přepnout]")
+	campaign_diff_btn.text = _tr("Mode: Traveler  [Switch]", "Režim: Poutník  [Přepnout]")
 	campaign_diff_btn.custom_minimum_size = Vector2(0, 32)
 	campaign_diff_btn.add_theme_font_override("font", _get_font(true))
 	campaign_diff_btn.add_theme_font_size_override("font_size", 15)
@@ -5575,7 +5603,7 @@ func _build_roguelite_modals() -> void:
 	shdr.add_child(shop_title_lbl)
 
 	shop_gold_lbl = Label.new()
-	shop_gold_lbl.text = "🪙 65"
+	shop_gold_lbl.text = "65"
 	shop_gold_lbl.add_theme_font_override("font", _get_font(true))
 	shop_gold_lbl.add_theme_font_size_override("font_size", 22)
 	shop_gold_lbl.add_theme_color_override("font_color", Color(1.0, 0.92, 0.44))
@@ -5596,7 +5624,8 @@ func _build_roguelite_modals() -> void:
 	svb.add_child(s_ftr)
 
 	var reroll_btn := Button.new()
-	reroll_btn.text = _tr("🎲 Reroll (15 🪙)", "🎲 Nová nabídka (15 🪙)")
+	reroll_btn.text = _tr("Reroll (15 g)", "Nová nabídka (15 g)")
+	LialoIcons.apply_button_icon(reroll_btn, "dice", 16)
 	reroll_btn.add_theme_font_size_override("font_size", 16)
 	reroll_btn.custom_minimum_size = Vector2(215, 42)
 	reroll_btn.pressed.connect(func():
@@ -5620,7 +5649,8 @@ func _build_roguelite_modals() -> void:
 	shop_reroll_btn = reroll_btn
 
 	var shop_close := Button.new()
-	shop_close.text = _tr("✓ Return to Map", "✓ Zpět na mapu")
+	shop_close.text = _tr("Return to Map", "Zpět na mapu")
+	LialoIcons.apply_button_icon(shop_close, "check", 16)
 	shop_close.add_theme_font_size_override("font_size", 16)
 	shop_close.custom_minimum_size = Vector2(180, 42)
 	shop_close.pressed.connect(func():
@@ -5651,7 +5681,7 @@ func _build_roguelite_modals() -> void:
 	sculpt_modal.add_child(sc_vb)
 
 	sculpt_title_lbl = Label.new()
-	sculpt_title_lbl.text = _tr("⚒ RUNEFORGE — CARD TRANSMUTATION", "⚒ RUNOVÁ KOVÁRNA — ÚPRAVA KARET")
+	sculpt_title_lbl.text = _tr("RUNEFORGE — CARD TRANSMUTATION", "RUNOVÁ KOVÁRNA — ÚPRAVA KARET")
 	sculpt_title_lbl.add_theme_font_override("font", _get_font(true))
 	sculpt_title_lbl.add_theme_font_size_override("font_size", 24)
 	sculpt_title_lbl.add_theme_color_override("font_color", Color(0.86, 0.96, 0.54))
@@ -5742,7 +5772,7 @@ func _build_roguelite_modals() -> void:
 	avb.add_child(ahdr)
 
 	var a_title := Label.new()
-	a_title.text = _tr("📖 LIALO GRIMOIRE", "📖 GRIMOÁR LIALO")
+	a_title.text = _tr("LIALO GRIMOIRE", "GRIMOÁR LIALO")
 	a_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	a_title.add_theme_font_override("font", _get_font(true))
 	a_title.add_theme_font_size_override("font_size", 22)
@@ -5752,8 +5782,8 @@ func _build_roguelite_modals() -> void:
 
 	var vis_rel_cnt := Catalog.get_visible_relics().size()
 	var pwr_cnt := Catalog.POWER_CARDS.size()
-	var t_names_en := ["%d Power Cards" % pwr_cnt, "%d Relics" % vis_rel_cnt, "5 Classes", "⚒ 6 Runeforge", "⚔ 5 Swords"]
-	var t_names_cs := ["%d Mocných" % pwr_cnt, "%d Relikvií" % vis_rel_cnt, "5 Tříd", "⚒ 6 Kovárna", "⚔ 5 Čepelí"]
+	var t_names_en := ["%d Power Cards" % pwr_cnt, "%d Relics" % vis_rel_cnt, "5 Classes", "6 Runeforge", "5 Swords"]
+	var t_names_cs := ["%d Mocných" % pwr_cnt, "%d Relikvií" % vis_rel_cnt, "5 Tříd", "6 Kovárna", "5 Čepelí"]
 	almanac_tab_btns.clear()
 	for ti in range(t_names_en.size()):
 		var tbtn := Button.new()
@@ -5804,20 +5834,20 @@ func _rebuild_shop_ui(after_win: bool = false) -> void:
 	if not shop_items_box or not shop_gold_lbl:
 		return
 	var g := int(run_profile.get("gold", 0))
-	shop_gold_lbl.text = _tr("🪙 %d Florins" % g, "🪙 %d Zlaťáků" % g)
+	shop_gold_lbl.text = _tr("%d Florins" % g, "%d Zlaťáků" % g)
 	if after_win and not pending_post_loss_spoils.is_empty():
-		shop_title_lbl.text = _tr("🛡 CONSOLATION (+%dg • %s Crafted • Blessing ×%d)" % [
+		shop_title_lbl.text = _tr("CONSOLATION (+%dg • %s Crafted • Blessing ×%d)" % [
 			int(pending_post_loss_spoils.get("gold", 35)),
 			str(pending_post_loss_spoils.get("upgraded_card", "Card")),
 			int(pending_post_loss_spoils.get("blessing", 1)),
-		], "🛡 ÚTĚCHA (+%d🪙 • %s ukována • Požehnání ×%d)" % [
+		], "ÚTĚCHA (+%d• %s ukována • Požehnání ×%d)" % [
 			int(pending_post_loss_spoils.get("gold", 35)),
 			str(pending_post_loss_spoils.get("upgraded_card", "Karta")),
 			int(pending_post_loss_spoils.get("blessing", 1)),
 		])
 		pending_post_loss_spoils.clear()
 	elif after_win and not last_victory_info.is_empty():
-		shop_title_lbl.text = _tr("★ VICTORY (+%d 🪙)  •  CHOOSE CARD UPGRADES ★" % int(last_victory_info.get("gold_earned", 40)), "★ VÍTĚZSTVÍ (+%d 🪙)  •  VYBER VYLEPŠENÍ KARET ★" % int(last_victory_info.get("gold_earned", 40)))
+		shop_title_lbl.text = _tr("★ VICTORY (+%d)  •  CHOOSE CARD UPGRADES ★" % int(last_victory_info.get("gold_earned", 40)), "★ VÍTĚZSTVÍ (+%d)  •  VYBER VYLEPŠENÍ KARET ★" % int(last_victory_info.get("gold_earned", 40)))
 	else:
 		shop_title_lbl.text = _tr("✦ CARD UPGRADE FORGE (%d OFFERS) ✦" % shop_offers.size(), "✦ KOVÁRNA VYLEPŠENÍ KARET (%d NABÍDEK) ✦" % shop_offers.size())
 
@@ -5979,10 +6009,10 @@ func _rebuild_shop_ui(after_win: bool = false) -> void:
 		var buy_btn := Button.new()
 		buy_btn.custom_minimum_size = Vector2(160, 46)
 		if bought:
-			buy_btn.text = _tr("✓ UPGRADED", "✓ VYLEPŠENO")
+			buy_btn.text = _tr("UPGRADED", "VYLEPŠENO")
 			buy_btn.disabled = true
 		else:
-			buy_btn.text = _tr("Upgrade (%d 🪙)" % cost, "Vylepšit (%d 🪙)" % cost)
+			buy_btn.text = _tr("Upgrade (%d)" % cost, "Vylepšit (%d)" % cost)
 			buy_btn.disabled = (g < cost)
 			buy_btn.pressed.connect(func():
 				_buy_shop_offer(i)
@@ -6055,7 +6085,7 @@ func _open_sculpt_picker(offer_idx: int) -> void:
 	if act == "convert_suit":
 		sculpt_selected_suit = "CERVEN"
 	if sculpt_title_lbl:
-		sculpt_title_lbl.text = _tr("⚗ %s — Select Target Card" % str(off["title"]).to_upper(), "⚗ %s — Vyber kartu" % str(off["title"]).to_upper())
+		sculpt_title_lbl.text = _tr("%s — Select Target Card" % str(off["title"]).to_upper(), "%s — Vyber kartu" % str(off["title"]).to_upper())
 	if shop_modal:
 		shop_modal.visible = false
 	_rebuild_sculpt_grid()
@@ -6270,7 +6300,7 @@ func _buy_shop_offer(idx: int) -> void:
 			run_profile["relic_scales"] = rs
 	elif kind == "repair_relic":
 		run_profile["broken_relics"] = []
-		_show_shop_toast(_tr("⚒ Relics Repaired & Restored!", "⚒ Relikvie opraveny a obnoveny!"), Color(0.98, 0.78, 0.34))
+		_show_shop_toast(_tr("Relics Repaired & Restored!", "Relikvie opraveny a obnoveny!"), Color(0.98, 0.78, 0.34))
 	elif kind == "edition" or kind == "card_class":
 		var ce: Dictionary = run_profile.get("card_editions", {})
 		var cands := ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E", "CERVEN_K", "ZELEN_K", "GULA_K", "ZALUD_K", "CERVEN_7", "ZELEN_7", "GULA_7", "ZALUD_7"]
@@ -6370,7 +6400,7 @@ func _rebuild_almanac_ui() -> void:
 			trow.add_theme_stylebox_override("panel", _make_modal_card_style(Color(0.10, 0.09, 0.14, 0.94), tr_l["col"]))
 			var tlbl := Label.new()
 			tlbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			tlbl.text = "✦ %s [3D TABLE • %s] — %d 🪙 %s\n%s" % [
+			tlbl.text = "✦ %s [3D TABLE • %s] — %d %s\n%s" % [
 				str(tr_l["name"]), str(tr_l.get("short", "USE")), int(tr_l["cost"]),
 				(_tr("(ON TABLE!)", "(NA STOLE!)") if eq_tr else _tr("(Shop / Peddler)", "(Obchod / Kramář)")),
 				str(tr_l["desc"])
@@ -6413,7 +6443,7 @@ func _rebuild_almanac_ui() -> void:
 				scale_note = "  [%s: ×%.2f]" % [_tr("Now", "Teď"), 1.0 + float(r_scales.get("REL_SEVEN_GRIMOIRE", 0.0))]
 			elif rid == "REL_MERCHANT_LEDGER":
 				scale_note = "  [%s: +%d %s]" % [_tr("Now", "Teď"), maxi(18, int(r_scales.get("REL_MERCHANT_LEDGER", 0)) + 18), _tr("pts", "b.")]
-			lbl.text = "✦ %s [%s • %s] — %d 🪙 %s%s\n%s" % [
+			lbl.text = "✦ %s [%s • %s] — %d %s%s\n%s" % [
 				str(r["name"]), str(r.get("category", "")), str(r["icon"]), int(r["cost"]),
 				(_tr("(EQUIPPED!)", "(VYBAVENO!)") if eq else ""), scale_note, str(r["desc"])
 			]
@@ -6442,8 +6472,8 @@ func _rebuild_almanac_ui() -> void:
 		sum_row.add_theme_stylebox_override("panel", _make_modal_card_style(Color(0.12, 0.14, 0.12, 0.94), Color(0.68, 0.94, 0.38)))
 		var sum_lbl := Label.new()
 		sum_lbl.text = _tr(
-			"⚒ RUNEFORGE  •  Pool: %d cards  (Removed: %d | Cloned: %d | Inked: %d)",
-			"⚒ RUNOVÁ KOVÁRNA  •  Balíček: %d karet  (Odebráno: %d | Klonů: %d | Přebarveno: %d)"
+			"RUNEFORGE  •  Pool: %d cards  (Removed: %d | Cloned: %d | Inked: %d)",
+			"RUNOVÁ KOVÁRNA  •  Balíček: %d karet  (Odebráno: %d | Klonů: %d | Přebarveno: %d)"
 		) % [32 - rem_c + add_c, rem_c, add_c, ov_c]
 		sum_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		sum_lbl.add_theme_font_size_override("font_size", 15)
@@ -6455,7 +6485,7 @@ func _rebuild_almanac_ui() -> void:
 			var row := PanelContainer.new()
 			row.add_theme_stylebox_override("panel", _make_modal_card_style(Color(0.10, 0.10, 0.14, 0.92), alc["col"]))
 			var lbl := Label.new()
-			lbl.text = "⚒ %s (%s) — %d 🪙\n%s" % [str(alc["name"]), str(alc["sub"]), int(alc["cost"]), str(alc["desc"])]
+			lbl.text = "%s (%s) — %d\n%s" % [str(alc["name"]), str(alc["sub"]), int(alc["cost"]), str(alc["desc"])]
 			lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			lbl.add_theme_font_size_override("font_size", 15)
 			lbl.add_theme_color_override("font_color", alc["col"].lightened(0.20))
@@ -6474,8 +6504,8 @@ func _rebuild_almanac_ui() -> void:
 			row.add_child(hb)
 			var lbl := Label.new()
 			lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			var st_txt := _tr("⚔ EQUIPPED", "⚔ VYBAVENO") if is_eq else (_tr("✓ UNLOCKED", "✓ ODEMČENO") if is_own else ("🔒 " + str(sw["cost"]) + " 🪙"))
-			lbl.text = "⚔ %s   [%s]\n%s" % [str(sw["name"]).to_upper(), st_txt, str(sw["desc"])]
+			var st_txt := _tr("EQUIPPED", "VYBAVENO") if is_eq else (_tr("UNLOCKED", "ODEMČENO") if is_own else ("" + str(sw["cost"]) + ""))
+			lbl.text = "%s   [%s]\n%s" % [str(sw["name"]).to_upper(), st_txt, str(sw["desc"])]
 			lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			lbl.add_theme_font_size_override("font_size", 15)
 			lbl.add_theme_color_override("font_color", sw["trail_col"].lightened(0.15) if is_own else Color(0.72, 0.72, 0.78))
@@ -6496,7 +6526,7 @@ func _rebuild_almanac_ui() -> void:
 
 func _refresh_map_roguelite_hud() -> void:
 	if map_gold_lbl:
-		map_gold_lbl.text = "🪙 %d  |  %s %d" % [int(run_profile.get("gold", 0)), _tr("Asc.", "Vzestup"), int(run_profile.get("ascension", 1))]
+		map_gold_lbl.text = "%d  |  %s %d" % [int(run_profile.get("gold", 0)), _tr("Asc.", "Vzestup"), int(run_profile.get("ascension", 1))]
 	if map_relics_row:
 		for c in map_relics_row.get_children():
 			c.queue_free()
@@ -6772,24 +6802,24 @@ func _update_campaign_card(idx: int) -> void:
 		if end_unlk:
 			var ante := maxi(1, int(run_profile.get("endless_ante", 1)))
 			endless_toggle_btn.disabled = false
-			endless_toggle_btn.text = _tr("✓ ∞ ENDLESS ANTE %d" % ante, "✓ ∞ NEKONEČNÉ KOLO %d" % ante) if endless_mode_selected else _tr("∞ Epoch 6 (Ante %d)" % ante, "∞ Epocha 6 (Kolo %d)" % ante)
+			endless_toggle_btn.text = _tr("∞ ENDLESS ANTE %d" % ante, "∞ NEKONEČNÉ KOLO %d" % ante) if endless_mode_selected else _tr("∞ Epoch 6 (Ante %d)" % ante, "∞ Epocha 6 (Kolo %d)" % ante)
 		else:
 			endless_toggle_btn.disabled = true
-			endless_toggle_btn.text = _tr("🔒 Epoch 6 Endless", "🔒 Epocha 6 Nekonečná")
+			endless_toggle_btn.text = _tr("Epoch 6 Endless", "Epocha 6 Nekonečná")
 
 	if campaign_diff_btn:
 		var cur_diff := str(run_profile.get("campaign_difficulty", "traveler"))
 		if cur_diff == "classic":
-			campaign_diff_btn.text = _tr("⚔ Mode: Classic (Hardcore)  [Switch → Traveler]", "⚔ Režim: Klasický (Těžký)  [Přepnout]")
+			campaign_diff_btn.text = _tr("Mode: Classic (Hardcore)  [Switch → Traveler]", "Režim: Klasický (Těžký)  [Přepnout]")
 			campaign_diff_btn.add_theme_color_override("font_color", Color(1.0, 0.62, 0.52))
 		else:
-			campaign_diff_btn.text = _tr("🌿 Mode: Traveler (Easy)  [Switch → Classic]", "🌿 Režim: Poutník (Lehký)  [Přepnout]")
+			campaign_diff_btn.text = _tr("Mode: Traveler (Easy)  [Switch → Classic]", "Režim: Poutník (Lehký)  [Přepnout]")
 			campaign_diff_btn.add_theme_color_override("font_color", Color(0.58, 0.96, 0.72))
 
 	var deck_cnt: int = 32 - int(run_profile.get("removed_cards", []).size()) + int(run_profile.get("added_cards", []).size()) + int(run_profile.get("custom_cards", []).size())
 	var cur_d := str(run_profile.get("campaign_difficulty", "traveler"))
 	var bless_c := int(run_profile.get("retry_blessing", 0))
-	var bless_note := _tr("  •  🛡 Blessing ×%d (+%d)" % [bless_c, bless_c * 25], "  •  🛡 Požehnání ×%d (+%d)" % [bless_c, bless_c * 25]) if bless_c > 0 else ""
+	var bless_note := _tr("  •  Blessing ×%d (+%d)" % [bless_c, bless_c * 25], "  •  Požehnání ×%d (+%d)" % [bless_c, bless_c * 25]) if bless_c > 0 else ""
 	var deck_name := _tr(str(PLAYER_DECKS[selected_deck_idx]["name"]), str(PLAYER_DECKS[selected_deck_idx].get("name_cs", PLAYER_DECKS[selected_deck_idx]["name"])))
 	var era_name := _tr(str(era["name"]), str(era.get("name_cs", era["name"])))
 	if endless_mode_selected and end_unlk:
@@ -6847,11 +6877,11 @@ func _apply_woodcut_mode(mode_idx: int, sync_battle: bool = true) -> void:
 		map_woodcut_mat.set_shader_parameter("print_mode", woodcut_mode)
 	if map_print_btn:
 		var labels := (
-			{0: "🎨 Dřevoryt", 1: "🎨 Sepie", 2: "🎨 Klasika", 3: "⚔ Liar's Bar"}
+			{0: "Dřevoryt", 1: "Sepie", 2: "Klasika", 3: "Liar's Bar"}
 			if _is_cs() else
-			{0: "🎨 Woodcut", 1: "🎨 Sepia Print", 2: "🎨 Classic", 3: "⚔ Liar's Bar"}
+			{0: "Woodcut", 1: "Sepia Print", 2: "Classic", 3: "Liar's Bar"}
 		)
-		map_print_btn.text = str(labels.get(woodcut_mode, "⚔ Liar's Bar"))
+		map_print_btn.text = str(labels.get(woodcut_mode, "Liar's Bar"))
 	if sync_battle and battle_3d and battle_3d.has_method("set_print_mode"):
 		battle_3d.set_print_mode(woodcut_mode)
 
@@ -6859,9 +6889,9 @@ func _refresh_map_ui_texts() -> void:
 	if map_btn_back:
 		map_btn_back.text = _tr("← Main Menu", "← Hlavní menu")
 	if map_btn_guide:
-		map_btn_guide.text = _tr("📜 Duel Laws", "📜 Pravidla")
+		map_btn_guide.text = _tr("Duel Laws", "Pravidla")
 	if map_btn_nav:
-		map_btn_nav.text = _tr("🧭 Wayfinder", "🧭 Ovládání")
+		map_btn_nav.text = _tr("Wayfinder", "Ovládání")
 	if map_btn_shop:
 		map_btn_shop.text = _tr("✦ Bazaar", "✦ Obchod")
 	if map_print_btn:
@@ -6893,9 +6923,9 @@ func _refresh_map_ui_texts() -> void:
 		if is_instance_valid(lb):
 			lb.text = _tr(str(d.get("d_en", "")), str(d.get("d_cs", "")))
 	if shop_reroll_btn:
-		shop_reroll_btn.text = _tr("🎲 Reroll (15 🪙)", "🎲 Nová nabídka (15 🪙)")
+		shop_reroll_btn.text = _tr("Reroll (15)", "Nová nabídka (15)")
 	if shop_close_btn:
-		shop_close_btn.text = _tr("✓ Return to Map", "✓ Zpět na mapu")
+		shop_close_btn.text = _tr("Return to Map", "Zpět na mapu")
 	if sculpt_cancel_btn:
 		sculpt_cancel_btn.text = _tr("← Back to Shop", "← Zpět do obchodu")
 	if sculpt_suit_bar:
@@ -6903,7 +6933,7 @@ func _refresh_map_ui_texts() -> void:
 			if ch is Button and ch.has_meta("en_label"):
 				ch.text = _tr(str(ch.get_meta("en_label")), str(ch.get_meta("cs_label")))
 	if almanac_title_lbl:
-		almanac_title_lbl.text = _tr("📖 LIALO GRIMOIRE", "📖 GRIMOÁR LIALO")
+		almanac_title_lbl.text = _tr("LIALO GRIMOIRE", "GRIMOÁR LIALO")
 	for tb in almanac_tab_btns:
 		if is_instance_valid(tb) and tb.has_meta("en_label"):
 			tb.text = _tr(str(tb.get_meta("en_label")), str(tb.get_meta("cs_label")))
