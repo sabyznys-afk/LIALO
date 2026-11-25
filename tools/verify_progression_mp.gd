@@ -110,7 +110,7 @@ func _run_all() -> void:
 
 	var clean_bal := MpConfig.sanitize_deck_cfg(dirty_cfg, MpConfig.RULE_BALANCED_ARENA)
 	_assert(clean_bal["rule_mode"] == MpConfig.RULE_BALANCED_ARENA, "Balanced Arena mode preserved")
-	_assert(clean_bal["passive_relics"] == ["REL_GREED"], "Balanced Arena normalizes passive relics")
+	_assert(clean_bal["passive_relics"] == [], "Balanced Arena normalizes passive relics to empty (3D-only relics)")
 
 	var lobby := MpLobbyOverlay.new()
 	_assert(lobby != null, "MpLobbyOverlay instantiates")
@@ -309,6 +309,31 @@ func _run_all() -> void:
 	var lb_before := MpHistory.get_leaderboard_entries().size()
 	_assert(lb_before >= 0, "MpHistory leaderboard query works")
 	print("  OK 10: v0.193 9-Point Overhaul DoD checks verified")
+
+	# 11. v0.194 13-Point Overhaul DoD Checks
+	var def_prof := Catalog.get_default_profile()
+	_assert((def_prof.get("active_relics", []) as Array).is_empty(), "Default profile uses 3D-only table_relics (no Core Passive active_relics)")
+	_assert((def_prof.get("table_relics", []) as Array).size() >= 1, "Default profile includes starter 3D table_relics")
+	var ri2 := RelicInspect3D.new()
+	root.add_child(ri2)
+	ri2.inspect_prop("sword", "Tavern Falchion", "Weapon", "Oathblade", "", Color(0.9, 0.7, 0.3), "en")
+	_assert(ri2.visible, "RelicInspect3D.inspect_prop opens cleanly for 3D table props")
+	ri2.close_inspect()
+	ri2.queue_free()
+	var DevInspScript = load("res://scripts/ui/dev_asset_inspector.gd")
+	_assert(DevInspScript != null, "DevAssetInspector compiles cleanly")
+	if DevInspScript != null:
+		var dai := DevInspScript.new() as Control
+		root.add_child(dai)
+		dai.call("open_inspector")
+		_assert(dai.visible, "DevAssetInspector opens cleanly")
+		dai.call("close_inspector")
+		dai.queue_free()
+	var MpLobbyScript2 = load("res://scripts/mp/mp_lobby_overlay.gd")
+	var mpl = MpLobbyScript2.new()
+	_assert(mpl.has_signal("open_dev_inspector_requested"), "MpLobbyOverlay exposes open_dev_inspector_requested signal")
+	mpl.free()
+	print("  OK 11: v0.194 13-Point Overhaul DoD checks verified")
 
 	if _failures.is_empty():
 		print("=== VERIFY PROGRESSION & MP: ALL CHECKS PASSED ===")

@@ -177,7 +177,7 @@ func _run_all() -> void:
 	var sb_row := bt.get("score_breakdown_row") as HBoxContainer
 	var sd_lbl := bt.get("score_delta_lbl") as Label
 	var sh_lbl := bt.get("score_history_lbl") as Label
-	_assert(is_instance_valid(sb_row) and sb_row.get_child_count() >= 3, "Complex Score Counter must render live breakdown chip badges")
+	_assert(is_instance_valid(sb_row) and not sb_row.visible, "score_breakdown_row must stay hidden (v0.194 Item 8)")
 	_assert(is_instance_valid(sd_lbl) and sd_lbl.visible, "score_delta_lbl must display lead/trail vs rival")
 	_assert(is_instance_valid(sh_lbl) and sh_lbl.visible and "+24" in sh_lbl.text, "score_history_lbl must show turn history")
 	await _save_shot("verify_master_hud_hands.png")
