@@ -10,6 +10,8 @@ const WOODCUT_POST_SHADER := preload("res://shaders/woodcut_post.gdshader")
 const MpConfig := preload("res://scripts/mp/mp_config.gd")
 const MpDevEntry := preload("res://scripts/mp/mp_dev_entry.gd")
 const LobbyOptions3DScript := preload("res://scripts/lobby_options_3d.gd")
+const SnakeLoadingScreenScript := preload("res://scripts/ui/snake_loading_screen.gd")
+const DeckBuilderPanelScript := preload("res://scripts/ui/deck_builder_panel.gd")
 
 enum ScreenState { SPLASH, MAIN_MENU, WORLD_3D, MATCH_3D }
 
@@ -148,6 +150,7 @@ var collection_flip_all: bool = false
 var collection_grid: GridContainer
 var collection_decks_box: VBoxContainer
 var collection_blades_box: VBoxContainer
+var collection_deck_builder: DeckBuilderPanelScript
 var collection_tab_btns: Array[Button] = []
 var collection_scroll: ScrollContainer
 var collection_stats_lbl: Label
@@ -1151,7 +1154,17 @@ func _ready() -> void:
 	ui_layer.add_child(transition_curtain)
 
 	_apply_audio_state()
-	_switch_to(ScreenState.SPLASH)
+	var is_headless_run := (DisplayServer.get_name() == "headless") or ("--script" in OS.get_cmdline_args())
+	if is_headless_run:
+		_switch_to(ScreenState.SPLASH)
+	else:
+		# Launch Ouroboros 2D woodcut loading screen before Fujira splash
+		var loader := SnakeLoadingScreenScript.new()
+		loader.volume_db = -80.0 if (audio_muted or audio_volume_pct <= 0) else (-4.0 + linear_to_db(clampf(float(audio_volume_pct) / 100.0, 0.05, 1.0)))
+		add_child(loader)
+		loader.finished.connect(func():
+			_switch_to(ScreenState.SPLASH)
+		)
 
 func _preload_custom_card_faces() -> void:
 	for s in LOBBY_SUITS:
@@ -2178,13 +2191,14 @@ func _build_deck_selector_modal() -> void:
 		"Classic Cards (32)",
 		"Power Cards (%d)" % Catalog.POWER_CARDS.size(),
 		"Choose Deck (5)",
-		"Relics & Blades (%d)" % (Catalog.get_visible_relics().size() + Catalog.SWORD_SKINS.size()),
+		"Relics (8) & Blades",
+		"🛠 Deck Builder & Bankai",
 	]
 	for ti in range(t_arr.size()):
 		var t_txt: String = t_arr[ti]
 		var tb := Button.new()
 		tb.text = t_txt
-		tb.custom_minimum_size = Vector2(204, 42)
+		tb.custom_minimum_size = Vector2(182, 42)
 		tb.pressed.connect(func():
 			_play_sfx("ui_click")
 			collection_tab_idx = ti
@@ -2232,6 +2246,15 @@ func _build_deck_selector_modal() -> void:
 	collection_blades_box.add_theme_constant_override("separation", 14)
 	collection_blades_box.visible = false
 	blade_center.add_child(collection_blades_box)
+
+	collection_deck_builder = DeckBuilderPanelScript.new()
+	collection_deck_builder.visible = false
+	collection_deck_builder.sfx_requested.connect(func(sn: String): _play_sfx(sn))
+	collection_deck_builder.deck_changed.connect(func(_p: Dictionary):
+		_refresh_map_roguelite_hud()
+		_populate_menu_signs()
+	)
+	scroll_inner.add_child(collection_deck_builder)
 
 	# Dedicated Card Inspection Detail Modal (opens over full-screen Arsenal)
 	collection_detail_modal = PanelContainer.new()
@@ -2889,7 +2912,7 @@ func _rebuild_collection_view() -> void:
 
 	var vis_rel_cnt := Catalog.get_visible_relics().size()
 	var pwr_cnt := Catalog.POWER_CARDS.size()
-	var tab_labels := ["Klasické karty (32)", "Mocné karty (%d)" % pwr_cnt, "Sady balíčků (5)", "Relikvie a meče (%d)" % (vis_rel_cnt + Catalog.SWORD_SKINS.size())] if cs else ["Classic Cards (32)", "Power Cards (%d)" % pwr_cnt, "Choose Deck (5)", "Relics & Blades (%d)" % (vis_rel_cnt + Catalog.SWORD_SKINS.size())]
+	var tab_labels := ["Klasické karty (32)", "Mocné karty (%d)" % pwr_cnt, "Sady balíčků (5)", "Relikvie (%d) & Meče" % vis_rel_cnt, "🛠 Deck Builder & Bankai"] if cs else ["Classic Cards (32)", "Power Cards (%d)" % pwr_cnt, "Choose Deck (5)", "Relics (%d) & Blades" % vis_rel_cnt, "🛠 Deck Builder & Bankai"]
 	for ti in range(collection_tab_btns.size()):
 		var tb: Button = collection_tab_btns[ti]
 		if is_instance_valid(tb):
@@ -2908,10 +2931,12 @@ func _rebuild_collection_view() -> void:
 			c.queue_free()
 		collection_blades_box.visible = false
 
-	collection_grid.visible = true
+	collection_grid.visible = (collection_tab_idx != 4)
 	collection_decks_box.visible = (collection_tab_idx == 0 or collection_tab_idx == 1)
+	if is_instance_valid(collection_deck_builder):
+		collection_deck_builder.visible = (collection_tab_idx == 4)
 	if collection_flip_btn:
-		collection_flip_btn.visible = true
+		collection_flip_btn.visible = (collection_tab_idx != 4)
 
 	var suit_map := ({"CERVEN": "Srdce ♥", "ZELEN": "Listí ♠", "ZALUD": "Žaludy ♣", "GULA": "Koule ●"} if cs else {"CERVEN": "Hearts ♥", "ZELEN": "Leaves ♠", "ZALUD": "Acorns ♣", "GULA": "Bells ●"})
 	var rank_names := ({"7": "Sedma (7)", "8": "Osma (8 ∞)", "9": "Devítka (9)", "10": "Desítka (10)", "D": "Spodek (D)", "H": "Svršek (H)", "K": "Král (K)", "E": "Eso (E)"} if cs else {"7": "Seven (7)", "8": "Eight (8 ∞)", "9": "Nine (9)", "10": "Ten (10)", "D": "Jack (D)", "H": "Queen (H)", "K": "King (K)", "E": "Ace (E)"})
@@ -3021,8 +3046,54 @@ func _rebuild_collection_view() -> void:
 					_rebuild_collection_view()
 					_populate_menu_signs()
 			}))
+	elif collection_tab_idx == 4:
+		if is_instance_valid(collection_deck_builder):
+			collection_deck_builder.setup_builder(run_profile, lang, card_face_cache)
 	else:
-		# Visual Illustrated Cards for all 5 Blades & 24 Relics — locked ones bound in Iron Chains!
+		# 8 Core Build Relics (4 Deck Builds × 2 Signature Relics) — click unlocked relics to toggle equip (max 2)!
+		var owned_rel: Array = run_profile.get("active_relics", [])
+		for r_raw in Catalog.RELICS:
+			var rid := str(r_raw["id"])
+			if Catalog.is_relic_hidden(rid):
+				continue
+			var r_art := Catalog.get_relic_art_path(rid)
+			if not card_face_cache.has("ARSENAL_" + r_art) and ResourceLoader.exists(r_art):
+				card_face_cache["ARSENAL_" + r_art] = Toon.tex(r_art)
+			var r := Catalog.get_relic_loc(rid, lang)
+			var is_own := Catalog.is_relic_unlocked(run_profile, rid) or (rid in owned_rel)
+			var is_eq_r := rid in owned_rel
+			var src_r := Catalog.get_unlock_source_label(rid, lang)
+			var rid_cap := rid
+			collection_grid.add_child(_build_collection_card_slot({
+				"key": rid,
+				"custom_kind": "relic",
+				"raw_data": r,
+				"unlocked": is_own,
+				"equipped": is_eq_r,
+				"mp_badge": true,
+				"unlock_source": src_r,
+				"tex": null,
+				"col": r["col"],
+				"cap": "⛓ %dg" % int(r["cost"]),
+				"title": "✦ " + str(r["name"]),
+				"sub": _tr("%s • %s", "%s • %s") % [str(r.get("category", "Build Relic")), _tr("✓ EQUIPPED (Click to Unequip)" if is_eq_r else ("UNLOCKED — Click to Equip (Max 2)" if is_own else ("Locked • Bazaar: %d 🪙" % int(r["cost"]))), "✓ VYBAVENO (Klikni pro odebrání)" if is_eq_r else ("ODEMČENO — Klikni pro výběr (Max 2)" if is_own else ("Zamčeno • Obchod: %d 🪙" % int(r["cost"]))))],
+				"desc": str(r["desc"]),
+				"on_select": func():
+					if is_own:
+						var arr: Array = run_profile.get("active_relics", []).duplicate()
+						if rid_cap in arr:
+							arr.erase(rid_cap)
+						else:
+							if arr.size() >= 2:
+								arr.pop_front()
+							arr.append(rid_cap)
+						run_profile["active_relics"] = arr
+						if run_profile.has("mp_loadout") and run_profile["mp_loadout"] is Dictionary:
+							run_profile["mp_loadout"]["passive_relics"] = arr.slice(0, 2)
+						Catalog.save_profile(run_profile)
+						_rebuild_collection_view()
+			}))
+		# Visual Illustrated Cards for all 5 Blades
 		var owned_sw: Array = run_profile.get("unlocked_swords", ["SWORD_IRON"])
 		var eq_sw: String = str(run_profile.get("equipped_sword", "SWORD_IRON"))
 		for sw_raw in Catalog.SWORD_SKINS:
@@ -3051,56 +3122,6 @@ func _rebuild_collection_view() -> void:
 						Catalog.save_profile(run_profile)
 						_rebuild_collection_view()
 			}))
-		var owned_tr: Array = run_profile.get("table_relics", [])
-		for tr_raw in Catalog.TABLE_RELICS:
-			var tid := str(tr_raw["id"])
-			var tr_art := Catalog.get_table_relic_art_path(tid)
-			if not card_face_cache.has("ARSENAL_" + tr_art) and ResourceLoader.exists(tr_art):
-				card_face_cache["ARSENAL_" + tr_art] = Toon.tex(tr_art)
-			var tr_loc := Catalog.get_table_relic_loc(tid, lang)
-			var is_own_tr := Catalog.is_table_relic_unlocked(run_profile, tid) or (tid in owned_tr)
-			var src_tr := Catalog.get_unlock_source_label(tid, lang)
-			collection_grid.add_child(_build_collection_card_slot({
-				"key": tid,
-				"custom_kind": "table_relic",
-				"raw_data": tr_loc,
-				"unlocked": is_own_tr,
-				"equipped": tid in owned_tr,
-				"mp_badge": true,
-				"unlock_source": src_tr,
-				"tex": null,
-				"col": tr_loc["col"],
-				"cap": "⛓ %dg" % int(tr_loc["cost"]),
-				"title": "✦ " + str(tr_loc["name"]),
-				"sub": _tr("3D Active Table Relic • %s", "3D Relikvie na stůl • %s") % _tr("ON TABLE IN DUEL" if is_own_tr else ("Locked • Shop: %d 🪙" % int(tr_loc["cost"])), "NA STOLE V DUELU" if is_own_tr else ("Zamčeno • Obchod: %d 🪙" % int(tr_loc["cost"]))),
-				"desc": str(tr_loc["desc"]),
-			}))
-		var owned_rel: Array = run_profile.get("active_relics", [])
-		for r_raw in Catalog.RELICS:
-			var rid := str(r_raw["id"])
-			if Catalog.is_relic_hidden(rid):
-				continue
-			var r_art := Catalog.get_relic_art_path(rid)
-			if not card_face_cache.has("ARSENAL_" + r_art) and ResourceLoader.exists(r_art):
-				card_face_cache["ARSENAL_" + r_art] = Toon.tex(r_art)
-			var r := Catalog.get_relic_loc(rid, lang)
-			var is_own := Catalog.is_relic_unlocked(run_profile, rid) or (rid in owned_rel)
-			var src_r := Catalog.get_unlock_source_label(rid, lang)
-			collection_grid.add_child(_build_collection_card_slot({
-				"key": rid,
-				"custom_kind": "relic",
-				"raw_data": r,
-				"unlocked": is_own,
-				"equipped": rid in owned_rel,
-				"mp_badge": true,
-				"unlock_source": src_r,
-				"tex": null,
-				"col": r["col"],
-				"cap": "⛓ %dg" % int(r["cost"]),
-				"title": "✦ " + str(r["name"]),
-				"sub": _tr("%s Relic • %s", "%s • %s") % [str(r.get("category", "Passive")), _tr("ACTIVE IN RUN" if is_own else ("Locked • Bazaar: %d 🪙" % int(r["cost"])), "AKTIVNÍ VE HŘE" if is_own else ("Zamčeno • Obchod: %d 🪙" % int(r["cost"])))],
-				"desc": str(r["desc"]),
-			}))
 
 func _build_options_modal() -> void:
 	options_layer = CanvasLayer.new()
@@ -3118,7 +3139,7 @@ func _build_options_modal() -> void:
 			"language":
 				game_options["language"] = str(value)
 				Catalog.save_options(game_options)
-				_refresh_options_ui()
+				_refresh_options_ui(true)
 			"fullscreen":
 				var fs := bool(value)
 				game_options["fullscreen"] = fs
@@ -3126,44 +3147,48 @@ func _build_options_modal() -> void:
 				if not fs:
 					DisplayServer.window_set_size(Vector2i(1366, 768))
 				Catalog.save_options(game_options)
-				_refresh_options_ui()
+				_refresh_options_ui(false)
 			"visual_mode":
 				var next_mode := int(value)
 				game_options["visual_mode"] = next_mode
 				Catalog.save_options(game_options)
 				_apply_woodcut_mode(next_mode, true)
-				_refresh_options_ui()
+				_refresh_options_ui(false)
 			"high_fx":
 				game_options["high_fx"] = bool(value)
 				Catalog.save_options(game_options)
-				_refresh_options_ui()
+				_refresh_options_ui(false)
 			"game_pace":
 				game_options["game_pace"] = str(value)
 				Catalog.save_options(game_options)
-				_refresh_options_ui()
+				_refresh_options_ui(false)
+			"turn_timer_sec":
+				game_options["turn_timer_sec"] = clampi(int(value), 30, 45)
+				Catalog.save_options(game_options)
+				_refresh_options_ui(false)
 			"cam_sensitivity":
 				game_options["cam_sensitivity"] = float(value)
 				Catalog.save_options(game_options)
-				_refresh_options_ui()
+				_refresh_options_ui(false)
 	)
 	options_3d.difficulty_toggled.connect(func():
 		var cur_d := str(run_profile.get("campaign_difficulty", "traveler"))
 		run_profile["campaign_difficulty"] = "classic" if cur_d == "traveler" else "traveler"
 		Catalog.save_profile(run_profile)
 		_update_campaign_card(selected_era_idx)
-		_refresh_options_ui()
+		_refresh_options_ui(false)
 	)
 	options_3d.mute_toggled.connect(func():
 		_toggle_audio_mute()
 		game_options["muted"] = audio_muted
 		Catalog.save_options(game_options)
-		_refresh_options_ui()
+		_refresh_options_ui(false)
 	)
 	options_3d.volume_changed.connect(func(vol_pct: int):
 		_set_audio_volume(vol_pct)
 		game_options["sfx_volume"] = vol_pct
 		Catalog.save_options(game_options)
-		_refresh_options_ui()
+		_refresh_options_ui(false)
 	)
 	options_3d.replay_tutorial_requested.connect(func():
 		game_options["tutorial_done"] = false
@@ -3188,11 +3213,11 @@ func _build_options_modal() -> void:
 	_refresh_options_ui()
 
 func _open_options_modal() -> void:
-	_refresh_options_ui()
+	_refresh_options_ui(false)
 	if is_instance_valid(options_3d):
 		options_3d.open_3d()
 
-func _refresh_options_ui() -> void:
+func _refresh_options_ui(full_rebuild: bool = true) -> void:
 	var cs := _is_cs()
 	if lobby_options_btn:
 		lobby_options_btn.text = "⚙ NASTAVENÍ" if cs else "⚙ OPTIONS"
@@ -3205,11 +3230,12 @@ func _refresh_options_ui() -> void:
 		options_3d.sync_state(game_options, run_profile, audio_muted, audio_volume_pct, sk)
 	if battle_3d and battle_3d.has_method("apply_options"):
 		battle_3d.apply_options(game_options)
-	_populate_menu_signs()
-	_rebuild_collection_view()
-	_refresh_map_ui_texts()
-	_update_campaign_card(selected_era_idx)
-	_refresh_map_roguelite_hud()
+	if full_rebuild:
+		_populate_menu_signs()
+		_rebuild_collection_view()
+		_refresh_map_ui_texts()
+		_update_campaign_card(selected_era_idx)
+		_refresh_map_roguelite_hud()
 
 func _play_transition_to(on_mid: Callable) -> void:
 	if not is_instance_valid(transition_curtain):

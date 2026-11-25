@@ -9,6 +9,10 @@ const MpHistory = preload("res://scripts/mp/mp_history.gd")
 const MpBattleTable3D = preload("res://scripts/mp/mp_battle_table_3d.gd")
 const TavernBuilder = preload("res://scripts/battle/tavern_scene_builder.gd")
 const TableRelicMgr = preload("res://scripts/battle/table_relic_manager.gd")
+const ScoreEng = preload("res://scripts/scoring_engine.gd")
+const BankaiFxScript = preload("res://scripts/battle/bankai_fx.gd")
+const DeckBuilderPanelScript = preload("res://scripts/ui/deck_builder_panel.gd")
+const SnakeLoadingScript = preload("res://scripts/ui/snake_loading_screen.gd")
 
 var _failures: Array[String] = []
 
@@ -224,6 +228,58 @@ func _run_all() -> void:
 	_assert(not sn0.is_empty() and (sn0["root"] as Node3D).position.z < 0.0 and (sn0["avatar"] as Node3D).visible, "Host seat placed opposite with visible avatar")
 	mp_arena.free()
 	print("  OK 8: MpHistory, TavernSceneBuilder & client-seat camera clearance verified")
+
+	# 9. v0.192 Overhaul: 8 Core Relics (4×2), Turn Timer 30-45s, DeckBuilder, Bankai 4-Card Combo & Ouroboros loader
+	_assert(Catalog.RELICS.size() == 8 and Catalog.get_visible_relics().size() == 8, "Arsenal must have exactly 8 core build relics (got %d)" % Catalog.RELICS.size())
+	_assert(Catalog.DECK_BUILDS.size() == 4, "Must have 4 core deck builds")
+	for db in Catalog.DECK_BUILDS:
+		_assert(Catalog.get_relics_for_build(str(db["id"])).size() == 2, "Build %s must have exactly 2 signature relics" % str(db["id"]))
+	_assert(Catalog.migrate_relic_id("REL_HEX_DOLL") == "REL_SEVEN_GRIMOIRE", "Legacy relic migration works")
+	_assert(MpConfig.TURN_TIMEOUT_SEC >= 30.0 and MpConfig.TURN_TIMEOUT_SEC <= 45.0, "MP Turn timeout within 30-45s")
+	var def_opts := Catalog.get_default_options()
+	_assert(int(def_opts.get("turn_timer_sec", 0)) >= 30 and int(def_opts.get("turn_timer_sec", 0)) <= 45, "Default Campaign turn_timer_sec within 30-45s")
+
+	# Bankai buff in ScoringEngine
+	var b_sample := [{"suit": "CERVEN", "rank": "E", "pts": 20, "rname": "Eso"}]
+	var s_normal := ScoreEng.calculate_hand_score(b_sample, ["REL_FORGEMASTER"], [], {"bankai_active": false, "bankai_build_id": "GUILLOTINE_ACES"})
+	var s_bankai := ScoreEng.calculate_hand_score(b_sample, ["REL_FORGEMASTER"], [], {"bankai_active": true, "bankai_build_id": "GUILLOTINE_ACES"})
+	_assert(int(s_bankai["final_score"]) > int(s_normal["final_score"]), "Bankai Awakening increases build play score (%d > %d)" % [int(s_bankai["final_score"]), int(s_normal["final_score"])])
+
+	# Bankai 4-Card Trigger in MpAuthority
+	var b_auth := MpAuthority.new()
+	var custom_combo := ["CERVEN_7", "GULA_7", "ZALUD_7", "ZELEN_7"]
+	b_auth.setup_match([
+		{"peer_id": 1, "name": "Ichigo", "is_bot": false, "deck_cfg": {"archetype_id": "CHAOS_JESTER", "bankai_combo": custom_combo, "passive_relics": ["REL_GREED", "REL_SEVEN_GRIMOIRE"]}},
+		{"peer_id": 2, "name": "Rival", "is_bot": false, "deck_cfg": {"archetype_id": "MIRROR_MONARCH"}},
+	], {"rule_mode": MpConfig.RULE_CAMPAIGN_VAULT, "turn_timer_sec": 40})
+	_assert(b_auth.turn_timeout_sec == 40.0, "MpAuthority honors custom turn_timer_sec (40s)")
+	b_auth.seats[0]["hand"] = [
+		MpConfig.make_card("CERVEN", "7", "NORMAL"),
+		MpConfig.make_card("GULA", "7", "NORMAL"),
+		MpConfig.make_card("ZALUD", "7", "NORMAL"),
+		MpConfig.make_card("ZELEN", "7", "NORMAL"),
+	]
+	b_auth.active_suit = "CERVEN"
+	var bankai_vfx_seen := [false]
+	b_auth.broadcast_vfx_event.connect(func(e: Dictionary):
+		if str(e.get("type", "")) == "BANKAI_AWAKENING":
+			bankai_vfx_seen[0] = true
+	)
+	b_auth.handle_play_cards(1, 0, [0, 1, 2, 3], 1, "CERVEN")
+	_assert(bool(b_auth.seats[0].get("bankai_active", false)) and bankai_vfx_seen[0], "4-card Bankai combo triggers BANKAI_AWAKENING & persistent buff in MP")
+
+	# Instantiate DeckBuilderPanel, BankaiFx, and SnakeLoadingScreen cleanly
+	var dbp := DeckBuilderPanelScript.new()
+	dbp.setup_builder(Catalog.get_default_profile(), "cs", {})
+	dbp.free()
+	var bfx := BankaiFxScript.new()
+	bfx.trigger_bankai("GUILLOTINE_ACES", "Test", custom_combo, "cs", true)
+	_assert(bfx.is_cutin_playing(), "BankaiFx starts cut-in animation")
+	bfx.free()
+	var sls := SnakeLoadingScript.new()
+	_assert(sls != null, "Ouroboros SnakeLoadingScreen v2 instantiates")
+	sls.free()
+	print("  OK 9: 8 Core Relics, 30-45s Turn Timer, DeckBuilder, Bankai 4-Card Combo & Ouroboros verified")
 
 	if _failures.is_empty():
 		print("=== VERIFY PROGRESSION & MP: ALL CHECKS PASSED ===")

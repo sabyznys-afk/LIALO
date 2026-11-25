@@ -76,7 +76,17 @@ var _cam_open_tw: Tween
 var _fade_tw: Tween
 var _mouse_nx: float = 0.0
 var _mouse_ny: float = 0.0
+var _smooth_mouse_nx: float = 0.0
+var _smooth_mouse_ny: float = 0.0
+var _cam_cur_target: Vector3 = CAM_BASE_TARGET
+var _spot_cur_target: Vector3 = Vector3(0.0, 0.08, -0.40)
+var _pending_hover_key: String = ""
+var _hover_debounce_t: float = 0.0
+var _last_hover_sfx_ms: int = 0
 var _time_acc: float = 0.0
+
+const HOVER_DEBOUNCE_SEC := 0.055
+const HOVER_SFX_COOLDOWN_MS := 75
 
 # Synced state cache
 var _opts: Dictionary = {}
@@ -184,6 +194,8 @@ func close_3d() -> void:
 		return
 	_is_open_state = false
 	_hovered_station = ""
+	_pending_hover_key = ""
+	_hover_debounce_t = 0.0
 	_ui_hovered_station = ""
 	if _fade_tw and _fade_tw.is_valid():
 		_fade_tw.kill()
@@ -727,6 +739,7 @@ func _build_hybrid_codex_overlay() -> void:
 	left_page.add_child(_create_book_button_row("fullscreen"))
 	left_page.add_child(_create_book_button_row("visual_mode"))
 	left_page.add_child(_create_book_button_row("high_fx"))
+	left_page.add_child(_create_book_button_row("turn_timer_sec"))
 
 	var left_spacer := Control.new()
 	left_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -846,7 +859,7 @@ func _make_parchment_divider() -> Control:
 
 func _create_book_button_row(key: String) -> Control:
 	var row := HBoxContainer.new()
-	row.custom_minimum_size = Vector2(0, 48)
+	row.custom_minimum_size = Vector2(0, 41)
 	row.add_theme_constant_override("separation", 10)
 
 	var name_lbl := Label.new()
@@ -859,7 +872,7 @@ func _create_book_button_row(key: String) -> Control:
 	row.add_child(name_lbl)
 
 	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(236, 42)
+	btn.custom_minimum_size = Vector2(236, 36)
 	btn.add_theme_font_override("font", _body_font)
 	btn.add_theme_font_size_override("font_size", 15)
 	btn.add_theme_color_override("font_color", Color(0.96, 0.91, 0.78))
@@ -1051,11 +1064,21 @@ func _pick_station_at_screen_pos(local_pos: Vector2) -> String:
 
 
 func _set_hovered_station(next_key: String) -> void:
+	if next_key == _pending_hover_key and next_key == _hovered_station:
+		return
+	_pending_hover_key = next_key
+	_hover_debounce_t = HOVER_DEBOUNCE_SEC
+
+
+func _commit_hovered_station(next_key: String) -> void:
 	if next_key == _hovered_station:
 		return
 	_hovered_station = next_key
 	if _hovered_station != "":
-		emit_signal("sfx_requested", "card_hover")
+		var now_ms := Time.get_ticks_msec()
+		if now_ms - _last_hover_sfx_ms >= HOVER_SFX_COOLDOWN_MS:
+			_last_hover_sfx_ms = now_ms
+			emit_signal("sfx_requested", "card_hover")
 
 
 func _animate_stamp_press(key: String) -> void:
@@ -1112,6 +1135,12 @@ func _trigger_station(key: String) -> void:
 			var cur_p := str(_opts.get("game_pace", "relaxed"))
 			var ni := (maxi(0, pace_order.find(cur_p)) + 1) % pace_order.size()
 			emit_signal("option_changed", "game_pace", pace_order[ni])
+		"turn_timer_sec":
+			_animate_hourglass_flip()
+			var t_order: Array[int] = [30, 35, 45]
+			var cur_t := int(_opts.get("turn_timer_sec", 35))
+			var ti := (maxi(0, t_order.find(cur_t)) + 1) % t_order.size()
+			emit_signal("option_changed", "turn_timer_sec", t_order[ti])
 		"mute":
 			_animate_bell_pulse()
 			emit_signal("mute_toggled")
@@ -1179,20 +1208,23 @@ func _refresh_all_visuals() -> void:
 		"fullscreen":      "Obrazovka" if cs else "Display Mode",
 		"visual_mode":     "Vizuální styl" if cs else "Visual Style",
 		"high_fx":         "Efekty krčmy" if cs else "Tavern FX",
+		"turn_timer_sec":  "Limit tahu" if cs else "Turn Timer",
 		"difficulty":      "Obtížnost" if cs else "Difficulty",
 		"game_pace":       "Tempo hry" if cs else "Game Pace",
 		"mute":            "Zvuk" if cs else "Audio",
 		"volume":          "Hlasitost" if cs else "Volume",
 		"cam_sensitivity": "Citlivost myši" if cs else "Look Sens",
 	}
+	var t_sec := clampi(int(_opts.get("turn_timer_sec", 35)), 30, 45)
 	var btn_texts := {
-		"language":    "Čeština" if cs else "English",
-		"fullscreen":  ("Celá obrazovka" if fs else "V okně") if cs else ("Fullscreen" if fs else "Windowed"),
-		"visual_mode": str(vnames.get(vm, vnames[3])),
-		"high_fx":     ("Vysoké" if hfx else "Výkon") if cs else ("High" if hfx else "Performance"),
-		"difficulty":  ("Poutník (Lehčí)" if is_trav else "Klasická (Těžší)") if cs else ("Traveler (Easy)" if is_trav else "Classic (Hard)"),
-		"game_pace":   str(pnames.get(gp, pnames["relaxed"])),
-		"mute":        ("🔇 Ztlumeno" if cs else "🔇 Muted") if (_muted or _vol_pct <= 0) else ("🔊 Zapnuto" if cs else "🔊 Audio ON"),
+		"language":        "Čeština" if cs else "English",
+		"fullscreen":      ("Celá obrazovka" if fs else "V okně") if cs else ("Fullscreen" if fs else "Windowed"),
+		"visual_mode":     str(vnames.get(vm, vnames[3])),
+		"high_fx":         ("Vysoké" if hfx else "Výkon") if cs else ("High" if hfx else "Performance"),
+		"turn_timer_sec":  "%d s (Auto-líz)" % t_sec if cs else "%ds (Auto-Draw)" % t_sec,
+		"difficulty":      ("Poutník (Lehčí)" if is_trav else "Klasická (Těžší)") if cs else ("Traveler (Easy)" if is_trav else "Classic (Hard)"),
+		"game_pace":       str(pnames.get(gp, pnames["relaxed"])),
+		"mute":            ("🔇 Ztlumeno" if cs else "🔇 Muted") if (_muted or _vol_pct <= 0) else ("🔊 Zapnuto" if cs else "🔊 Audio ON"),
 	}
 
 	for k in _row_widgets.keys():
@@ -1262,30 +1294,54 @@ func _refresh_all_visuals() -> void:
 func _update_camera_pose(delta: float, snap: bool = false) -> void:
 	if not is_instance_valid(_cam):
 		return
+	# Continuously track local mouse position even while over the foreground Codex book
+	# so parallax never freezes & snaps when crossing button/book boundaries.
+	var sz := Vector2(maxf(1.0, size.x), maxf(1.0, size.y))
+	if is_inside_tree() and DisplayServer.get_name() != "headless":
+		var mp := get_local_mouse_position()
+		_mouse_nx = clampf((mp.x / sz.x) * 2.0 - 1.0, -1.0, 1.0)
+		_mouse_ny = clampf((mp.y / sz.y) * 2.0 - 1.0, -1.0, 1.0)
+
 	var focus_shift := Vector3.ZERO
 	if _hovered_station != "" and _stations.has(_hovered_station):
 		var hp: Vector3 = _stations[_hovered_station]["base_pos"]
-		focus_shift = Vector3(hp.x * 0.08, -0.015, hp.z * 0.06)
+		focus_shift = Vector3(hp.x * 0.065, -0.012, hp.z * 0.045)
 
 	var base_pos := CAM_OPEN_START_POS.lerp(CAM_BASE_POS, _cam_open_blend)
-	var parallax := Vector3(_mouse_nx * 0.04, -_mouse_ny * 0.025, 0.0) * _cam_open_blend
-	var desired_pos := base_pos + focus_shift + parallax
-	var desired_target := CAM_BASE_TARGET + focus_shift * 0.65
-
 	if snap:
-		_cam.position = desired_pos
-		_cam.look_at(desired_target, Vector3.UP)
+		_smooth_mouse_nx = _mouse_nx
+		_smooth_mouse_ny = _mouse_ny
+		var parallax_s := Vector3(_smooth_mouse_nx * 0.035, -_smooth_mouse_ny * 0.020, 0.0) * _cam_open_blend
+		var desired_pos_s := base_pos + focus_shift + parallax_s
+		var desired_target_s := CAM_BASE_TARGET + focus_shift * 0.55
+		_cam.position = desired_pos_s
+		_cam_cur_target = desired_target_s
+		_cam.look_at(_cam_cur_target, Vector3.UP)
 	else:
-		var spd := clampf(delta * 9.5, 0.0, 1.0)
-		_cam.position = _cam.position.lerp(desired_pos, spd)
-		_cam.look_at(desired_target, Vector3.UP)
+		var dt := minf(delta, 0.05)
+		var k_mouse := 1.0 - exp(-8.5 * dt)
+		var k_pos := 1.0 - exp(-7.2 * dt)
+		var k_tgt := 1.0 - exp(-6.4 * dt)
+		_smooth_mouse_nx = lerpf(_smooth_mouse_nx, _mouse_nx, k_mouse)
+		_smooth_mouse_ny = lerpf(_smooth_mouse_ny, _mouse_ny, k_mouse)
+		var parallax := Vector3(_smooth_mouse_nx * 0.035, -_smooth_mouse_ny * 0.020, 0.0) * _cam_open_blend
+		var desired_pos := base_pos + focus_shift + parallax
+		var desired_target := CAM_BASE_TARGET + focus_shift * 0.55
+		_cam.position = _cam.position.lerp(desired_pos, k_pos)
+		_cam_cur_target = _cam_cur_target.lerp(desired_target, k_tgt)
+		_cam.look_at(_cam_cur_target, Vector3.UP)
 
 
 func _process(delta: float) -> void:
 	if not visible:
 		return
-	_time_acc += delta
-	_update_camera_pose(delta, false)
+	var dt := minf(delta, 0.05)
+	_time_acc += dt
+	if _pending_hover_key != _hovered_station:
+		_hover_debounce_t -= dt
+		if _hover_debounce_t <= 0.0:
+			_commit_hovered_station(_pending_hover_key)
+	_update_camera_pose(dt, false)
 
 	# Candlelight & FX flame subtle tavern flicker
 	if is_instance_valid(_candle_light):
@@ -1296,7 +1352,9 @@ func _process(delta: float) -> void:
 		var flick := 1.0 + sin(_time_acc * 9.8) * (0.12 if hfx else 0.03)
 		_fx_flame_node.scale = Vector3(base_s * (1.0 + sin(_time_acc * 6.0) * 0.04), base_s * flick, base_s)
 
-	# Hover levitation & golden spotlight focus on 3D Study props
+	# Hover levitation & smooth golden spotlight focus on 3D Study props
+	var k_prop := 1.0 - exp(-12.0 * dt)
+	var k_spot := 1.0 - exp(-9.5 * dt)
 	var target_spot_energy := 0.0
 	for k in _station_order:
 		var st: Dictionary = _stations[k]
@@ -1306,11 +1364,12 @@ func _process(delta: float) -> void:
 		var is_hov := (k == _hovered_station)
 		var base_p: Vector3 = st["base_pos"]
 		var target_y := base_p.y + (0.024 + sin(_time_acc * 4.2) * 0.004 if is_hov else 0.0)
-		r.position.y = lerpf(r.position.y, target_y, clampf(delta * 14.0, 0.0, 1.0))
+		r.position.y = lerpf(r.position.y, target_y, k_prop)
 		if is_hov and is_instance_valid(_hover_spot):
-			_hover_spot.position = _hover_spot.position.lerp(base_p + Vector3(0.0, 0.86, 0.25), clampf(delta * 12.0, 0.0, 1.0))
-			_hover_spot.look_at(base_p + Vector3(0.0, 0.08, 0.0), Vector3.UP)
+			_hover_spot.position = _hover_spot.position.lerp(base_p + Vector3(0.0, 0.86, 0.25), k_spot)
+			_spot_cur_target = _spot_cur_target.lerp(base_p + Vector3(0.0, 0.08, 0.0), k_spot)
+			_hover_spot.look_at(_spot_cur_target, Vector3.UP)
 			target_spot_energy = 2.8
 
 	if is_instance_valid(_hover_spot):
-		_hover_spot.light_energy = lerpf(_hover_spot.light_energy, target_spot_energy, clampf(delta * 12.0, 0.0, 1.0))
+		_hover_spot.light_energy = lerpf(_hover_spot.light_energy, target_spot_energy, k_spot)

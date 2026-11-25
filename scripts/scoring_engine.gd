@@ -448,36 +448,109 @@ static func calculate_hand_score(
 					card.get("accent", Color(1.0, 0.85, 0.3)), "", bool(p_res["lightning"])
 				))
 
-		# Active Passive Relics & Synergy Multipliers (transparently logged as breakdown chips)
+		# Active 8 Core Build Relics & Bankai Awakening Buffs (v0.192 Overhaul)
 		for _rt in range(jester_triggers):
 			for card in played_cards:
 				var s_id := str(card.get("suit", ""))
 				var r_id := str(card.get("rank", ""))
 				var has_pwr := str(card.get("power_id", "")) != ""
-				if "REL_CHAMOIS" in active_relics and (s_id == "ZALUD" or has_pwr):
-					bonus_pts += 10
-					breakdown_chips.append({"tag": "Chamois", "val": "+10", "col": Color(0.92, 0.72, 0.32)})
-					steps.append(_make_step("relic", "Chamois Horn (+10)", "Acorn / Power", 10, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.92, 0.72, 0.32), "REL_CHAMOIS"))
+				var c_cls := Catalog.normalize_card_class(str(card.get("edition", card.get("card_class", "NORMAL"))))
+				# Build 1: Guillotine Aces
+				if "REL_FORGEMASTER" in active_relics and (r_id == "E" or c_cls == "KNIGHT"):
+					bonus_pts += 15
+					breakdown_chips.append({"tag": "Anvil", "val": "+15", "col": Color(0.32, 0.88, 1.0)})
+					steps.append(_make_step("relic", "Executioner's Anvil (+15)", "Ace / Knight", 15, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.32, 0.88, 1.0), "REL_FORGEMASTER"))
+				# Build 2: Mirror Monarch
 				if "REL_ROYAL" in active_relics and (r_id in COURT_RANKS):
-					bonus_pts += 10
-					breakdown_chips.append({"tag": "Signet", "val": "+10", "col": Color(1.0, 0.88, 0.38)})
-					steps.append(_make_step("relic", "King's Signet (+10)", "Court Card", 10, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.88, 0.38), "REL_ROYAL"))
-				if "REL_FANG" in active_relics and s_id == "CERVEN":
+					bonus_pts += 12
+					if r_id == "K":
+						shields_gained += 1
+					breakdown_chips.append({"tag": "Signet", "val": "+12", "col": Color(1.0, 0.84, 0.34)})
+					steps.append(_make_step("relic", "Monarch's Signet (+12)", "Court Card", 12, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.84, 0.34), "REL_ROYAL"))
+				if "REL_IRON_BOOT" in active_relics and (r_id == "H" or r_id == "D"):
+					x_mult_product *= 1.25
+					breakdown_chips.append({"tag": "Aegis", "val": "×1.25", "col": Color(0.74, 0.82, 0.92)})
+					steps.append(_make_step("relic", "Aegis Greaves (×1.25)", "Guard / Wild", 0, 0.0, 1.25, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.74, 0.82, 0.92), "REL_IRON_BOOT"))
+				# Build 3: Chaos Jester
+				if "REL_GREED" in active_relics:
+					if s_id == "GULA" or has_pwr:
+						bonus_gold += 8
+						steps.append(_make_step("relic", "+8 Florins", "Trickster's Scale", 0, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.82, 0.24), "REL_GREED"))
+					if r_id == "H":
+						bonus_pts += 12
+						breakdown_chips.append({"tag": "Scale", "val": "+12", "col": Color(1.0, 0.82, 0.24)})
+				if "REL_SEVEN_GRIMOIRE" in active_relics and (r_id == "7" or c_cls == "THIEF"):
+					bonus_pts += 12
 					rival_drain += 10
-					breakdown_chips.append({"tag": "Fang", "val": "-10 Rival", "col": Color(0.94, 0.22, 0.32)})
-					steps.append(_make_step("relic", "Crimson Fang (-10 Rival)", "Hearts Affinity", 0, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.94, 0.22, 0.32), "REL_FANG"))
-				if "REL_GREED" in active_relics and s_id == "GULA":
-					bonus_gold += 5
-					steps.append(_make_step("relic", "+5 Florins", "Merchant Scale", 0, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.84, 0.20), "REL_GREED"))
-			if "REL_STORMCAP" in active_relics and cnt >= 2:
-				x_mult_product *= 1.5
+					breakdown_chips.append({"tag": "Grimoire", "val": "+12/-10", "col": Color(0.94, 0.40, 0.84)})
+					steps.append(_make_step("relic", "Grimoire of Sevens (+12 & -10 Rival)", "Seven / Thief", 12, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.94, 0.40, 0.84), "REL_SEVEN_GRIMOIRE"))
+				# Build 4: Mistblade Shadow
+				if "REL_FANG" in active_relics and (s_id == "CERVEN" or cnt >= 2):
+					bonus_pts += 8
+					rival_drain += 12
+					breakdown_chips.append({"tag": "Fang", "val": "-12 Rival", "col": Color(0.92, 0.20, 0.34)})
+					steps.append(_make_step("relic", "Phantom Fang (+8 & -12 Rival)", "Shadow Affinity", 8, 0.0, 1.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.92, 0.20, 0.34), "REL_FANG"))
+			if "REL_FORGEMASTER" in active_relics and cnt >= 2:
+				bonus_pts += 20
+				breakdown_chips.append({"tag": "Anvil Combo", "val": "+20", "col": Color(0.32, 0.88, 1.0)})
+			if "REL_FINAL_TOLL" in active_relics and (cnt >= 2 or current_hand.size() <= 1):
+				var toll_m := 2.0 if current_hand.size() <= 1 else 1.5
+				x_mult_product *= toll_m
 				lightning = true
-				breakdown_chips.append({"tag": "Storm", "val": "×1.5", "col": Color(0.38, 0.90, 1.0)})
-				steps.append(_make_step("relic", "Storm Capacitor (×1.5)", "%d× Combo" % cnt, 0, 0.0, 1.5, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.38, 0.90, 1.0), "REL_STORMCAP", true))
-			if "REL_CRIMSON_CHOIR" in active_relics and all_red:
-				x_mult_product *= 1.5
-				breakdown_chips.append({"tag": "Choir", "val": "×1.5", "col": Color(0.96, 0.28, 0.42)})
-				steps.append(_make_step("relic", "Crimson Choir (×1.5)", "All-Red Suit Affinity", 0, 0.0, 1.5, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.96, 0.28, 0.42), "REL_CRIMSON_CHOIR"))
+				breakdown_chips.append({"tag": "Oath", "val": "×%.1f" % toll_m, "col": Color(1.0, 0.28, 0.34)})
+				steps.append(_make_step("relic", "Executioner's Oath (×%.1f)" % toll_m, "Lethal Finish", 0, 0.0, toll_m, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.28, 0.34), "REL_FINAL_TOLL", true))
+			if "REL_OVERCHARGE" in active_relics and cnt >= 2:
+				mage_charge_boost += 1
+				var has_mage_or_pwr := false
+				for mc in played_cards:
+					if str(mc.get("power_id", "")) != "" or Catalog.normalize_card_class(str(mc.get("edition", mc.get("card_class", "NORMAL")))) == "MAGE":
+						has_mage_or_pwr = true
+						break
+				if has_mage_or_pwr:
+					x_mult_product *= 1.45
+					lightning = true
+					breakdown_chips.append({"tag": "Mist Conduit", "val": "×1.45", "col": Color(0.38, 0.96, 0.78)})
+					steps.append(_make_step("relic", "Mistborn Conduit (×1.45)", "Mage / Power Surge", 0, 0.0, 1.45, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.38, 0.96, 0.78), "REL_OVERCHARGE", true))
+
+		# Bankai Awakening Persistent Build Buff (Bleach-style 4-card combo transformation!)
+		if bool(context.get("bankai_active", false)):
+			var b_build := str(context.get("bankai_build_id", "GUILLOTINE_ACES"))
+			match b_build:
+				"GUILLOTINE_ACES":
+					x_mult_product *= 1.4
+					bonus_pts += 15 * aces_played
+					lightning = true
+					breakdown_chips.append({"tag": "⚡ BANKAI", "val": "×1.4", "col": Color(0.32, 0.88, 1.0)})
+					steps.append(_make_step("relic", "⚡ BANKAI: CRIMSON GUILLOTINE (×1.4)", "Awakened Execution", 15 * aces_played, 0.0, 1.4, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.32, 0.88, 1.0), "", true))
+				"MIRROR_MONARCH":
+					var court_cnt := 0
+					for cc in played_cards:
+						if str(cc.get("rank", "")) in COURT_RANKS:
+							court_cnt += 1
+					bonus_pts += 18 * maxi(1, court_cnt)
+					x_mult_product *= 1.35
+					shields_gained += 1
+					breakdown_chips.append({"tag": "👑 BANKAI", "val": "×1.35 +🛡", "col": Color(1.0, 0.78, 0.28)})
+					steps.append(_make_step("relic", "👑 BANKAI: SOVEREIGN MIRROR (×1.35)", "Awakened Monarch", 18 * maxi(1, court_cnt), 0.0, 1.35, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.78, 0.28), "", true))
+				"CHAOS_JESTER":
+					bonus_gold += 20
+					rival_drain += 14
+					if sevens_played > 0:
+						extra_draw += 2 * sevens_played
+					x_mult_product *= 1.35
+					lightning = true
+					breakdown_chips.append({"tag": "🃏 BANKAI", "val": "×1.35 -14", "col": Color(0.96, 0.36, 0.78)})
+					steps.append(_make_step("relic", "🃏 BANKAI: CARNIVAL OF RUIN (×1.35)", "Awakened Chaos", 0, 0.0, 1.35, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.96, 0.36, 0.78), "", true))
+				"MISTBLADE_DUELIST":
+					mage_charge_boost += 2
+					if cnt >= 2:
+						rival_drain += 15
+						x_mult_product *= 1.45
+					else:
+						x_mult_product *= 1.25
+					lightning = true
+					breakdown_chips.append({"tag": "🌫 BANKAI", "val": "×1.45 -15", "col": Color(0.38, 0.96, 0.78)})
+					steps.append(_make_step("relic", "🌫 BANKAI: ENDLESS MIST (×1.45)", "Awakened Shadow", 0, 0.0, 1.45 if cnt >= 2 else 1.25, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.38, 0.96, 0.78), "", true))
 
 		# Active Tabletop Relic Buffs (Blood-Ink Seal ×2, Phantom Mask ×2, Storm Surge)
 		if bool(context.get("blood_seal_active", false)):

@@ -20,6 +20,7 @@ signal open_options_requested
 
 const Toon = preload("res://scripts/toon_style.gd")
 const Catalog = preload("res://scripts/lialo_catalog.gd")
+const BankaiFxScript = preload("res://scripts/battle/bankai_fx.gd")
 const ScoreEng = preload("res://scripts/scoring_engine.gd")
 const CamSpring = preload("res://scripts/camera_recoil_spring.gd")
 const Fx = preload("res://scripts/fx_lib.gd")
@@ -286,6 +287,20 @@ var turn_banner_grp: Control
 var turn_ornament_ctrl: Control
 var turn_banner_lbl: Label
 var turn_banner_sub_lbl: Label
+var turn_timer_pill: PanelContainer
+var turn_timer_lbl: Label
+var turn_timer_bar: ColorRect
+var bankai_fx: BankaiFxScript
+var bankai_seal_pill: PanelContainer
+var bankai_seal_lbl: Label
+var bankai_build_id: String = "GUILLOTINE_ACES"
+var bankai_combo: Array = ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"]
+var bankai_charged: Array = []
+var bankai_active: bool = false
+var opts_turn_timer_sec: float = 35.0
+var player_turn_timer: float = 35.0
+var _turn_timer_was_active: bool = false
+var _turn_timer_last_tick_sec: int = -1
 var turn_banner_accent := Color(0.45, 0.94, 0.62)
 var turn_toast_tween: Tween
 var _last_turn_toast_key: String = ""
@@ -655,6 +670,8 @@ func _ready() -> void:
 	_setup_tutorial_beacon_3d()
 	_setup_minimal_overlay_hud()
 	_setup_cinematic_director()
+	bankai_fx = BankaiFxScript.new()
+	add_child(bankai_fx)
 
 func _setup_cinematic_director() -> void:
 	if is_instance_valid(cinematic_director):
@@ -5795,6 +5812,8 @@ func apply_options(opts: Dictionary) -> void:
 	opts_cam_sens = clampf(float(opts.get("cam_sensitivity", opts.get("cam_sens", 1.0))), 0.4, 2.2)
 	var gp := str(opts.get("game_pace", "relaxed"))
 	opts_game_pace = gp if (gp in ["relaxed", "normal", "fast"]) else "relaxed"
+	opts_turn_timer_sec = clampf(float(opts.get("turn_timer_sec", 35)), 30.0, 45.0)
+	player_turn_timer = minf(player_turn_timer, opts_turn_timer_sec)
 	turn_glance_duration = _pace(1.45)
 	set_print_mode(int(opts.get("visual_mode", 3)))
 	if is_instance_valid(dust_motes_root):
@@ -7753,6 +7772,71 @@ func _setup_minimal_overlay_hud() -> void:
 	turn_banner_sub_lbl.visible = false
 	turn_banner_grp.add_child(turn_banner_sub_lbl)
 
+	# Diegetic Turn Timer Pill (30-45s countdown with auto-draw on expiry)
+	turn_timer_pill = PanelContainer.new()
+	turn_timer_pill.anchor_left = 0.0; turn_timer_pill.anchor_top = 1.0
+	turn_timer_pill.anchor_right = 0.0; turn_timer_pill.anchor_bottom = 1.0
+	turn_timer_pill.offset_left = 18; turn_timer_pill.offset_top = -194
+	turn_timer_pill.offset_right = 250; turn_timer_pill.offset_bottom = -156
+	turn_timer_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	turn_timer_pill.visible = false
+	var tt_sb := StyleBoxFlat.new()
+	tt_sb.bg_color = Color(0.08, 0.06, 0.045, 0.90)
+	tt_sb.border_color = Color(0.92, 0.74, 0.28, 0.86)
+	tt_sb.set_border_width_all(2)
+	tt_sb.set_corner_radius_all(8)
+	tt_sb.set_content_margin_all(5)
+	turn_timer_pill.add_theme_stylebox_override("panel", tt_sb)
+	hud_root.add_child(turn_timer_pill)
+
+	var tt_vb := VBoxContainer.new()
+	tt_vb.add_theme_constant_override("separation", 3)
+	turn_timer_pill.add_child(tt_vb)
+
+	turn_timer_lbl = Label.new()
+	turn_timer_lbl.text = "⏳ 35s"
+	turn_timer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	turn_timer_lbl.add_theme_font_override("font", _get_font(true))
+	turn_timer_lbl.add_theme_font_size_override("font_size", 14)
+	turn_timer_lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.48))
+	tt_vb.add_child(turn_timer_lbl)
+
+	var tt_bg := ColorRect.new()
+	tt_bg.custom_minimum_size = Vector2(204, 6)
+	tt_bg.color = Color(0.16, 0.12, 0.09, 0.92)
+	tt_vb.add_child(tt_bg)
+
+	turn_timer_bar = ColorRect.new()
+	turn_timer_bar.anchor_left = 0.0; turn_timer_bar.anchor_top = 0.0
+	turn_timer_bar.anchor_right = 1.0; turn_timer_bar.anchor_bottom = 1.0
+	turn_timer_bar.color = Color(0.96, 0.78, 0.26, 0.96)
+	tt_bg.add_child(turn_timer_bar)
+
+	# 4-Card Bankai Awakening Seal HUD Indicator (directly above Turn Timer)
+	bankai_seal_pill = PanelContainer.new()
+	bankai_seal_pill.anchor_left = 0.0; bankai_seal_pill.anchor_top = 1.0
+	bankai_seal_pill.anchor_right = 0.0; bankai_seal_pill.anchor_bottom = 1.0
+	bankai_seal_pill.offset_left = 18; bankai_seal_pill.offset_top = -232
+	bankai_seal_pill.offset_right = 250; bankai_seal_pill.offset_bottom = -198
+	bankai_seal_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bankai_seal_pill.visible = false
+	var bk_sb := StyleBoxFlat.new()
+	bk_sb.bg_color = Color(0.06, 0.05, 0.08, 0.90)
+	bk_sb.border_color = Color(0.32, 0.88, 1.0, 0.85)
+	bk_sb.set_border_width_all(2)
+	bk_sb.set_corner_radius_all(8)
+	bk_sb.set_content_margin_all(4)
+	bankai_seal_pill.add_theme_stylebox_override("panel", bk_sb)
+	hud_root.add_child(bankai_seal_pill)
+
+	bankai_seal_lbl = Label.new()
+	bankai_seal_lbl.text = "⚡ BANKAI SEAL: 0 / 4"
+	bankai_seal_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	bankai_seal_lbl.add_theme_font_override("font", _get_font(true))
+	bankai_seal_lbl.add_theme_font_size_override("font_size", 13)
+	bankai_seal_lbl.add_theme_color_override("font_color", Color(0.55, 0.94, 1.0))
+	bankai_seal_pill.add_child(bankai_seal_lbl)
+
 	hint_lbl = null
 
 	# 3A. Farebný animovaný Tutoriál PRŠÍ s Duchom Krčmára ("Spirko") vľavo hore
@@ -8927,6 +9011,14 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 		var base_redraw := 3 if active_campaign_difficulty == "traveler" else 2
 		redraws_left = base_redraw + (2 if "REL_CHRONO_P" in run_active_relics else 0)
 		player_shields = (1 if active_campaign_difficulty == "traveler" else 0) + (1 if "REL_IRON_BOOT" in run_active_relics else 0) + (1 if active_retry_blessing > 0 else 0)
+		bankai_build_id = str(active_run_profile.get("selected_build_id", "GUILLOTINE_ACES"))
+		var b_def := Catalog.get_deck_build(bankai_build_id)
+		bankai_combo = (active_run_profile.get("bankai_combo", b_def.get("default_bankai", ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"])) as Array).duplicate()
+		bankai_charged.clear()
+		bankai_active = false
+		if is_instance_valid(bankai_fx):
+			bankai_fx.clear_aura()
+		_refresh_bankai_seal_hud()
 		cards_points_revealed = true
 		abilities_revealed = true
 		hud_score_revealed = true
@@ -10507,6 +10599,7 @@ func _process(delta: float) -> void:
 	var t := Time.get_ticks_msec() * 0.001
 
 	_step_handwriting_anims(delta)
+	_step_player_turn_timer(delta, t)
 	tutorial_ghost_ok_flash = maxf(0.0, tutorial_ghost_ok_flash - delta * 1.4)
 
 	if _is_hand_tucked() != _last_peek_state:
@@ -12636,9 +12729,15 @@ func _play_player_cards_3d(play_indices: Array, chosen_suit: String) -> void:
 		"blood_seal_active": table_relic_blood_seal_active,
 		"hollow_mask_active": table_relic_hollow_mask_active,
 		"surge_mult": storm_surge_mult,
+		"bankai_active": bankai_active,
+		"bankai_build_id": bankai_build_id,
 		"is_preview": false,
 		"lang": opts_language,
 	}
+	if not tutorial_mode:
+		_check_and_trigger_bankai(chosen_cards)
+		ctx["bankai_active"] = bankai_active
+		ctx["bankai_build_id"] = bankai_build_id
 	var had_blood_seal := table_relic_blood_seal_active
 	var score_res := ScoreEng.calculate_hand_score(chosen_cards, relic_mgr.get_effective_passive_relics(run_active_relics), player_hand, ctx)
 	table_relic_blood_seal_active = false
@@ -13338,6 +13437,107 @@ func _animate_magical_card_draw_3d(drawn_cards: Array, to_player: bool, on_finis
 			if remaining[0] == 0 and on_finished.is_valid():
 				on_finished.call()
 		)
+
+func _refresh_bankai_seal_hud() -> void:
+	if not is_instance_valid(bankai_seal_pill) or not is_instance_valid(bankai_seal_lbl):
+		return
+	if tutorial_mode or bankai_combo.is_empty():
+		bankai_seal_pill.visible = false
+		return
+	bankai_seal_pill.visible = true
+	var b := Catalog.get_deck_build_loc(bankai_build_id, opts_language)
+	var b_col: Color = b.get("col", Color(0.32, 0.88, 1.0))
+	if bankai_active:
+		bankai_seal_lbl.text = "⚡ %s" % str(b.get("bankai_name", "BANKAI ACTIVE"))
+		bankai_seal_lbl.add_theme_color_override("font_color", Color(1.0, 0.94, 0.56))
+	else:
+		bankai_seal_lbl.text = _tr("⚡ BANKAI SEAL: %d / 4" % bankai_charged.size(), "⚡ BANKAI PEČEŤ: %d / 4" % bankai_charged.size())
+		bankai_seal_lbl.add_theme_color_override("font_color", b_col.lightened(0.22))
+
+
+func _check_and_trigger_bankai(chosen_cards: Array) -> void:
+	if bankai_active or bankai_combo.size() < 4:
+		return
+	var gained_any := false
+	for card in chosen_cards:
+		var ck := "%s_%s" % [str(card.get("suit", "")), str(card.get("rank", ""))]
+		if (ck in bankai_combo) and not (ck in bankai_charged):
+			bankai_charged.append(ck)
+			gained_any = true
+	# Also support instant 4-card Bankai when playing any 4-card slam matching rank/combo
+	if chosen_cards.size() >= 4 and bankai_charged.size() < 4:
+		var all_in_seal := true
+		for card in chosen_cards:
+			var ck2 := "%s_%s" % [str(card.get("suit", "")), str(card.get("rank", ""))]
+			if not (ck2 in bankai_combo):
+				all_in_seal = false
+				break
+		if all_in_seal:
+			bankai_charged = bankai_combo.duplicate()
+			gained_any = true
+	if gained_any:
+		_refresh_bankai_seal_hud()
+	if bankai_charged.size() >= 4 and not bankai_active:
+		bankai_active = true
+		_refresh_bankai_seal_hud()
+		cam_kick_shake = maxf(cam_kick_shake, 0.55)
+		if is_instance_valid(bankai_fx):
+			bankai_fx.trigger_bankai(bankai_build_id, _tr("YOU", "TY"), bankai_combo, opts_language, true)
+		match bankai_build_id:
+			"MIRROR_MONARCH":
+				player_shields += 2
+			"MISTBLADE_DUELIST":
+				for hc in player_hand:
+					if Catalog.normalize_card_class(str(hc.get("edition", hc.get("card_class", "NORMAL")))) == "MAGE":
+						hc["mage_charge"] = 2
+			"CHAOS_JESTER":
+				ai_score = maxi(0, ai_score - 14)
+				display_ai_score = float(ai_score)
+		if combat_log_drawer != null:
+			var b_loc := Catalog.get_deck_build_loc(bankai_build_id, opts_language)
+			combat_log_drawer.add_entry("⚡ %s — %s" % [str(b_loc["bankai_name"]), str(b_loc["bankai_desc"])], b_loc["col"])
+
+
+func _step_player_turn_timer(delta: float, t_sec: float) -> void:
+	if not is_instance_valid(turn_timer_pill):
+		return
+	var modal_blocking := (is_instance_valid(suit_modal) and suit_modal.visible) or peddler_open or shop_gate_open
+	var can_tick := is_player_turn and (not busy_animating) and (not intro_animating) and (not tutorial_mode) and (not modal_blocking) and (not _is_cinematic_playing()) and (not player_hand.is_empty())
+	if not is_player_turn or tutorial_mode or player_hand.is_empty():
+		_turn_timer_was_active = false
+		_turn_timer_last_tick_sec = -1
+		turn_timer_pill.visible = false
+		return
+	if not _turn_timer_was_active:
+		_turn_timer_was_active = true
+		player_turn_timer = clampf(opts_turn_timer_sec, 30.0, 45.0)
+		_turn_timer_last_tick_sec = -1
+	turn_timer_pill.visible = true
+	if can_tick:
+		player_turn_timer = maxf(0.0, player_turn_timer - delta)
+	var max_t := clampf(opts_turn_timer_sec, 30.0, 45.0)
+	var frac := clampf(player_turn_timer / max_t, 0.0, 1.0)
+	var sec_ceil := int(ceil(player_turn_timer))
+	var bar_col := Color(0.96, 0.78, 0.26, 0.96)
+	if player_turn_timer <= 10.0:
+		var p := 0.55 + 0.45 * absf(sin(t_sec * 7.5))
+		bar_col = Color(1.0, 0.22 * p, 0.20, 0.98)
+		if can_tick and sec_ceil > 0 and sec_ceil <= 5 and sec_ceil != _turn_timer_last_tick_sec:
+			_turn_timer_last_tick_sec = sec_ceil
+			emit_signal("play_sfx_requested", "btn_card_tick")
+	elif player_turn_timer <= 15.0:
+		bar_col = Color(1.0, 0.56, 0.18, 0.96)
+	if is_instance_valid(turn_timer_lbl):
+		turn_timer_lbl.text = _tr("⏳ TURN: %ds" % sec_ceil, "⏳ TAH: %d s" % sec_ceil)
+		turn_timer_lbl.add_theme_color_override("font_color", bar_col.lightened(0.22))
+	if is_instance_valid(turn_timer_bar):
+		turn_timer_bar.anchor_right = frac
+		turn_timer_bar.color = bar_col
+	if can_tick and player_turn_timer <= 0.0:
+		_turn_timer_was_active = false
+		_show_stagger_callout(_tr("⏱ TIME'S UP — AUTO-DRAW!", "⏱ ČAS VYPRŠEL — AUTOMATICKÉ LÍZNUTÍ!"), Color(1.0, 0.44, 0.24), 1.6)
+		_player_draw_from_3d_deck()
+
 
 func _player_draw_from_3d_deck() -> void:
 	turn_stage = TurnStage.RESOLVING

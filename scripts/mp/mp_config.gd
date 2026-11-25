@@ -26,7 +26,9 @@ const START_HP := 120
 const START_SHIELDS := 15
 const START_GOLD := 25
 const START_HAND_SIZE := 6
-const TURN_TIMEOUT_SEC := 24.0
+const TURN_TIMEOUT_SEC := 35.0
+const TURN_TIMEOUT_MIN := 30.0
+const TURN_TIMEOUT_MAX := 45.0
 const PARRY_WINDOW_SEC := 2.6
 
 const MP_MAX_POWER_CARDS := 3
@@ -294,6 +296,7 @@ static func sanitize_deck_cfg(deck_cfg: Dictionary, rule_mode: String = RULE_CAM
 		for iid in arch.get("items", []):
 			if bal_items.size() < MP_MAX_TABLE_RELICS:
 				bal_items.append(str(iid))
+		var bal_build := Catalog.get_deck_build(arch_id)
 		return {
 			"archetype_id": arch_id,
 			"character_id": char_id,
@@ -301,6 +304,7 @@ static func sanitize_deck_cfg(deck_cfg: Dictionary, rule_mode: String = RULE_CAM
 			"power_cards": bal_powers,
 			"table_relics": bal_items,
 			"passive_relics": ["REL_GREED"],
+			"bankai_combo": (bal_build.get("default_bankai", ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"]) as Array).duplicate(),
 			"sword_skin": str(arch.get("sword_skin", "SWORD_IRON")),
 			"rule_mode": RULE_BALANCED_ARENA,
 		}
@@ -348,13 +352,27 @@ static func sanitize_deck_cfg(deck_cfg: Dictionary, rule_mode: String = RULE_CAM
 	var raw_r = deck_cfg.get("passive_relics", [])
 	if raw_r is Array:
 		for rv in raw_r:
-			var rid := str(rv)
+			var rid := Catalog.migrate_relic_id(str(rv))
 			if (rid in Catalog.ARCHIVED_RELIC_IDS) or Catalog.is_relic_hidden(rid) or Catalog.get_relic(rid).is_empty():
 				continue
 			if not (rid in clean_prels):
 				clean_prels.append(rid)
 			if clean_prels.size() >= MP_MAX_PASSIVE_RELICS:
 				break
+
+	var b_def := Catalog.get_deck_build(arch_id)
+	var clean_bankai: Array = []
+	var raw_b = deck_cfg.get("bankai_combo", b_def.get("default_bankai", []))
+	if raw_b is Array:
+		for bv in raw_b:
+			var bs := str(bv).strip_edges()
+			if bs != "" and not (bs in clean_bankai) and clean_bankai.size() < 4:
+				clean_bankai.append(bs)
+	if clean_bankai.size() < 4:
+		for fb in b_def.get("default_bankai", ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"]):
+			var fbs := str(fb)
+			if not (fbs in clean_bankai) and clean_bankai.size() < 4:
+				clean_bankai.append(fbs)
 
 	var sw_id := str(deck_cfg.get("sword_skin", arch.get("sword_skin", "SWORD_IRON")))
 	if Catalog.get_sword_skin(sw_id).get("id", "") != sw_id:
@@ -367,6 +385,7 @@ static func sanitize_deck_cfg(deck_cfg: Dictionary, rule_mode: String = RULE_CAM
 		"power_cards": clean_powers,
 		"table_relics": clean_trels,
 		"passive_relics": clean_prels,
+		"bankai_combo": clean_bankai,
 		"sword_skin": sw_id,
 		"rule_mode": RULE_CAMPAIGN_VAULT,
 	}

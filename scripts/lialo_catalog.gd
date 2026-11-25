@@ -13,8 +13,90 @@ const OPTIONS_PATH := "user://lialo_options.cfg"
 const MAX_ASCENSION := 10
 
 const ARCHIVED_CARD_IDS: Array[String] = ["SPEC_PRISM"]
-const ARCHIVED_RELIC_IDS: Array[String] = ["REL_PRISM_ORB"]
-const TEMPORARILY_HIDDEN_RELICS: Array[String] = ["REL_CHAMOIS", "REL_STORMCAP"]
+const ARCHIVED_RELIC_IDS: Array[String] = [
+	"REL_PRISM_ORB", "REL_CHAMOIS", "REL_FUJARA", "REL_STORMCAP", "REL_KNUCKLE",
+	"REL_PHOENIX_F", "REL_ALEMBIC", "REL_CHRONO_P", "REL_HEX_DOLL", "REL_WOODCUTTER",
+	"REL_RED_SEAL", "REL_CRIMSON_CHOIR", "REL_GREEN_CANOPY", "REL_PRSI_PURIST",
+	"REL_MERCHANT_LEDGER", "REL_COURT_SOVEREIGN",
+]
+const TEMPORARILY_HIDDEN_RELICS: Array[String] = []
+
+const LEGACY_RELIC_MIGRATION := {
+	"REL_CHAMOIS": "REL_FORGEMASTER",
+	"REL_WOODCUTTER": "REL_FORGEMASTER",
+	"REL_PHOENIX_F": "REL_FINAL_TOLL",
+	"REL_COURT_SOVEREIGN": "REL_ROYAL",
+	"REL_PRSI_PURIST": "REL_ROYAL",
+	"REL_GREEN_CANOPY": "REL_IRON_BOOT",
+	"REL_CHRONO_P": "REL_IRON_BOOT",
+	"REL_MERCHANT_LEDGER": "REL_GREED",
+	"REL_KNUCKLE": "REL_SEVEN_GRIMOIRE",
+	"REL_HEX_DOLL": "REL_SEVEN_GRIMOIRE",
+	"REL_FUJARA": "REL_SEVEN_GRIMOIRE",
+	"REL_RED_SEAL": "REL_FANG",
+	"REL_CRIMSON_CHOIR": "REL_FANG",
+	"REL_ALEMBIC": "REL_FANG",
+	"REL_STORMCAP": "REL_OVERCHARGE",
+}
+
+const DECK_BUILDS := [
+	{
+		"id": "GUILLOTINE_ACES",
+		"name": "⚔ Guillotine Aces",
+		"name_cs": "⚔ Katova poprava (Esa)",
+		"col": Color(0.32, 0.88, 1.0),
+		"relics": ["REL_FORGEMASTER", "REL_FINAL_TOLL"],
+		"default_bankai": ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"],
+		"bankai_name": "BANKAI: CRIMSON GUILLOTINE",
+		"bankai_name_cs": "BANKAI: KRVAVÁ POPRAVA",
+		"bankai_desc": "Aces & Knights surge +40% Score (×1.4), pierce Shields & empower lethal executions!",
+		"bankai_desc_cs": "Esa a Rytíři získají ×1.4 skóre, prorážejí štíty a posílí popravu mečem!",
+		"desc": "Aggressive Ace & Knight execution build built around multi-card slams.",
+		"desc_cs": "Útočný build postavený na Esech, Rytířích a drtivých kombech.",
+	},
+	{
+		"id": "MIRROR_MONARCH",
+		"name": "🪞 Mirror Monarch",
+		"name_cs": "🪞 Zrcadlový panovník",
+		"col": Color(1.0, 0.78, 0.28),
+		"relics": ["REL_ROYAL", "REL_IRON_BOOT"],
+		"default_bankai": ["CERVEN_K", "GULA_K", "CERVEN_H", "GULA_D"],
+		"bankai_name": "BANKAI: SOVEREIGN MIRROR",
+		"bankai_name_cs": "BANKAI: ZRCADLOVÝ TRŮN",
+		"bankai_desc": "+2 Shields immediately, Court cards gain +18 pts & ×1.35 Mult for the duel!",
+		"bankai_desc_cs": "Ihned +2 Štíty, všechny figury (D/H/K/E) mají +18 b. a ×1.35 násobič po zbytek duelu!",
+		"desc": "Royal Court control & Shield fortress that reflects rival aggression.",
+		"desc_cs": "Královská obrana se štíty a silnými figurami (D/H/K/E).",
+	},
+	{
+		"id": "CHAOS_JESTER",
+		"name": "🃏 Chaos Jester",
+		"name_cs": "🃏 Šašek chaosu",
+		"col": Color(0.96, 0.36, 0.78),
+		"relics": ["REL_GREED", "REL_SEVEN_GRIMOIRE"],
+		"default_bankai": ["CERVEN_7", "GULA_7", "ZALUD_7", "ZELEN_H"],
+		"bankai_name": "BANKAI: CARNIVAL OF RUIN",
+		"bankai_name_cs": "BANKAI: KARNEVAL ŠÍLENSTVÍ",
+		"bankai_desc": "Sevens & Thieves trigger TWICE (+20g & -14 Rival drain on every play)!",
+		"bankai_desc_cs": "Sedmy a Zloději se spouštějí DVAKRÁT (+20g a -14 bodů soupeři každý tah)!",
+		"desc": "Relentless Seven barrages, Thief heists & golden chaos economy.",
+		"desc_cs": "Sedmové salvy, zlodějské krádeže a zlatý chaos.",
+	},
+	{
+		"id": "MISTBLADE_DUELIST",
+		"name": "🌫 Mistblade Shadow",
+		"name_cs": "🌫 Rytíř mlhy",
+		"col": Color(0.38, 0.96, 0.78),
+		"relics": ["REL_FANG", "REL_OVERCHARGE"],
+		"default_bankai": ["CERVEN_9", "ZELEN_8", "ZALUD_8", "CERVEN_E"],
+		"bankai_name": "BANKAI: ENDLESS MIST",
+		"bankai_name_cs": "BANKAI: NEKONEČNÁ MLHA",
+		"bankai_desc": "Charges all Mages to 2/2, every 2+ Combo drains -15 Rival & gains ×1.45 Mult!",
+		"bankai_desc_cs": "Nabije všechny Mágy na 2/2, každé 2+ kombo vysaje -15 soupeři a dá ×1.45 násobič!",
+		"desc": "Arcane Mage bursts & lethal shadow combos that drain opponents dry.",
+		"desc_cs": "Plně nabití Mágové a stínová komba vysávající soupeře.",
+	},
+]
 
 const STARTER_POWER_CARDS: Array[String] = ["SPEC_ORACLE", "SPEC_HEX"]
 const STARTER_RELICS: Array[String] = ["REL_GREED"]
@@ -23,27 +105,27 @@ const ERA_ORDER: Array[String] = ["antika", "rim", "stredovek", "objavy", "prohi
 
 const CAMPAIGN_UNLOCK_LADDER := {
 	"antika": [
-		{"power_cards": ["SPEC_SHIELD"], "relics": ["REL_FUJARA"], "table_relics": ["TRELIC_WAR_HORN"]},
+		{"power_cards": ["SPEC_SHIELD"], "relics": ["REL_FORGEMASTER"], "table_relics": ["TRELIC_WAR_HORN"]},
 		{"power_cards": ["SPEC_VAMPIRE"], "relics": ["REL_FANG"], "table_relics": ["TRELIC_BLOOD_SEAL"]},
-		{"power_cards": ["SPEC_MIDAS"], "relics": ["REL_IRON_BOOT", "REL_RED_SEAL"], "table_relics": ["TRELIC_SOUL_BELL"]},
+		{"power_cards": ["SPEC_MIDAS"], "relics": ["REL_IRON_BOOT"], "table_relics": ["TRELIC_SOUL_BELL"]},
 	],
 	"rim": [
-		{"power_cards": ["SPEC_ALCHEMIST"], "relics": ["REL_WOODCUTTER"], "table_relics": ["TRELIC_IRON_CHAIN"]},
-		{"power_cards": ["SPEC_MAGNET"], "relics": ["REL_ROYAL", "REL_PRSI_PURIST"], "table_relics": ["TRELIC_STAR_BOW"]},
-		{"power_cards": ["SPEC_PLAGUE"], "relics": ["REL_HEX_DOLL", "REL_GREEN_CANOPY"], "table_relics": []},
+		{"power_cards": ["SPEC_ALCHEMIST"], "relics": [], "table_relics": ["TRELIC_IRON_CHAIN"]},
+		{"power_cards": ["SPEC_MAGNET"], "relics": ["REL_ROYAL"], "table_relics": ["TRELIC_STAR_BOW"]},
+		{"power_cards": ["SPEC_PLAGUE"], "relics": [], "table_relics": []},
 	],
 	"stredovek": [
-		{"power_cards": ["SPEC_GAMBLER"], "relics": ["REL_KNUCKLE", "REL_SEVEN_GRIMOIRE"], "table_relics": ["TRELIC_CENSER"]},
-		{"power_cards": ["SPEC_MIRROR"], "relics": ["REL_FORGEMASTER", "REL_MERCHANT_LEDGER"], "table_relics": ["TRELIC_HOLLOW_MASK"]},
-		{"power_cards": ["SPEC_CROWN"], "relics": ["REL_COURT_SOVEREIGN", "REL_CRIMSON_CHOIR"], "table_relics": []},
+		{"power_cards": ["SPEC_GAMBLER"], "relics": ["REL_SEVEN_GRIMOIRE"], "table_relics": ["TRELIC_CENSER"]},
+		{"power_cards": ["SPEC_MIRROR"], "relics": [], "table_relics": ["TRELIC_HOLLOW_MASK"]},
+		{"power_cards": ["SPEC_CROWN"], "relics": [], "table_relics": []},
 	],
 	"objavy": [
-		{"power_cards": ["SPEC_STORM"], "relics": ["REL_ALEMBIC", "REL_OVERCHARGE"], "table_relics": ["TRELIC_ASH_GLASS"]},
-		{"power_cards": ["SPEC_PHOENIX"], "relics": ["REL_PHOENIX_F"], "table_relics": ["TRELIC_PHOENIX_BOX"]},
+		{"power_cards": ["SPEC_STORM"], "relics": ["REL_OVERCHARGE"], "table_relics": ["TRELIC_ASH_GLASS"]},
+		{"power_cards": ["SPEC_PHOENIX"], "relics": [], "table_relics": ["TRELIC_PHOENIX_BOX"]},
 		{"power_cards": ["SPEC_JESTER"], "relics": ["REL_FINAL_TOLL"], "table_relics": []},
 	],
 	"prohibicia": [
-		{"power_cards": [], "relics": ["REL_CHRONO_P"], "table_relics": []},
+		{"power_cards": [], "relics": [], "table_relics": []},
 		{"power_cards": [], "relics": [], "table_relics": []},
 		{"power_cards": ["SPEC_CHRONOS"], "relics": [], "table_relics": []},
 	],
@@ -247,144 +329,69 @@ const POWER_CARDS := [
 	},
 ]
 
+# ============================================================================
+# 8 CORE BUILD RELICS (4 Deck Builds × 2 Signature Relics each — v0.192 Overhaul)
+# ============================================================================
 const RELICS := [
+	# --- Build 1: GUILLOTINE ACES ---
 	{
-		"id": "REL_CHAMOIS", "name": "Chamois Horn", "name_cs": "Kamzičí roh", "icon": "Horn", "cost": 20,
-		"category": "Chips", "category_cs": "Body", "col": Color(0.92, 0.72, 0.32),
-		"desc": "+10 pts whenever a Clubs (♣) or Power Card scores.",
-		"desc_cs": "+10 bodů za každý Žalud (♣) nebo Mocnou kartu."
+		"id": "REL_FORGEMASTER", "build_id": "GUILLOTINE_ACES",
+		"name": "Executioner's Anvil", "name_cs": "Katova kovadlina", "icon": "Anvil", "cost": 22,
+		"category": "Guillotine Build", "category_cs": "Build: Kat (Esa)", "col": Color(0.32, 0.88, 1.0),
+		"desc": "GUILLOTINE RELIC: +15 pts on every Ace (E) or Knight card & +20 pts on 2+ card Combos.",
+		"desc_cs": "RELIKVIE KATA: +15 b. za každé Eso (E) nebo Rytíře a +20 b. za každé kombo (2+)."
 	},
 	{
-		"id": "REL_FUJARA", "name": "Copper Fujara", "name_cs": "Měděná fujara", "icon": "Flute", "cost": 22,
-		"category": "Flat Mult", "category_cs": "Násobitel", "col": Color(0.95, 0.56, 0.28),
-		"desc": "+2.5 Flat Mult on single-card plays.",
-		"desc_cs": "+2.5× násobitel při zahrání jediné karty."
+		"id": "REL_FINAL_TOLL", "build_id": "GUILLOTINE_ACES",
+		"name": "Executioner's Oath", "name_cs": "Katova přísaha", "icon": "Blade", "cost": 28,
+		"category": "Guillotine Build", "category_cs": "Build: Kat (Esa)", "col": Color(1.0, 0.28, 0.34),
+		"desc": "GUILLOTINE RELIC: ×1.5 X-Mult on 2+ card Combos (×2.0 when finishing with ≤1 card left)!",
+		"desc_cs": "RELIKVIE KATA: ×1.5 násobič u 2+ komba (×2.0, když zbývá ≤1 karta v ruce)!"
+	},
+	# --- Build 2: MIRROR MONARCH ---
+	{
+		"id": "REL_ROYAL", "build_id": "MIRROR_MONARCH",
+		"name": "Monarch's Signet", "name_cs": "Královská pečeť", "icon": "Ring", "cost": 24,
+		"category": "Monarch Build", "category_cs": "Build: Panovník", "col": Color(1.0, 0.84, 0.34),
+		"desc": "MONARCH RELIC: Court Cards (D/H/K/E) score +12 extra pts & Kings grant +1 Shield.",
+		"desc_cs": "RELIKVIE PANOVNÍKA: Figury (D/H/K/E) dávají +12 b. a Králové přidají +1 Štít."
 	},
 	{
-		"id": "REL_STORMCAP", "name": "Storm Capacitor", "name_cs": "Bouřková cívka", "icon": "Bolt", "cost": 25,
-		"category": "X-Mult", "category_cs": "×Násobič", "col": Color(0.38, 0.90, 1.0),
-		"desc": "×1.5 Mult & Lightning on every Combo (2+ cards).",
-		"desc_cs": "×1.5 násobitel a blesk při každém kombu (2+ karty)."
+		"id": "REL_IRON_BOOT", "build_id": "MIRROR_MONARCH",
+		"name": "Aegis Greaves", "name_cs": "Královské holeně", "icon": "Armor", "cost": 22,
+		"category": "Monarch Build", "category_cs": "Build: Panovník", "col": Color(0.74, 0.82, 0.92),
+		"desc": "MONARCH RELIC: Start every match with +1 Shield & +25 Score; Queens/Jacks gain ×1.25 Mult.",
+		"desc_cs": "RELIKVIE PANOVNÍKA: Start s +1 Štítem a +25 b.; Spodci a Svršci mají ×1.25 násobič."
+	},
+	# --- Build 3: CHAOS JESTER ---
+	{
+		"id": "REL_GREED", "build_id": "CHAOS_JESTER",
+		"name": "Trickster's Scale", "name_cs": "Šaškovy váhy", "icon": "Coin", "cost": 20,
+		"category": "Jester Build", "category_cs": "Build: Šašek", "col": Color(1.0, 0.82, 0.24),
+		"desc": "JESTER RELIC: +8 Florins on Bells (●) or Power plays & +12 pts on Wild Queens (H).",
+		"desc_cs": "RELIKVIE ŠAŠKA: +8 Zlatých za Koule (●) či Mocné karty a +12 b. za Svršky (H)."
 	},
 	{
-		"id": "REL_KNUCKLE", "name": "Loaded Knucklebone", "name_cs": "Kouzelná kůstka", "icon": "Bone", "cost": 32,
-		"category": "Chips", "category_cs": "Body", "col": Color(0.96, 0.86, 0.62),
-		"desc": "35% chance any play triggers its Chips twice!",
-		"desc_cs": "35% šance, že zahraná karta oboduje dvakrát!"
+		"id": "REL_SEVEN_GRIMOIRE", "build_id": "CHAOS_JESTER",
+		"name": "Grimoire of Sevens", "name_cs": "Grimoár sedmiček", "icon": "Grim", "cost": 26,
+		"category": "Jester Build", "category_cs": "Build: Šašek", "col": Color(0.94, 0.40, 0.84),
+		"desc": "JESTER RELIC: Every Seven (7) or Thief play adds +12 pts & drains -10 pts from Rival!",
+		"desc_cs": "RELIKVIE ŠAŠKA: Každá Sedma (7) či Zloděj přidá +12 b. a vysaje -10 b. ze soupeře!"
+	},
+	# --- Build 4: MISTBLADE SHADOW ---
+	{
+		"id": "REL_FANG", "build_id": "MISTBLADE_DUELIST",
+		"name": "Phantom Fang", "name_cs": "Stínový tesák", "icon": "Fang", "cost": 22,
+		"category": "Mistblade Build", "category_cs": "Build: Rytíř mlhy", "col": Color(0.92, 0.20, 0.34),
+		"desc": "MISTBLADE RELIC: Hearts (♥) & Shadow combos drain -12 pts from Rival & add +8 pts.",
+		"desc_cs": "RELIKVIE MLHY: Srdce (♥) a stínová komba vysají -12 b. soupeři a přidají +8 b."
 	},
 	{
-		"id": "REL_PHOENIX_F", "name": "Phoenix Feather", "name_cs": "Péro Fénixe", "icon": "Plume", "cost": 24,
-		"category": "X-Mult", "category_cs": "×Násobič", "col": Color(1.0, 0.44, 0.22),
-		"desc": "×1.6 X-Mult when finishing with ≤ 2 cards left.",
-		"desc_cs": "×1.6 násobitel, pokud ti v ruce zůstanou max. 2 karty."
-	},
-	{
-		"id": "REL_FANG", "name": "Crimson Fang", "name_cs": "Rudý tesák", "icon": "Fang", "cost": 20,
-		"category": "Utility", "category_cs": "Útok", "col": Color(0.90, 0.18, 0.30),
-		"desc": "Every Hearts (♥) card drains 10 pts from Rival.",
-		"desc_cs": "Každé zahrané Srdce (♥) vysaje 10 bodů ze soupeře."
-	},
-	{
-		"id": "REL_GREED", "name": "Merchant Scale", "name_cs": "Kupecké váhy", "icon": "Coin", "cost": 22,
-		"category": "Economy", "category_cs": "Zlato", "col": Color(1.0, 0.84, 0.20),
-		"desc": "+5 Florins per Bells (●) card & +15g on Victory.",
-		"desc_cs": "+5 Zlatých za každou Kouli (●) a +15g za vítězství."
-	},
-	{
-		"id": "REL_ALEMBIC", "name": "Hellfire Still", "name_cs": "Alchymistická baňka", "icon": "Flask", "cost": 24,
-		"category": "Alchemy", "category_cs": "Alchymie", "col": Color(0.96, 0.44, 0.18),
-		"desc": "+1 Hellfire Phial at match start; burning yields +15g & +40 pts.",
-		"desc_cs": "+1 Baňka ohně na startu; zapálení dá +15g a +40 b."
-	},
-	{
-		"id": "REL_ROYAL", "name": "King's Signet", "name_cs": "Královská pečeť", "icon": "Ring", "cost": 26,
-		"category": "Chips", "category_cs": "Body", "col": Color(1.0, 0.88, 0.38),
-		"desc": "Court Cards (D/H/K/E) score +10 extra pts.",
-		"desc_cs": "Všechny figury (Spodek, Svršek, Král, Eso) mají +10 bodů."
-	},
-	{
-		"id": "REL_CHRONO_P", "name": "Chrono Pendulum", "name_cs": "Kyvadlo času", "icon": "Clock", "cost": 25,
-		"category": "Utility", "category_cs": "Výhoda", "col": Color(0.56, 0.86, 0.96),
-		"desc": "+2 extra Redraws at the start of every match.",
-		"desc_cs": "+2 výměny karet navíc na začátku každého zápasu."
-	},
-	{
-		"id": "REL_HEX_DOLL", "name": "Voodoo Effigy", "name_cs": "Prokletá panenka", "icon": "Hex", "cost": 18,
-		"category": "Utility", "category_cs": "Útok", "col": Color(0.62, 0.30, 0.86),
-		"desc": "+12 pts whenever Rival is forced to draw penalty cards.",
-		"desc_cs": "+12 bodů pokaždé, když soupeř musí trestně lízat."
-	},
-	{
-		"id": "REL_IRON_BOOT", "name": "Legion Greaves", "name_cs": "Železné holeně", "icon": "Armor", "cost": 22,
-		"category": "Utility", "category_cs": "Obrana", "col": Color(0.70, 0.76, 0.84),
-		"desc": "Start every match with +1 Shield and +25 Score.",
-		"desc_cs": "Začni každý zápas s +1 Štítem a +25 body náskoku."
-	},
-	{
-		"id": "REL_OVERCHARGE", "name": "Tatra Rod", "name_cs": "Tatranský hromosvod", "icon": "Tower", "cost": 34,
-		"category": "Flat Mult", "category_cs": "Násobitel", "col": Color(0.46, 0.96, 1.0),
-		"desc": "Multi-card Combos gain +2.0× Flat Mult per extra card!",
-		"desc_cs": "Vícekartová komba přidají +2.0× za každou další kartu!"
-	},
-	{
-		"id": "REL_WOODCUTTER", "name": "Forest Cleaver", "name_cs": "Dřevorubcova sekera", "icon": "Axe", "cost": 20,
-		"category": "Chips", "category_cs": "Body", "col": Color(0.76, 0.62, 0.30),
-		"desc": "+30 Chips for every Clubs (♣) or Seven (7) played.",
-		"desc_cs": "+30 bodů za každý Žalud (♣) nebo Sedmu (7) v tahu."
-	},
-	{
-		"id": "REL_FORGEMASTER", "name": "Anvil Tally", "name_cs": "Kovářská kovadlina", "icon": "Anvil", "cost": 22,
-		"category": "Chips", "category_cs": "Body", "col": Color(0.95, 0.65, 0.28),
-		"desc": "+45 Chips per card on every Combo (2+ cards).",
-		"desc_cs": "+45 bodů za každou kartu při jakémkoli kombu (2+)."
-	},
-	{
-		"id": "REL_RED_SEAL", "name": "Waxed Sigil", "name_cs": "Vosková pečeť", "icon": "Seal", "cost": 20,
-		"category": "Chips", "category_cs": "Body", "col": Color(0.94, 0.34, 0.30),
-		"desc": "+28 Chips for every Red card (♥ Hearts or ● Bells).",
-		"desc_cs": "+28 bodů za každou červenou či zlatou kartu (♥ nebo ●)."
-	},
-	{
-		"id": "REL_CRIMSON_CHOIR", "name": "Crimson Choir", "name_cs": "Rudý chór", "icon": "Lyre", "cost": 24,
-		"category": "X-Mult", "category_cs": "×Násobič", "col": Color(0.96, 0.28, 0.42),
-		"desc": "×1.5 Mult when all played cards are ♥ or ●.",
-		"desc_cs": "×1.5 násobitel, pokud jsou všechny zahrané karty ♥ nebo ●."
-	},
-	{
-		"id": "REL_GREEN_CANOPY", "name": "Highland Canopy", "name_cs": "Lesní koruna", "icon": "Leaf", "cost": 25,
-		"category": "Flat Mult", "category_cs": "Násobitel", "col": Color(0.26, 0.82, 0.52),
-		"desc": "+6.0× Flat Mult if ≥ 2 Leaves/Clubs stay in hand.",
-		"desc_cs": "+6.0× násobitel, pokud máš v ruce aspoň 2× Listí nebo Žaludy."
-	},
-	{
-		"id": "REL_PRSI_PURIST", "name": "Tavern Purist", "name_cs": "Korbel štamgasta", "icon": "Mug", "cost": 23,
-		"category": "Flat Mult", "category_cs": "Násobitel", "col": Color(0.94, 0.78, 0.36),
-		"desc": "+4.5× Flat Mult on solo 7, Queen (H) or Ace (E).",
-		"desc_cs": "+4.5× násobitel při samotné Sedmě, Svrškovi nebo Esu."
-	},
-	{
-		"id": "REL_SEVEN_GRIMOIRE", "name": "Ledger of Sevens", "name_cs": "Grimoár sedmiček", "icon": "Grim", "cost": 30,
-		"category": "Scaling", "category_cs": "Růst", "col": Color(0.82, 0.46, 1.0),
-		"desc": "SCALING: Gains +0.15× permanently every Seven (7) played!",
-		"desc_cs": "TRVALÝ RŮST: Přidá +0.15× za každou zahranou Sedmu!"
-	},
-	{
-		"id": "REL_MERCHANT_LEDGER", "name": "Peddler's Ledger", "name_cs": "Kniha kramáře", "icon": "Scroll", "cost": 26,
-		"category": "Scaling", "category_cs": "Růst", "col": Color(1.0, 0.84, 0.32),
-		"desc": "SCALING: Gains +18 Chips every time you Reroll Shop!",
-		"desc_cs": "TRVALÝ RŮST: Přidá +18 bodů za každé obnovení Obchodu!"
-	},
-	{
-		"id": "REL_FINAL_TOLL", "name": "Executioner's Oath", "name_cs": "Katova přísaha", "icon": "Blade", "cost": 32,
-		"category": "X-Mult", "category_cs": "×Násobič", "col": Color(1.0, 0.24, 0.28),
-		"desc": "×2.5 X-Mult when emptying hand to 0 cards (×1.5 at 1 left)!",
-		"desc_cs": "×2.5 násobitel při vyhození poslední karty v ruce (×1.5 s 1 kartou)!"
-	},
-	{
-		"id": "REL_COURT_SOVEREIGN", "name": "Sovereign Treasury", "name_cs": "Královská pokladna", "icon": "Crown", "cost": 34,
-		"category": "X-Mult", "category_cs": "×Násobič", "col": Color(1.0, 0.86, 0.28),
-		"desc": "×1.4 X-Mult per Court card (D/H/K/E) still held in hand!",
-		"desc_cs": "×1.4 násobitel za každou figuru (D/H/K/E) drženou v ruce!"
+		"id": "REL_OVERCHARGE", "build_id": "MISTBLADE_DUELIST",
+		"name": "Mistborn Conduit", "name_cs": "Mlžný reaktor", "icon": "Tower", "cost": 28,
+		"category": "Mistblade Build", "category_cs": "Build: Rytíř mlhy", "col": Color(0.38, 0.96, 0.78),
+		"desc": "MISTBLADE RELIC: 2+ Combos grant +1 Mage Charge & ×1.45 Mult on Mage/Power bursts!",
+		"desc_cs": "RELIKVIE MLHY: 2+ komba přidají +1 Mage Charge a ×1.45 násobič na Mágy a Mocné karty!"
 	},
 ]
 
@@ -917,6 +924,33 @@ static func get_relic(rel_id: String) -> Dictionary:
 			return r
 	return {}
 
+static func get_deck_build(build_id: String) -> Dictionary:
+	for b in DECK_BUILDS:
+		if str(b.get("id", "")) == build_id:
+			return b
+	return DECK_BUILDS[0]
+
+static func get_deck_build_loc(build_id: String, lang: String = "en") -> Dictionary:
+	var b := get_deck_build(build_id).duplicate(true)
+	if lang == "cs":
+		b["name"] = str(b.get("name_cs", b.get("name", "")))
+		b["desc"] = str(b.get("desc_cs", b.get("desc", "")))
+		b["bankai_name"] = str(b.get("bankai_name_cs", b.get("bankai_name", "")))
+		b["bankai_desc"] = str(b.get("bankai_desc_cs", b.get("bankai_desc", "")))
+	return b
+
+static func get_relics_for_build(build_id: String) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for r in RELICS:
+		if str(r.get("build_id", "")) == build_id:
+			out.append(r)
+	return out
+
+static func migrate_relic_id(rid: String) -> String:
+	if LEGACY_RELIC_MIGRATION.has(rid):
+		return str(LEGACY_RELIC_MIGRATION[rid])
+	return rid
+
 static func is_relic_hidden(rel_id: String) -> bool:
 	return rel_id in TEMPORARILY_HIDDEN_RELICS
 
@@ -1039,10 +1073,14 @@ static func get_default_profile() -> Dictionary:
 		"unlocked_power_cards": STARTER_POWER_CARDS.duplicate(),
 		"unlocked_relics": STARTER_RELICS.duplicate(),
 		"unlocked_table_relics": STARTER_TABLE_RELICS.duplicate(),
+		"selected_build_id": "GUILLOTINE_ACES",
+		"bankai_combo": ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"],
 		"mp_loadout": {
+			"archetype_id": "GUILLOTINE_ACES",
 			"power_cards": STARTER_POWER_CARDS.duplicate(),
 			"table_relics": STARTER_TABLE_RELICS.duplicate(),
 			"passive_relics": STARTER_RELICS.duplicate(),
+			"bankai_combo": ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"],
 			"sword_skin": "SWORD_IRON",
 		},
 		"seen_unlock_tips": [],
@@ -1223,6 +1261,7 @@ static func get_default_options() -> Dictionary:
 		"mp_freelook_enabled": true,
 		"mp_freelook_sensitivity": 1.0,
 		"game_pace": "relaxed", # "relaxed" (default), "normal", "fast"
+		"turn_timer_sec": 35, # 30..45s per turn (auto-draw on expiry)
 		"fullscreen": true,
 		"tutorial_done": false,
 	}
@@ -1243,6 +1282,7 @@ static func load_options() -> Dictionary:
 	opts["mp_freelook_sensitivity"] = clampf(float(cfg.get_value("controls", "mp_freelook_sensitivity", 1.0)), 0.4, 2.0)
 	var gp := str(cfg.get_value("general", "game_pace", "relaxed"))
 	opts["game_pace"] = gp if (gp in ["relaxed", "normal", "fast"]) else "relaxed"
+	opts["turn_timer_sec"] = clampi(int(cfg.get_value("general", "turn_timer_sec", 35)), 30, 45)
 	opts["fullscreen"] = bool(cfg.get_value("video", "fullscreen", true))
 	opts["tutorial_done"] = bool(cfg.get_value("general", "tutorial_done", false))
 	return opts
@@ -1251,6 +1291,7 @@ static func save_options(opts: Dictionary) -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("general", "language", str(opts.get("language", "en")))
 	cfg.set_value("general", "game_pace", str(opts.get("game_pace", "relaxed")))
+	cfg.set_value("general", "turn_timer_sec", clampi(int(opts.get("turn_timer_sec", 35)), 30, 45))
 	cfg.set_value("general", "tutorial_done", bool(opts.get("tutorial_done", false)))
 	cfg.set_value("audio", "sfx_volume", clampi(int(opts.get("sfx_volume", 85)), 0, 100))
 	cfg.set_value("audio", "muted", bool(opts.get("muted", false)))
@@ -1287,12 +1328,12 @@ static func sanitize_profile(prof: Dictionary) -> Dictionary:
 		clean_uc = DEFAULT_UNLOCKED_CARDS.duplicate()
 	prof["unlocked_cards"] = clean_uc
 
-	# Strip archived or temporarily hidden Relics (REL_PRISM_ORB, REL_CHAMOIS, REL_STORMCAP) from active_relics
+	# Migrate legacy Relics to the 8 Core Build Relics and strip invalid IDs
 	var raw_ar = prof.get("active_relics", [])
 	var clean_ar: Array = []
 	if raw_ar is Array:
 		for rid_v in raw_ar:
-			var rid := str(rid_v)
+			var rid := migrate_relic_id(str(rid_v))
 			if (rid in ARCHIVED_RELIC_IDS) or is_relic_hidden(rid) or get_relic(rid).is_empty():
 				continue
 			if not (rid in clean_ar):
@@ -1350,7 +1391,7 @@ static func sanitize_profile(prof: Dictionary) -> Dictionary:
 	var raw_ur = prof.get("unlocked_relics", [])
 	if raw_ur is Array:
 		for rid_v in raw_ur:
-			var rid := str(rid_v)
+			var rid := migrate_relic_id(str(rid_v))
 			if not (rid in ARCHIVED_RELIC_IDS) and not is_relic_hidden(rid) and not get_relic(rid).is_empty() and not (rid in clean_ur):
 				clean_ur.append(rid)
 	prof["unlocked_relics"] = clean_ur
@@ -1397,16 +1438,35 @@ static func sanitize_profile(prof: Dictionary) -> Dictionary:
 			mp_tr.append(ts)
 	var mp_pr: Array = []
 	for rv in mp_in.get("passive_relics", STARTER_RELICS):
-		var rs := str(rv)
+		var rs := migrate_relic_id(str(rv))
 		if (rs in clean_ur) and not (rs in mp_pr) and mp_pr.size() < 2:
 			mp_pr.append(rs)
+	var sel_build_id := str(prof.get("selected_build_id", mp_in.get("archetype_id", "GUILLOTINE_ACES")))
+	var build_def := get_deck_build(sel_build_id)
+	sel_build_id = str(build_def.get("id", "GUILLOTINE_ACES"))
+	prof["selected_build_id"] = sel_build_id
+	var clean_bankai: Array = []
+	var raw_bc = prof.get("bankai_combo", build_def.get("default_bankai", []))
+	if raw_bc is Array:
+		for bk in raw_bc:
+			var bks := str(bk).strip_edges()
+			if bks != "" and not (bks in clean_bankai) and clean_bankai.size() < 4:
+				clean_bankai.append(bks)
+	if clean_bankai.size() < 4:
+		for fb in build_def.get("default_bankai", ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"]):
+			var fbs := str(fb)
+			if not (fbs in clean_bankai) and clean_bankai.size() < 4:
+				clean_bankai.append(fbs)
+	prof["bankai_combo"] = clean_bankai
 	var mp_sw := str(mp_in.get("sword_skin", prof.get("equipped_sword", "SWORD_IRON")))
 	if not (mp_sw in prof.get("unlocked_swords", ["SWORD_IRON"])):
 		mp_sw = str(prof.get("equipped_sword", "SWORD_IRON"))
 	prof["mp_loadout"] = {
+		"archetype_id": sel_build_id,
 		"power_cards": mp_pc,
 		"table_relics": mp_tr,
 		"passive_relics": mp_pr,
+		"bankai_combo": clean_bankai.duplicate(),
 		"sword_skin": mp_sw,
 	}
 
@@ -1510,6 +1570,12 @@ static func load_profile() -> Dictionary:
 		var mpl = cfg.get_value("meta", "mp_loadout", prof["mp_loadout"])
 		if mpl is Dictionary:
 			prof["mp_loadout"] = mpl
+	if cfg.has_section_key("deck", "selected_build_id"):
+		prof["selected_build_id"] = str(cfg.get_value("deck", "selected_build_id", "GUILLOTINE_ACES"))
+	if cfg.has_section_key("deck", "bankai_combo"):
+		var bc_saved = cfg.get_value("deck", "bankai_combo", prof["bankai_combo"])
+		if bc_saved is Array:
+			prof["bankai_combo"] = bc_saved
 
 	# Legacy save migration: preserve existing owned cards/relics & grant ladder unlocks for already-cleared eras
 	if not has_meta_pc or not has_meta_rel or not has_meta_trel:
@@ -1552,6 +1618,8 @@ static func save_profile(prof: Dictionary) -> void:
 	cfg.set_value("deck", "active_relics", prof.get("active_relics", []))
 	cfg.set_value("deck", "table_relics", prof.get("table_relics", []))
 	cfg.set_value("deck", "card_editions", prof.get("card_editions", {}))
+	cfg.set_value("deck", "selected_build_id", str(prof.get("selected_build_id", "GUILLOTINE_ACES")))
+	cfg.set_value("deck", "bankai_combo", prof.get("bankai_combo", []))
 	cfg.set_value("sculpt", "removed_cards", prof.get("removed_cards", []))
 	cfg.set_value("sculpt", "added_cards", prof.get("added_cards", []))
 	cfg.set_value("sculpt", "suit_overrides", prof.get("suit_overrides", {}))

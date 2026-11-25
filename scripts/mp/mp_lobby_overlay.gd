@@ -1100,6 +1100,7 @@ func _refresh_recent_list() -> void:
 
 
 func _build_local_deck_cfg(arch_id: String) -> Dictionary:
+	var b_combo: Array = _profile.get("bankai_combo", Catalog.get_deck_build(arch_id).get("default_bankai", ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"]))
 	return {
 		"archetype_id": arch_id,
 		"extra_aces": extra_aces_val,
@@ -1107,6 +1108,7 @@ func _build_local_deck_cfg(arch_id: String) -> Dictionary:
 		"power_cards": selected_power_cards.duplicate(),
 		"table_relics": selected_table_relics.duplicate(),
 		"passive_relics": selected_passive_relics.duplicate(),
+		"bankai_combo": b_combo.duplicate(),
 		"sword_skin": equipped_sword_id,
 	}
 
@@ -1161,9 +1163,11 @@ func _load_vault_from_profile() -> void:
 
 func _save_vault_to_profile() -> void:
 	_profile["mp_loadout"] = {
+		"archetype_id": selected_arch_id,
 		"power_cards": selected_power_cards.duplicate(),
 		"table_relics": selected_table_relics.duplicate(),
 		"passive_relics": selected_passive_relics.duplicate(),
+		"bankai_combo": (_profile.get("bankai_combo", Catalog.get_deck_build(selected_arch_id).get("default_bankai", [])) as Array).duplicate(),
 		"sword_skin": equipped_sword_id,
 	}
 	Catalog.save_profile(_profile)

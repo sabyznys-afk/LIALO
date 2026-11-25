@@ -15,6 +15,7 @@ const RelicMesh = preload("res://scripts/relic_mesh_factory.gd")
 const HeartbeatHpScript = preload("res://scripts/heartbeat_hp_display.gd")
 const Config = preload("res://scripts/mp/mp_config.gd")
 const TavernBuilder = preload("res://scripts/battle/tavern_scene_builder.gd")
+const BankaiFxScript = preload("res://scripts/battle/bankai_fx.gd")
 const History = preload("res://scripts/mp/mp_history.gd")
 
 const CARD_FX_SHADER := preload("res://shaders/card_fx.gdshader")
@@ -118,6 +119,15 @@ var _combat_log_lines: Array[String] = []
 var player_hp_heart: Control
 var turn_banner_grp: Control
 var turn_banner_lbl: Label
+var turn_timer_panel: PanelContainer
+var turn_timer_lbl: Label
+var turn_timer_bar: ColorRect
+var bankai_fx: BankaiFxScript
+var bankai_seal_panel: PanelContainer
+var bankai_seal_lbl: Label
+var _mp_turn_timer_left: float = 35.0
+var _mp_turn_timer_max: float = 35.0
+var _mp_last_tick_sec: int = -1
 var bottom_left_status_pill: PanelContainer
 var status_cards_coins_lbl: Label
 var target_plaques_box: VBoxContainer
@@ -304,6 +314,32 @@ func _process(delta: float) -> void:
 		_toast_timer -= delta
 		if _toast_timer <= 0.0 and is_instance_valid(center_banner_lbl):
 			center_banner_lbl.text = str(public_state.get("banner", ""))
+
+	# Smooth local countdown for the 30-45s Turn Timer HUD pill
+	if is_instance_valid(turn_timer_panel):
+		var show_tt := (not match_over) and i_am_alive and (local_parry_left <= 0.0)
+		turn_timer_panel.visible = show_tt
+		if show_tt:
+			_mp_turn_timer_left = maxf(0.0, _mp_turn_timer_left - delta)
+			var frac := clampf(_mp_turn_timer_left / maxf(1.0, _mp_turn_timer_max), 0.0, 1.0)
+			var sec_ceil := int(ceil(_mp_turn_timer_left))
+			var is_my_t := (int(public_state.get("turn_seat", -1)) == my_seat)
+			if is_instance_valid(turn_timer_lbl):
+				turn_timer_lbl.text = ("⏳ YOUR TURN: %ds" % sec_ceil) if is_my_t else ("⏳ TURN: %ds" % sec_ceil)
+			var bar_col := Color(0.96, 0.78, 0.26, 0.96)
+			if _mp_turn_timer_left <= 10.0:
+				var p := 0.55 + 0.45 * absf(sin(_mp_anim_t * 7.5))
+				bar_col = Color(1.0, 0.22 * p, 0.20, 0.98)
+				if is_my_t and sec_ceil > 0 and sec_ceil <= 5 and sec_ceil != _mp_last_tick_sec:
+					_mp_last_tick_sec = sec_ceil
+					play_sfx_requested.emit("btn_card_tick")
+			elif _mp_turn_timer_left <= 15.0:
+				bar_col = Color(1.0, 0.56, 0.18, 0.96)
+			if is_instance_valid(turn_timer_lbl):
+				turn_timer_lbl.add_theme_color_override("font_color", bar_col.lightened(0.22))
+			if is_instance_valid(turn_timer_bar):
+				turn_timer_bar.anchor_right = frac
+				turn_timer_bar.color = bar_col
 
 	# Aim local sword visually toward currently chosen target seat!
 	if seat_nodes.has(my_seat) and seat_nodes.has(selected_target):
@@ -826,6 +862,61 @@ func _build_hud() -> void:
 	turn_banner_lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.42))
 	turn_banner_grp.add_child(turn_banner_lbl)
 
+	# Diegetic Turn Timer Pill directly above the turn banner (30-45s countdown + urgency bar)
+	turn_timer_panel = PanelContainer.new()
+	turn_timer_panel.anchor_left = 0.0; turn_timer_panel.anchor_top = 1.0
+	turn_timer_panel.anchor_right = 0.0; turn_timer_panel.anchor_bottom = 1.0
+	turn_timer_panel.offset_left = 18; turn_timer_panel.offset_top = -194
+	turn_timer_panel.offset_right = 248; turn_timer_panel.offset_bottom = -156
+	turn_timer_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.08, 0.06, 0.045, 0.92), Color(0.92, 0.74, 0.28, 0.88), 2, 8, 5))
+	turn_timer_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_root.add_child(turn_timer_panel)
+
+	var tt_vb := VBoxContainer.new()
+	tt_vb.add_theme_constant_override("separation", 3)
+	turn_timer_panel.add_child(tt_vb)
+
+	turn_timer_lbl = Label.new()
+	turn_timer_lbl.text = "⏳ 35s"
+	turn_timer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_apply_font(turn_timer_lbl, true)
+	turn_timer_lbl.add_theme_font_size_override("font_size", 14)
+	turn_timer_lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.48))
+	tt_vb.add_child(turn_timer_lbl)
+
+	var tt_bar_bg := ColorRect.new()
+	tt_bar_bg.custom_minimum_size = Vector2(204, 6)
+	tt_bar_bg.color = Color(0.16, 0.12, 0.09, 0.92)
+	tt_vb.add_child(tt_bar_bg)
+
+	turn_timer_bar = ColorRect.new()
+	turn_timer_bar.anchor_left = 0.0; turn_timer_bar.anchor_top = 0.0
+	turn_timer_bar.anchor_right = 1.0; turn_timer_bar.anchor_bottom = 1.0
+	turn_timer_bar.color = Color(0.96, 0.78, 0.26, 0.96)
+	tt_bar_bg.add_child(turn_timer_bar)
+
+	# 4-Card Bankai Awakening Seal Pill directly above MP Turn Timer
+	bankai_seal_panel = PanelContainer.new()
+	bankai_seal_panel.anchor_left = 0.0; bankai_seal_panel.anchor_top = 1.0
+	bankai_seal_panel.anchor_right = 0.0; bankai_seal_panel.anchor_bottom = 1.0
+	bankai_seal_panel.offset_left = 18; bankai_seal_panel.offset_top = -232
+	bankai_seal_panel.offset_right = 248; bankai_seal_panel.offset_bottom = -198
+	bankai_seal_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.06, 0.05, 0.08, 0.92), Color(0.32, 0.88, 1.0, 0.86), 2, 8, 4))
+	bankai_seal_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud_root.add_child(bankai_seal_panel)
+
+	bankai_seal_lbl = Label.new()
+	bankai_seal_lbl.text = "⚡ BANKAI SEAL: 0 / 4"
+	bankai_seal_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_apply_font(bankai_seal_lbl, true)
+	bankai_seal_lbl.add_theme_font_size_override("font_size", 13)
+	bankai_seal_lbl.add_theme_color_override("font_color", Color(0.55, 0.94, 1.0))
+	bankai_seal_panel.add_child(bankai_seal_lbl)
+
+	if not is_instance_valid(bankai_fx):
+		bankai_fx = BankaiFxScript.new()
+		add_child(bankai_fx)
+
 	bottom_left_status_pill = PanelContainer.new()
 	bottom_left_status_pill.anchor_left = 0.0; bottom_left_status_pill.anchor_top = 1.0
 	bottom_left_status_pill.anchor_right = 0.0; bottom_left_status_pill.anchor_bottom = 1.0
@@ -1224,6 +1315,22 @@ func _on_public_state(state: Dictionary) -> void:
 		_play_mp_round_transition_anim(prev_r, r_now)
 	if is_instance_valid(center_banner_lbl) and _toast_timer <= 0.0:
 		center_banner_lbl.text = str(state.get("banner", ""))
+	if state.has("turn_timer"):
+		_mp_turn_timer_left = maxf(0.0, float(state.get("turn_timer", Config.TURN_TIMEOUT_SEC)))
+	if state.has("turn_timeout_sec"):
+		_mp_turn_timer_max = clampf(float(state.get("turn_timeout_sec", Config.TURN_TIMEOUT_SEC)), 10.0, 60.0)
+	if _mp_turn_timer_left > 6.0:
+		_mp_last_tick_sec = -1
+	if is_instance_valid(bankai_seal_lbl):
+		var my_pub := _get_pub_seat(my_seat)
+		if not my_pub.is_empty():
+			var b_act := bool(my_pub.get("bankai_active", false))
+			var b_prog := int(my_pub.get("bankai_progress", 0))
+			var b_id := str(my_pub.get("bankai_build_id", "GUILLOTINE_ACES"))
+			var b_def := Catalog.get_deck_build(b_id)
+			var b_col: Color = b_def.get("col", Color(0.32, 0.88, 1.0))
+			bankai_seal_lbl.text = ("⚡ %s" % str(b_def.get("bankai_name", "BANKAI ACTIVE"))) if b_act else ("⚡ BANKAI SEAL: %d / 4" % b_prog)
+			bankai_seal_lbl.add_theme_color_override("font_color", Color(1.0, 0.94, 0.56) if b_act else b_col.lightened(0.22))
 
 	# Update top center discard card visual if discard count grew
 	var top_c: Dictionary = state.get("top_card", {})
@@ -1362,6 +1469,16 @@ func _on_vfx_event(evt: Dictionary) -> void:
 	var etype := str(evt.get("type", ""))
 	var center := global_position + Vector3(0.0, 0.85, 0.0)
 	match etype:
+		"BANKAI_AWAKENING":
+			var b_seat := int(evt.get("seat", 0))
+			var b_id := str(evt.get("build_id", "GUILLOTINE_ACES"))
+			var b_caster := str(evt.get("caster", "Duelist"))
+			var b_combo: Array = evt.get("combo", [])
+			var b_def := Catalog.get_deck_build(b_id)
+			_append_combat_log("[color=#55f0ff]⚡ %s UNLEASHED %s![/color]" % [b_caster, str(b_def.get("bankai_name", "BANKAI"))])
+			cam_kick_shake = maxf(cam_kick_shake, 0.72)
+			if is_instance_valid(bankai_fx):
+				bankai_fx.trigger_bankai(b_id, b_caster, b_combo, "en", b_seat == my_seat)
 		"CARD_PLAY":
 			var fs := int(evt.get("from_seat", 0))
 			var ts := int(evt.get("to_seat", 1))

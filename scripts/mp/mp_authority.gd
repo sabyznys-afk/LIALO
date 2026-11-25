@@ -23,7 +23,9 @@ var turn_seat: int = 0
 var turn_dir: int = 1
 var round_num: int = 1
 var pending_draw_stack: int = 0
+var turn_timeout_sec: float = Config.TURN_TIMEOUT_SEC
 var turn_timer: float = Config.TURN_TIMEOUT_SEC
+var cinematic_pause_timer: float = 0.0
 var extra_turn_seat: int = -1
 
 var pending_parry: Dictionary = {} # Empty when not in parry window
@@ -39,6 +41,8 @@ var rng := RandomNumberGenerator.new()
 func setup_match(lobby_seats: Array, settings: Dictionary) -> void:
 	rng.randomize()
 	rule_mode = str(settings.get("rule_mode", "OP_CHAOS"))
+	turn_timeout_sec = clampf(float(settings.get("turn_timer_sec", Config.TURN_TIMEOUT_SEC)), Config.TURN_TIMEOUT_MIN, Config.TURN_TIMEOUT_MAX)
+	cinematic_pause_timer = 0.0
 	seats.clear()
 	discard_pile.clear()
 	pending_parry.clear()
@@ -102,6 +106,10 @@ func setup_match(lobby_seats: Array, settings: Dictionary) -> void:
 			"hand": [],
 			"items": item_list,
 			"passive_relics": passive_list,
+			"bankai_build_id": str(clean_cfg.get("archetype_id", "GUILLOTINE_ACES")),
+			"bankai_combo": (clean_cfg.get("bankai_combo", Catalog.get_deck_build(str(clean_cfg.get("archetype_id", "GUILLOTINE_ACES"))).get("default_bankai", ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"])) as Array).duplicate(),
+			"bankai_charged": [],
+			"bankai_active": false,
 			"item_uses": {},
 		}
 		seats.append(seat)
@@ -118,7 +126,7 @@ func setup_match(lobby_seats: Array, settings: Dictionary) -> void:
 	discard_pile.append(top)
 	active_suit = str(top["suit"])
 	turn_seat = 0
-	turn_timer = Config.TURN_TIMEOUT_SEC
+	turn_timer = turn_timeout_sec
 	banner_text = "Tavern Brawl Begun! 3× Aces = Instant Kill on Chosen Target!"
 
 	_sync_all()
@@ -135,6 +143,11 @@ func tick(delta: float) -> void:
 			s["ghost_cd"] = maxf(0.0, float(s["ghost_cd"]) - delta)
 			if bool(s["is_bot"]) and float(s["ghost_cd"]) <= 0.01:
 				_bot_ghost_act(int(s["seat_idx"]))
+
+	# Priority 0: Cinematic Pause (e.g. Bankai Awakening cut-in)
+	if cinematic_pause_timer > 0.0:
+		cinematic_pause_timer = maxf(0.0, cinematic_pause_timer - delta)
+		return
 
 	# Priority 1: Active Parry / Interrupt Window before Sword Execution lands!
 	if not pending_parry.is_empty():
@@ -161,10 +174,10 @@ func tick(delta: float) -> void:
 			_perform_bot_turn(cur)
 		return
 
-	# Priority 3: Human Turn Timeout Safeguard
+	# Priority 3: Human Turn Timeout Safeguard (30-45s -> auto-draw card)
 	turn_timer -= delta
 	if turn_timer <= 0.0:
-		banner_text = "%s ran out of time — forced draw!" % str(cur["name"])
+		banner_text = "⏱ %s ran out of time — auto-drew a card!" % str(cur["name"])
 		handle_draw_card(int(cur["peer_id"]), turn_seat)
 
 
@@ -222,7 +235,32 @@ func handle_play_cards(peer_id: int, seat_idx_hint: int, card_indices: Array, ta
 		elif cls == "THIEF": thief_cnt += 1
 		if pid != "": power_ids.append(pid)
 
-	# Compute combo damage via ScoringEngine + MP OP scaling + Passive Relics
+	# Check 4-Card Bankai Awakening Seal (instant 4-card play OR cumulative 4/4 in duel)
+	var b_combo: Array = s.get("bankai_combo", [])
+	var b_charged: Array = s.get("bankai_charged", [])
+	var bankai_just_triggered := false
+	if not bool(s.get("bankai_active", false)) and b_combo.size() >= 4:
+		for pc_b in played:
+			var ck_b := "%s_%s" % [str(pc_b.get("suit", "")), str(pc_b.get("rank", ""))]
+			if (ck_b in b_combo) and not (ck_b in b_charged):
+				b_charged.append(ck_b)
+		s["bankai_charged"] = b_charged
+		if b_charged.size() >= 4:
+			s["bankai_active"] = true
+			bankai_just_triggered = true
+			cinematic_pause_timer = 2.1
+			var b_id := str(s.get("bankai_build_id", "GUILLOTINE_ACES"))
+			var b_loc := Catalog.get_deck_build(b_id)
+			banner_text = "⚡ %s UNLEASHED %s!" % [str(s["name"]), str(b_loc.get("bankai_name", "BANKAI"))]
+			broadcast_vfx_event.emit({
+				"type": "BANKAI_AWAKENING",
+				"seat": turn_seat,
+				"build_id": b_id,
+				"caster": str(s["name"]),
+				"combo": b_combo.duplicate(),
+			})
+
+	# Compute combo damage via ScoringEngine + MP OP scaling + Passive Relics + Bankai Buff
 	var passive_rels: Array = s.get("passive_relics", [])
 	var used_blood_seal := bool(s.get("blood_seal_active", false))
 	var used_hollow_mask := bool(s.get("hollow_mask_active", false))
@@ -234,7 +272,22 @@ func handle_play_cards(peer_id: int, seat_idx_hint: int, card_indices: Array, ta
 		"blood_seal_active": used_blood_seal,
 		"hollow_mask_active": used_hollow_mask,
 		"surge_mult": used_surge,
+		"bankai_active": bool(s.get("bankai_active", false)),
+		"bankai_build_id": str(s.get("bankai_build_id", "GUILLOTINE_ACES")),
 	})
+	if bankai_just_triggered:
+		match str(s.get("bankai_build_id", "GUILLOTINE_ACES")):
+			"GUILLOTINE_ACES":
+				s["whetstone_stacks"] = int(s.get("whetstone_stacks", 0)) + 1
+			"MIRROR_MONARCH":
+				s["shields"] = int(s["shields"]) + 25
+				s["aegis_reflect"] = true
+			"CHAOS_JESTER":
+				s["gold"] = int(s["gold"]) + 25
+				_draw_one_for_seat(s)
+			"MISTBLADE_DUELIST":
+				s["hp"] = mini(int(s["max_hp"]), int(s["hp"]) + 18)
+				s["mist_turns"] = maxi(int(s["mist_turns"]), 2)
 	s["blood_seal_active"] = false
 	s["hollow_mask_active"] = false
 	s["surge_mult"] = 0.0
@@ -352,7 +405,7 @@ func handle_play_cards(peer_id: int, seat_idx_hint: int, card_indices: Array, ta
 	if extra_turn_seat == turn_seat:
 		extra_turn_seat = -1
 		s["item_used_this_turn"] = false
-		turn_timer = Config.TURN_TIMEOUT_SEC
+		turn_timer = turn_timeout_sec
 	else:
 		var skip_n := 1 if (ace_cnt > 0 and pending_draw_stack == 0) else 0
 		_advance_turn(skip_n)
@@ -639,7 +692,7 @@ func handle_parry_response(peer_id: int, seat_idx_hint: int, choice: String) -> 
 				banner_text = "⏳ TIME REWIND! %s negated the execution & took the turn!" % tgt_s["name"]
 				broadcast_vfx_event.emit({"type": "CHRONOS_SAVE", "seat": tgt_idx})
 				turn_seat = tgt_idx
-				turn_timer = Config.TURN_TIMEOUT_SEC
+				turn_timer = turn_timeout_sec
 				_sync_all()
 				_queue_bot_if_needed()
 				return
@@ -1009,7 +1062,7 @@ func _advance_turn(extra_skips: int = 0) -> void:
 				continue
 			steps -= 1
 	turn_seat = next
-	turn_timer = Config.TURN_TIMEOUT_SEC
+	turn_timer = turn_timeout_sec
 	var cur := _get_seat(turn_seat)
 	if not cur.is_empty():
 		cur["item_used_this_turn"] = false
@@ -1202,6 +1255,9 @@ func _build_public_seats() -> Array:
 			"aegis_reflect": bool(s["aegis_reflect"]),
 			"hollow_mask_active": bool(s.get("hollow_mask_active", false)),
 			"item_used_this_turn": bool(s.get("item_used_this_turn", false)),
+			"bankai_active": bool(s.get("bankai_active", false)),
+			"bankai_progress": (s.get("bankai_charged", []) as Array).size(),
+			"bankai_build_id": str(s.get("bankai_build_id", "GUILLOTINE_ACES")),
 			"hand_count": -1 if mist else s["hand"].size(),
 			"deck_count": s["draw_pile"].size(),
 			"items_count": s["items"].size(),
@@ -1232,6 +1288,7 @@ func _sync_all() -> void:
 		"round_num": round_num,
 		"pending_draw_stack": pending_draw_stack,
 		"turn_timer": turn_timer,
+		"turn_timeout_sec": turn_timeout_sec,
 		"rule_mode": rule_mode,
 		"pending_parry": parry_pub,
 		"banner": banner_text,
