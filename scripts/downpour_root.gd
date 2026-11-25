@@ -13,6 +13,7 @@ const LobbyOptions3DScript := preload("res://scripts/lobby_options_3d.gd")
 const SnakeLoadingScreenScript := preload("res://scripts/ui/snake_loading_screen.gd")
 const DeckBuilderPanelScript := preload("res://scripts/ui/deck_builder_panel.gd")
 const RELIC_INSPECT_PATH := "res://scripts/ui/relic_inspect_3d.gd"
+const DevAssetInspectorScript := preload("res://scripts/ui/dev_asset_inspector.gd")
 const LialoIcons := preload("res://scripts/ui/lialo_icons.gd")
 
 enum ScreenState { SPLASH, MAIN_MENU, WORLD_3D, MATCH_3D }
@@ -56,6 +57,9 @@ var game_options: Dictionary = {}
 var options_layer: CanvasLayer
 var options_3d: LobbyOptions3DScript
 var lobby_options_btn: Button
+var lobby_dev_btn: Button
+var dev_inspector_layer: CanvasLayer
+var dev_inspector: DevAssetInspectorScript
 var collection_close_btn: Button
 var collection_det_close_btn: Button
 var map_btn_back: Button
@@ -761,6 +765,37 @@ func _update_battle_music_mix(delta: float) -> void:
 		var progress := maxf(p_sc, a_sc) / t_sc
 		var deficit_pressure := clampf((a_sc - p_sc) / (t_sc * 0.45), 0.0, 0.22)
 		target_int = clampf(progress + deficit_pressure, 0.0, 1.0)
+	elif is_instance_valid(mp_entry):
+		var mp_arena: Node = mp_entry.get("_arena") as Node
+		if is_instance_valid(mp_arena):
+			var ps_v: Variant = mp_arena.get("public_state")
+			if ps_v is Dictionary and not (ps_v as Dictionary).is_empty():
+				var ps := ps_v as Dictionary
+				var seats_arr: Array = ps.get("seats", [])
+				var max_hp_drop := 0.0
+				var sum_hp_drop := 0.0
+				var seat_cnt := 0
+				var any_bankai := false
+				for s_v in seats_arr:
+					if s_v is Dictionary:
+						var s := s_v as Dictionary
+						var mhp := maxf(1.0, float(s.get("max_hp", 120.0)))
+						var hp := clampf(float(s.get("hp", mhp)), 0.0, mhp)
+						var drop := 1.0 - (hp / mhp)
+						max_hp_drop = maxf(max_hp_drop, drop)
+						sum_hp_drop += drop
+						seat_cnt += 1
+						if bool(s.get("bankai_active", false)):
+							any_bankai = true
+				var avg_drop := (sum_hp_drop / float(maxi(1, seat_cnt))) if seat_cnt > 0 else 0.0
+				var hp_pressure := max_hp_drop * 0.65 + avg_drop * 0.35
+				var round_num := maxi(1, int(ps.get("round_num", 1)))
+				var turn_prog := clampf(float(round_num - 1) / 14.0, 0.0, 0.38)
+				var seal_boost := 0.24 if any_bankai else 0.0
+				var bfx: Variant = mp_arena.get("bankai_fx")
+				if is_instance_valid(bfx) and bool((bfx as Object).get("_aura_active")):
+					seal_boost = maxf(seal_boost, 0.24)
+				target_int = clampf(hp_pressure * 0.78 + turn_prog + seal_boost, 0.0, 1.0)
 	battle_music_intensity = lerpf(battle_music_intensity, target_int, clampf(delta * 1.4, 0.0, 1.0))
 	_apply_battle_layer_volumes()
 
@@ -2069,6 +2104,25 @@ func _build_main_menu() -> void:
 	legal_footer.add_theme_constant_override("outline_size", 4)
 	menu_control.add_child(legal_footer)
 
+	lobby_dev_btn = Button.new()
+	lobby_dev_btn.text = "DEV"
+	LialoIcons.apply_button_icon(lobby_dev_btn, "gear", 14)
+	lobby_dev_btn.anchor_left = 1.0
+	lobby_dev_btn.anchor_right = 1.0
+	lobby_dev_btn.anchor_top = 1.0
+	lobby_dev_btn.anchor_bottom = 1.0
+	lobby_dev_btn.offset_left = -94
+	lobby_dev_btn.offset_top = -44
+	lobby_dev_btn.offset_right = -18
+	lobby_dev_btn.offset_bottom = -12
+	lobby_dev_btn.add_theme_font_size_override("font_size", 12)
+	lobby_dev_btn.add_theme_stylebox_override("normal", _make_pill_style(Color(0.10, 0.08, 0.07, 0.85), Color(0.54, 0.42, 0.22, 0.75), 2))
+	lobby_dev_btn.pressed.connect(func():
+		_play_sfx("ui_click")
+		_open_dev_inspector()
+	)
+	menu_control.add_child(lobby_dev_btn)
+
 	_build_deck_selector_modal()
 	_build_options_modal()
 	_populate_menu_signs()
@@ -2509,12 +2563,75 @@ func _build_collection_card_slot(entry: Dictionary) -> Control:
 	var custom_canvas := Control.new()
 	custom_canvas.set_anchors_preset(Control.PRESET_FULL_RECT)
 	custom_canvas.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	custom_canvas.visible = (custom_kind != "")
+	custom_canvas.visible = (custom_kind != "" and custom_kind != "table_relic")
 	custom_canvas.set_meta("show_front", true)
 	custom_canvas.draw.connect(func():
 		_draw_custom_arsenal_illustration(custom_canvas, entry, bool(custom_canvas.get_meta("show_front", true)))
 	)
 	card_panel.add_child(custom_canvas)
+
+	if custom_kind == "table_relic":
+		var vp_wrap := Control.new()
+		vp_wrap.set_anchors_preset(Control.PRESET_FULL_RECT)
+		vp_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card_panel.add_child(vp_wrap)
+		if DisplayServer.get_name() != "headless":
+			var vpc := SubViewportContainer.new()
+			vpc.set_anchors_preset(Control.PRESET_FULL_RECT)
+			vpc.stretch = true
+			vpc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			vp_wrap.add_child(vpc)
+			var vp := SubViewport.new()
+			vp.size = Vector2i(196, 220)
+			vp.own_world_3d = true
+			vp.transparent_bg = true
+			vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+			vpc.add_child(vp)
+			var env := WorldEnvironment.new()
+			var we := Environment.new()
+			we.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+			we.ambient_light_color = Color(0.50, 0.44, 0.36)
+			we.ambient_light_energy = 1.2
+			env.environment = we
+			vp.add_child(env)
+			var dl := DirectionalLight3D.new()
+			dl.rotation_degrees = Vector3(-40.0, 35.0, 0.0)
+			dl.light_energy = 1.8
+			vp.add_child(dl)
+			var cam := Camera3D.new()
+			cam.position = Vector3(0.0, 0.14, 0.24)
+			cam.look_at_from_position(Vector3(0.0, 0.14, 0.24), Vector3(0.0, 0.05, 0.0))
+			cam.fov = 36.0
+			vp.add_child(cam)
+			var pivot := Node3D.new()
+			vp.add_child(pivot)
+			if ResourceLoader.exists("res://scripts/relic_mesh_factory.gd"):
+				var rmf := load("res://scripts/relic_mesh_factory.gd") as GDScript
+				if rmf != null and rmf.has_method("build_relic_3d_mesh"):
+					var rel_mesh := rmf.call("build_relic_3d_mesh", str(entry.get("key", "")), accent) as Node3D
+					if rel_mesh != null:
+						pivot.add_child(rel_mesh)
+			var spin_tw := vp_wrap.create_tween().set_loops()
+			spin_tw.tween_property(pivot, "rotation_degrees:y", 360.0, 7.0).from(0.0)
+		var rel_title := Label.new()
+		rel_title.text = str(entry.get("title", ""))
+		rel_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		rel_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		rel_title.anchor_left = 0.0
+		rel_title.anchor_right = 1.0
+		rel_title.anchor_top = 1.0
+		rel_title.anchor_bottom = 1.0
+		rel_title.offset_left = 6
+		rel_title.offset_right = -6
+		rel_title.offset_top = -72
+		rel_title.offset_bottom = -34
+		rel_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rel_title.add_theme_font_override("font", _get_font(true))
+		rel_title.add_theme_font_size_override("font_size", 12)
+		rel_title.add_theme_color_override("font_color", Color(0.98, 0.92, 0.78))
+		rel_title.add_theme_color_override("font_outline_color", Color(0.02, 0.02, 0.03))
+		rel_title.add_theme_constant_override("outline_size", 4)
+		vp_wrap.add_child(rel_title)
 
 	if is_equipped:
 		var eq_badge := Label.new()
@@ -2894,7 +3011,7 @@ func _rebuild_collection_view() -> void:
 	if collection_stats_lbl:
 		collection_stats_lbl.text = "%d / %d %s" % [mini(unlocked_cnt, total_cards), total_cards, "Odemčeno" if cs else "Unlocked"]
 
-	var vis_rel_cnt := Catalog.get_visible_relics().size()
+	var vis_rel_cnt := Catalog.TABLE_RELICS.size()
 	var pwr_cnt := Catalog.POWER_CARDS.size()
 	var tab_labels := ["Klasické karty (32)", "Mocné karty (%d)" % pwr_cnt, "Sady balíčků (5)", "Relikvie (%d) & Meče" % vis_rel_cnt, "Tvorba balíčku & Velká Pečeť"] if cs else ["Classic Cards (32)", "Power Cards (%d)" % pwr_cnt, "Choose Deck (5)", "Relics (%d) & Blades" % vis_rel_cnt, "Deck Builder & Grand Seal"]
 	for ti in range(collection_tab_btns.size()):
@@ -3034,46 +3151,41 @@ func _rebuild_collection_view() -> void:
 		if is_instance_valid(collection_deck_builder):
 			collection_deck_builder.setup_builder(run_profile, lang, card_face_cache)
 	else:
-		# 8 Core Build Relics (4 Deck Builds × 2 Signature Relics) — click unlocked relics to toggle equip (max 2)!
-		var owned_rel: Array = run_profile.get("active_relics", [])
-		for r_raw in Catalog.RELICS:
-			var rid := str(r_raw["id"])
-			if Catalog.is_relic_hidden(rid):
-				continue
-			var r_art := Catalog.get_relic_art_path(rid)
-			if not card_face_cache.has("ARSENAL_" + r_art) and ResourceLoader.exists(r_art):
-				card_face_cache["ARSENAL_" + r_art] = Toon.tex(r_art)
-			var r := Catalog.get_relic_loc(rid, lang)
-			var is_own := Catalog.is_relic_unlocked(run_profile, rid) or (rid in owned_rel)
-			var is_eq_r := rid in owned_rel
-			var src_r := Catalog.get_unlock_source_label(rid, lang)
-			var rid_cap := rid
+		# 10 Tabletop 3D Relics — live 3D SubViewport preview & CS2-style RelicInspect3D on click (max 2 equipped)!
+		var owned_tr: Array = run_profile.get("table_relics", [])
+		for tr_raw in Catalog.TABLE_RELICS:
+			var tid := str(tr_raw["id"])
+			var tr_loc := Catalog.get_table_relic_loc(tid, lang)
+			var is_own := Catalog.is_table_relic_unlocked(run_profile, tid) or (tid in owned_tr)
+			var is_eq_r := tid in owned_tr
+			var src_r := Catalog.get_unlock_source_label(tid, lang)
+			var tid_cap := tid
 			collection_grid.add_child(_build_collection_card_slot({
-				"key": rid,
-				"custom_kind": "relic",
-				"raw_data": r,
+				"key": tid,
+				"custom_kind": "table_relic",
+				"raw_data": tr_loc,
 				"unlocked": is_own,
 				"equipped": is_eq_r,
 				"mp_badge": true,
 				"unlock_source": src_r,
 				"tex": null,
-				"col": r["col"],
-				"cap": "%dg" % int(r["cost"]),
-				"title": "✦ " + str(r["name"]),
-				"sub": _tr("%s • %s", "%s • %s") % [str(r.get("category", "Build Relic")), _tr("EQUIPPED (Click to Unequip)" if is_eq_r else ("UNLOCKED — Click to Equip (Max 2)" if is_own else ("Locked • Bazaar: %d" % int(r["cost"]))), "VYBAVENO (Klikni pro odebrání)" if is_eq_r else ("ODEMČENO — Klikni pro výběr (Max 2)" if is_own else ("Zamčeno • Obchod: %d" % int(r["cost"]))))],
-				"desc": str(r["desc"]),
+				"col": tr_loc.get("col", Color.GOLD),
+				"cap": "%dg" % int(tr_loc.get("cost", 24)),
+				"title": str(tr_loc.get("name", tid)),
+				"sub": _tr("Tabletop Relic • %s", "Stolní relikvie • %s") % [_tr("EQUIPPED (Click to Inspect / Unequip)" if is_eq_r else ("UNLOCKED — Click to Equip (Max 2)" if is_own else ("Locked • Bazaar: %dg" % int(tr_loc.get("cost", 24)))), "VYBAVENO (Klikni pro prohlídku / odebrání)" if is_eq_r else ("ODEMČENO — Klikni pro výběr (Max 2)" if is_own else ("Zamčeno • Obchod: %dg" % int(tr_loc.get("cost", 24)))))],
+				"desc": str(tr_loc.get("desc", "")),
 				"on_select": func():
 					if is_own:
-						var arr: Array = run_profile.get("active_relics", []).duplicate()
-						if rid_cap in arr:
-							arr.erase(rid_cap)
+						var arr: Array = run_profile.get("table_relics", []).duplicate()
+						if tid_cap in arr:
+							arr.erase(tid_cap)
 						else:
 							if arr.size() >= 2:
 								arr.pop_front()
-							arr.append(rid_cap)
-						run_profile["active_relics"] = arr
+							arr.append(tid_cap)
+						run_profile["table_relics"] = arr
 						if run_profile.has("mp_loadout") and run_profile["mp_loadout"] is Dictionary:
-							run_profile["mp_loadout"]["passive_relics"] = arr.slice(0, 2)
+							run_profile["mp_loadout"]["table_relics"] = arr.slice(0, 2)
 						Catalog.save_profile(run_profile)
 						_rebuild_collection_view()
 			}))
@@ -6952,7 +7064,28 @@ func _refresh_map_ui_texts() -> void:
 	_refresh_map_roguelite_hud()
 	_update_campaign_card(selected_era_idx)
 
+func _open_dev_inspector() -> void:
+	if not is_instance_valid(dev_inspector_layer):
+		dev_inspector_layer = CanvasLayer.new()
+		dev_inspector_layer.name = "DevInspectorLayer"
+		dev_inspector_layer.layer = 98
+		add_child(dev_inspector_layer)
+	if not is_instance_valid(dev_inspector):
+		dev_inspector = DevAssetInspectorScript.new()
+		dev_inspector_layer.add_child(dev_inspector)
+	if is_instance_valid(dev_inspector):
+		if dev_inspector.visible:
+			dev_inspector.close_inspector()
+		else:
+			dev_inspector.open_inspector()
+
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F9:
+		_play_sfx("ui_click")
+		_open_dev_inspector()
+		get_viewport().set_input_as_handled()
+		return
+
 	if current_screen == ScreenState.SPLASH:
 		if (event is InputEventMouseButton and event.pressed) or (event is InputEventKey and event.pressed):
 			if not splash_skipped:
@@ -7097,6 +7230,10 @@ func _process(delta: float) -> void:
 			_on_window_focus_changed(win.has_focus())
 	var t := Time.get_ticks_msec() * 0.001
 
+	if music_enabled and active_bgm_key == "battle":
+		if current_screen == ScreenState.MATCH_3D or (is_instance_valid(mp_entry) and is_instance_valid(mp_entry.get("_arena"))):
+			_update_battle_music_mix(delta)
+
 	if current_screen == ScreenState.SPLASH:
 		splash_time += delta
 		_update_splash_3d()
@@ -7105,6 +7242,11 @@ func _process(delta: float) -> void:
 			_switch_to(ScreenState.MAIN_MENU)
 
 	elif current_screen == ScreenState.MAIN_MENU:
+		if is_instance_valid(mp_entry):
+			var mpl: Variant = mp_entry.get("_lobby")
+			if is_instance_valid(mpl) and (mpl as Object).has_signal("open_dev_inspector_requested") and not (mpl as Node).has_meta("_dev_sig_bound"):
+				(mpl as Node).set_meta("_dev_sig_bound", true)
+				(mpl as Object).connect("open_dev_inspector_requested", _open_dev_inspector)
 		_update_lobby_card_animations(delta)
 		if is_instance_valid(lobby_sun_canvas):
 			lobby_sun_canvas.queue_redraw()
@@ -7131,8 +7273,7 @@ func _process(delta: float) -> void:
 				visual.rotation_degrees = lerpf(visual.rotation_degrees, target_rot, 5.0 * delta)
 
 	elif current_screen == ScreenState.MATCH_3D:
-		if music_enabled:
-			_update_battle_music_mix(delta)
+		pass
 	elif current_screen == ScreenState.WORLD_3D:
 		if map_open_active:
 			map_open_time += delta

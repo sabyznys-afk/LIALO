@@ -1,10 +1,11 @@
 class_name MpLobbyOverlay
 extends Control
 
-## Modern Animated Multiplayer Hub (2-4 Players, v0.193):
+## Modern Animated Multiplayer Hub (2-4 Players, v0.194):
 ## - Animated MULTIPLAYER header with brass/crimson glow
-## - 4 Large Animated Mode Cards (Public Match, Private Match, Ranked, Unranked)
-## - 1-Click Saved Build / Deck Preset Selector + Active Build Summary + Deck Builder Modal
+## - Top Mode Tabs (Public Match, Private Match, Ranked, Unranked)
+## - Streamlined PLAY / FIND MATCH & Private Room Code flow + Hidden Dev Settings
+## - HD 256x256 MSAA 4X 3D Duelist Portraits + Clean Saved Builds ("Basic Set" + Custom)
 ## - Global / Local Leaderboard & Rivals powered by MpHistory
 ## - Zero System/Unicode Emojis (uses LialoIcons everywhere)
 
@@ -16,10 +17,19 @@ const Icons = preload("res://scripts/ui/lialo_icons.gd")
 const DeckBuilderScript = preload("res://scripts/ui/deck_builder_panel.gd")
 const FONT_DISPLAY_PATH := "res://assets/fonts/LialoDisplay.ttf"
 const FONT_BODY_PATH := "res://assets/fonts/LialoBody.ttf"
+const TESTER_FALLBACK_NAMES := [
+	"Tester Arny",
+	"Tester Simon",
+	"Tester Kuba",
+	"Tester Vera",
+	"Tester Marek",
+	"Tester Lukas",
+]
 
 signal close_requested
 signal play_click_sfx
 signal open_deck_builder_requested
+signal open_dev_inspector_requested
 
 var mp_net: Node = null
 var _font_display: Font = null
@@ -41,6 +51,12 @@ var ip_edit: LineEdit
 var port_edit: LineEdit
 var room_code_box: HBoxContainer
 var room_code_edit: LineEdit
+var private_create_btn: Button
+var private_join_btn: Button
+var play_match_btn: Button
+var dev_settings_btn: Button
+var _dev_settings_panel: PanelContainer
+var dev_inspector_btn: Button
 var host_btn: Button
 var join_btn: Button
 var spawn_win_btn: Button
@@ -485,7 +501,66 @@ func _build_ui() -> void:
 	close_btn.pressed.connect(_close_lobby)
 	hdr_hb.add_child(close_btn)
 
-	# 2. Connection & Profile Strip
+	# 2. Top Match Mode Tabs (Public Match | Private Match | Ranked | Unranked)
+	var mode_tabs_hb := HBoxContainer.new()
+	mode_tabs_hb.add_theme_constant_override("separation", 8)
+	root_vb.add_child(mode_tabs_hb)
+
+	var mode_defs := [
+		{
+			"id": Config.MODE_PUBLIC,
+			"title": "Public Match",
+			"badge": "OPEN LOBBY",
+			"tip": "Quick Match / Public Lobby",
+			"icon": "globe",
+			"col": Color(0.36, 0.86, 0.98),
+		},
+		{
+			"id": Config.MODE_PRIVATE,
+			"title": "Private Match",
+			"badge": "ROOM CODE",
+			"tip": "Host or Join with a Private Room Code",
+			"icon": "lock",
+			"col": Color(0.98, 0.76, 0.28),
+		},
+		{
+			"id": Config.MODE_RANKED,
+			"title": "Ranked",
+			"badge": "ELO • FAIR",
+			"tip": "Competitive ELO / Balanced Arena Ruleset",
+			"icon": "trophy",
+			"col": Color(0.98, 0.38, 0.34),
+		},
+		{
+			"id": Config.MODE_UNRANKED,
+			"title": "Unranked",
+			"badge": "CASUAL",
+			"tip": "Casual Tavern Duel / Campaign Vault Allowed",
+			"icon": "sword",
+			"col": Color(0.46, 0.92, 0.58),
+		},
+	]
+	_mode_cards.clear()
+	for md in mode_defs:
+		var mid := str(md["id"])
+		var mcol: Color = md["col"]
+		var mbtn := Button.new()
+		mbtn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mbtn.custom_minimum_size = Vector2(0, 40)
+		mbtn.text = "%s  [%s]" % [str(md["title"]), str(md["badge"])]
+		mbtn.tooltip_text = str(md["tip"])
+		mbtn.toggle_mode = true
+		Icons.apply_button_icon(mbtn, str(md["icon"]), 16)
+		mbtn.pressed.connect(func():
+			play_click_sfx.emit()
+			_select_match_mode(mid)
+		)
+		_apply_choice_btn_style(mbtn, mid == _selected_match_mode, mcol)
+		_attach_mode_card_anim(mbtn, mid, mcol)
+		_mode_cards[mid] = mbtn
+		mode_tabs_hb.add_child(mbtn)
+
+	# 3. Streamlined Connection & Profile Strip
 	var conn_hb := HBoxContainer.new()
 	conn_hb.add_theme_constant_override("separation", 8)
 	root_vb.add_child(conn_hb)
@@ -494,80 +569,57 @@ func _build_ui() -> void:
 	_apply_font(n_lbl, false); n_lbl.add_theme_color_override("font_color", Color(0.90, 0.82, 0.68))
 	conn_hb.add_child(n_lbl)
 	name_edit = LineEdit.new()
-	name_edit.custom_minimum_size = Vector2(126, 36)
-	name_edit.text = "Duelist_%d" % (randi() % 90 + 10)
+	name_edit.custom_minimum_size = Vector2(150, 38)
+	name_edit.text = _resolve_default_player_name()
 	name_edit.text_submitted.connect(func(_t): _persist_ui_prefs(); _refresh_leaderboard())
 	name_edit.focus_exited.connect(func(): _persist_ui_prefs(); _refresh_leaderboard())
 	_style_tavern_input(name_edit)
 	conn_hb.add_child(name_edit)
 
-	var ip_lbl := Label.new(); ip_lbl.text = "Host IP:"
-	_apply_font(ip_lbl, false); ip_lbl.add_theme_color_override("font_color", Color(0.90, 0.82, 0.68))
-	conn_hb.add_child(ip_lbl)
-	ip_edit = LineEdit.new()
-	ip_edit.custom_minimum_size = Vector2(132, 36)
-	ip_edit.text = "127.0.0.1"
-	ip_edit.placeholder_text = "Radmin / LAN IP"
-	_style_tavern_input(ip_edit)
-	conn_hb.add_child(ip_edit)
-
-	var p_lbl := Label.new(); p_lbl.text = "Port:"
-	_apply_font(p_lbl, false); p_lbl.add_theme_color_override("font_color", Color(0.90, 0.82, 0.68))
-	conn_hb.add_child(p_lbl)
-	port_edit = LineEdit.new()
-	port_edit.custom_minimum_size = Vector2(66, 36)
-	port_edit.text = str(Config.DEFAULT_PORT)
-	_style_tavern_input(port_edit)
-	conn_hb.add_child(port_edit)
+	play_match_btn = Button.new()
+	play_match_btn.text = "PLAY / FIND MATCH"
+	Icons.apply_button_icon(play_match_btn, "sword", 17)
+	play_match_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	play_match_btn.custom_minimum_size = Vector2(220, 38)
+	_style_tavern_btn(play_match_btn, Color(0.28, 0.16, 0.08, 0.98), Color(0.96, 0.76, 0.26, 0.96), true, 9)
+	play_match_btn.pressed.connect(_on_play_match_pressed)
+	conn_hb.add_child(play_match_btn)
 
 	room_code_box = HBoxContainer.new()
-	room_code_box.add_theme_constant_override("separation", 6)
+	room_code_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	room_code_box.add_theme_constant_override("separation", 8)
 	room_code_box.visible = false
 	conn_hb.add_child(room_code_box)
-	var rc_lbl := Label.new(); rc_lbl.text = "Code:"
+	var rc_lbl := Label.new(); rc_lbl.text = "Room Code:"
 	_apply_font(rc_lbl, false); rc_lbl.add_theme_color_override("font_color", Color(0.98, 0.82, 0.42))
 	room_code_box.add_child(rc_lbl)
 	room_code_edit = LineEdit.new()
-	room_code_edit.custom_minimum_size = Vector2(88, 36)
+	room_code_edit.custom_minimum_size = Vector2(124, 38)
 	room_code_edit.max_length = 8
-	room_code_edit.placeholder_text = "ROOM"
+	room_code_edit.placeholder_text = "ENTER CODE"
 	_style_tavern_input(room_code_edit)
 	room_code_box.add_child(room_code_edit)
 
-	host_btn = Button.new()
-	host_btn.text = "HOST TABLE"
-	Icons.apply_button_icon(host_btn, "fire", 16)
-	host_btn.custom_minimum_size = Vector2(136, 36)
-	_style_tavern_btn(host_btn, Color(0.32, 0.16, 0.08, 0.96), Color(0.94, 0.70, 0.24, 0.94), true, 8)
-	host_btn.pressed.connect(_on_host_pressed)
-	conn_hb.add_child(host_btn)
+	private_create_btn = Button.new()
+	private_create_btn.text = "CREATE ROOM"
+	Icons.apply_button_icon(private_create_btn, "fire", 16)
+	private_create_btn.custom_minimum_size = Vector2(148, 38)
+	_style_tavern_btn(private_create_btn, Color(0.32, 0.16, 0.08, 0.96), Color(0.94, 0.70, 0.24, 0.94), true, 8)
+	private_create_btn.pressed.connect(_on_host_pressed)
+	room_code_box.add_child(private_create_btn)
 
-	join_btn = Button.new()
-	join_btn.text = "JOIN TABLE"
-	Icons.apply_button_icon(join_btn, "players", 16)
-	join_btn.custom_minimum_size = Vector2(132, 36)
-	_style_tavern_btn(join_btn, Color(0.14, 0.22, 0.18, 0.96), Color(0.56, 0.82, 0.62, 0.90), true, 8)
-	join_btn.pressed.connect(_on_join_pressed)
-	conn_hb.add_child(join_btn)
-
-	if OS.has_feature("editor") or ("--mp-test" in OS.get_cmdline_args()):
-		spawn_win_btn = Button.new()
-		spawn_win_btn.text = "+2nd"
-		Icons.apply_button_icon(spawn_win_btn, "dice", 15)
-		spawn_win_btn.tooltip_text = "Open a 2nd local client window for instant loopback testing"
-		spawn_win_btn.custom_minimum_size = Vector2(82, 36)
-		_style_tavern_btn(spawn_win_btn, Color(0.16, 0.13, 0.10, 0.94), Color(0.62, 0.50, 0.30, 0.80), false, 8)
-		spawn_win_btn.pressed.connect(func():
-			play_click_sfx.emit()
-			OS.create_instance(["--mp-test"])
-			_on_status_changed("Launched 2nd window — click JOIN TABLE there!", false)
-		)
-		conn_hb.add_child(spawn_win_btn)
+	private_join_btn = Button.new()
+	private_join_btn.text = "JOIN CODE"
+	Icons.apply_button_icon(private_join_btn, "lock", 16)
+	private_join_btn.custom_minimum_size = Vector2(136, 38)
+	_style_tavern_btn(private_join_btn, Color(0.14, 0.22, 0.18, 0.96), Color(0.56, 0.82, 0.62, 0.90), true, 8)
+	private_join_btn.pressed.connect(_on_private_join_pressed)
+	room_code_box.add_child(private_join_btn)
 
 	leave_btn = Button.new()
 	leave_btn.text = "Disconnect"
 	Icons.apply_button_icon(leave_btn, "cross", 14)
-	leave_btn.custom_minimum_size = Vector2(114, 36)
+	leave_btn.custom_minimum_size = Vector2(118, 38)
 	_style_tavern_btn(leave_btn, Color(0.24, 0.11, 0.10, 0.94), Color(0.74, 0.36, 0.30, 0.85), false, 8)
 	leave_btn.pressed.connect(func():
 		play_click_sfx.emit()
@@ -576,8 +628,101 @@ func _build_ui() -> void:
 	)
 	conn_hb.add_child(leave_btn)
 
+	dev_settings_btn = Button.new()
+	dev_settings_btn.text = ""
+	dev_settings_btn.tooltip_text = "Dev Settings (IP / Port / Host / Join / Asset Inspector)"
+	Icons.apply_button_icon(dev_settings_btn, "gear", 16)
+	dev_settings_btn.custom_minimum_size = Vector2(38, 38)
+	dev_settings_btn.toggle_mode = true
+	dev_settings_btn.button_pressed = false
+	_style_tavern_btn(dev_settings_btn, Color(0.14, 0.11, 0.09, 0.92), Color(0.58, 0.48, 0.32, 0.78), false, 8)
+	dev_settings_btn.pressed.connect(func():
+		play_click_sfx.emit()
+		if is_instance_valid(_dev_settings_panel):
+			_dev_settings_panel.visible = dev_settings_btn.button_pressed
+	)
+	conn_hb.add_child(dev_settings_btn)
+
+	# Collapsible Dev Settings Panel (hidden by default)
+	_dev_settings_panel = PanelContainer.new()
+	_dev_settings_panel.visible = false
+	_dev_settings_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.06, 0.048, 0.038, 0.95), Color(0.56, 0.44, 0.24, 0.76), 1, 9, 8))
+	root_vb.add_child(_dev_settings_panel)
+
+	var dev_hb := HBoxContainer.new()
+	dev_hb.add_theme_constant_override("separation", 8)
+	_dev_settings_panel.add_child(dev_hb)
+
+	var dev_tag := Label.new()
+	dev_tag.text = "DEV:"
+	_apply_font(dev_tag, true)
+	dev_tag.add_theme_font_size_override("font_size", 12)
+	dev_tag.add_theme_color_override("font_color", Color(0.96, 0.78, 0.38))
+	dev_hb.add_child(dev_tag)
+
+	var ip_lbl := Label.new(); ip_lbl.text = "Host IP:"
+	_apply_font(ip_lbl, false); ip_lbl.add_theme_color_override("font_color", Color(0.90, 0.82, 0.68))
+	dev_hb.add_child(ip_lbl)
+	ip_edit = LineEdit.new()
+	ip_edit.custom_minimum_size = Vector2(132, 34)
+	ip_edit.text = "127.0.0.1"
+	ip_edit.placeholder_text = "Radmin / LAN IP"
+	_style_tavern_input(ip_edit)
+	dev_hb.add_child(ip_edit)
+
+	var p_lbl := Label.new(); p_lbl.text = "Port:"
+	_apply_font(p_lbl, false); p_lbl.add_theme_color_override("font_color", Color(0.90, 0.82, 0.68))
+	dev_hb.add_child(p_lbl)
+	port_edit = LineEdit.new()
+	port_edit.custom_minimum_size = Vector2(66, 34)
+	port_edit.text = str(Config.DEFAULT_PORT)
+	_style_tavern_input(port_edit)
+	dev_hb.add_child(port_edit)
+
+	host_btn = Button.new()
+	host_btn.text = "HOST TABLE"
+	Icons.apply_button_icon(host_btn, "fire", 15)
+	host_btn.custom_minimum_size = Vector2(128, 34)
+	_style_tavern_btn(host_btn, Color(0.32, 0.16, 0.08, 0.96), Color(0.94, 0.70, 0.24, 0.94), true, 8)
+	host_btn.pressed.connect(_on_host_pressed)
+	dev_hb.add_child(host_btn)
+
+	join_btn = Button.new()
+	join_btn.text = "JOIN TABLE"
+	Icons.apply_button_icon(join_btn, "players", 15)
+	join_btn.custom_minimum_size = Vector2(124, 34)
+	_style_tavern_btn(join_btn, Color(0.14, 0.22, 0.18, 0.96), Color(0.56, 0.82, 0.62, 0.90), true, 8)
+	join_btn.pressed.connect(_on_join_pressed)
+	dev_hb.add_child(join_btn)
+
+	if OS.has_feature("editor") or ("--mp-test" in OS.get_cmdline_args()):
+		spawn_win_btn = Button.new()
+		spawn_win_btn.text = "+2nd"
+		Icons.apply_button_icon(spawn_win_btn, "dice", 14)
+		spawn_win_btn.tooltip_text = "Open a 2nd local client window for instant loopback testing"
+		spawn_win_btn.custom_minimum_size = Vector2(78, 34)
+		_style_tavern_btn(spawn_win_btn, Color(0.16, 0.13, 0.10, 0.94), Color(0.62, 0.50, 0.30, 0.80), false, 8)
+		spawn_win_btn.pressed.connect(func():
+			play_click_sfx.emit()
+			OS.create_instance(["--mp-test"])
+			_on_status_changed("Launched 2nd window — click JOIN TABLE there!", false)
+		)
+		dev_hb.add_child(spawn_win_btn)
+
+	dev_inspector_btn = Button.new()
+	dev_inspector_btn.text = "Asset Inspector [F9]"
+	Icons.apply_button_icon(dev_inspector_btn, "relic", 14)
+	dev_inspector_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dev_inspector_btn.custom_minimum_size = Vector2(150, 34)
+	_style_tavern_btn(dev_inspector_btn, Color(0.15, 0.13, 0.18, 0.94), Color(0.62, 0.54, 0.82, 0.84), false, 8)
+	dev_inspector_btn.pressed.connect(func():
+		play_click_sfx.emit()
+		open_dev_inspector_requested.emit()
+	)
+	dev_hb.add_child(dev_inspector_btn)
+
 	status_lbl = Label.new()
-	status_lbl.text = "Choose a match mode & saved build below, then Host Table or Join a Friend."
+	status_lbl.text = "Select a match mode above, customize your Duelist & Build, then press PLAY / FIND MATCH."
 	_apply_font(status_lbl, false)
 	status_lbl.add_theme_font_size_override("font_size", 13)
 	status_lbl.add_theme_color_override("font_color", Color(0.88, 0.84, 0.72))
@@ -907,129 +1052,7 @@ func _build_ui() -> void:
 
 
 func _build_play_loadout_tab(parent_vb: VBoxContainer) -> void:
-	# 1. 4 Large Animated Mode Cards
-	var m_hdr := Icons.make_icon_label_row("tavern", "SELECT MATCH MODE", 16, 14, Color(1.0, 0.86, 0.44))
-	for child in m_hdr.get_children():
-		if child is Label:
-			_apply_font(child, true)
-	parent_vb.add_child(m_hdr)
-
-	var mode_grid := GridContainer.new()
-	mode_grid.columns = 2
-	mode_grid.add_theme_constant_override("h_separation", 10)
-	mode_grid.add_theme_constant_override("v_separation", 10)
-	parent_vb.add_child(mode_grid)
-
-	var mode_defs := [
-		{
-			"id": Config.MODE_PUBLIC,
-			"title": "Public Match",
-			"sub": "Quick Match / Public Lobby",
-			"badge": "OPEN LOBBY",
-			"icon": "globe",
-			"col": Color(0.36, 0.86, 0.98),
-		},
-		{
-			"id": Config.MODE_PRIVATE,
-			"title": "Private Match",
-			"sub": "Host / Join with Room Code or IP",
-			"badge": "CODE / IP",
-			"icon": "lock",
-			"col": Color(0.98, 0.76, 0.28),
-		},
-		{
-			"id": Config.MODE_RANKED,
-			"title": "Ranked",
-			"sub": "Competitive ELO / Ranked Ruleset",
-			"badge": "ELO • FAIR",
-			"icon": "trophy",
-			"col": Color(0.98, 0.38, 0.34),
-		},
-		{
-			"id": Config.MODE_UNRANKED,
-			"title": "Unranked",
-			"sub": "Casual Tavern Duel / Vault Allowed",
-			"badge": "CASUAL",
-			"icon": "sword",
-			"col": Color(0.46, 0.92, 0.58),
-		},
-	]
-	_mode_cards.clear()
-	for md in mode_defs:
-		var mid := str(md["id"])
-		var mcol: Color = md["col"]
-		var mbtn := Button.new()
-		mbtn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		mbtn.custom_minimum_size = Vector2(0, 88)
-		mbtn.text = ""
-		mbtn.toggle_mode = true
-
-		var inner := HBoxContainer.new()
-		inner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		inner.offset_left = 12; inner.offset_right = -12
-		inner.offset_top = 8; inner.offset_bottom = -8
-		inner.add_theme_constant_override("separation", 12)
-		inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		mbtn.add_child(inner)
-
-		var icon_frame := PanelContainer.new()
-		icon_frame.custom_minimum_size = Vector2(54, 54)
-		icon_frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		icon_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		icon_frame.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(mcol.r * 0.16, mcol.g * 0.16, mcol.b * 0.16, 0.92), Color(mcol.r, mcol.g, mcol.b, 0.65), 1, 10, 8))
-		inner.add_child(icon_frame)
-		var ic := Icons.make_icon_rect(str(md["icon"]), 30, mcol)
-		ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		icon_frame.add_child(ic)
-
-		var txt_vb := VBoxContainer.new()
-		txt_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		txt_vb.alignment = BoxContainer.ALIGNMENT_CENTER
-		txt_vb.add_theme_constant_override("separation", 3)
-		txt_vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		inner.add_child(txt_vb)
-
-		var top_hb := HBoxContainer.new()
-		top_hb.add_theme_constant_override("separation", 8)
-		top_hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		txt_vb.add_child(top_hb)
-
-		var t_lbl := Label.new()
-		t_lbl.text = str(md["title"])
-		_apply_font(t_lbl, true)
-		t_lbl.add_theme_font_size_override("font_size", 16)
-		t_lbl.add_theme_color_override("font_color", Color(0.98, 0.93, 0.80))
-		t_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		top_hb.add_child(t_lbl)
-
-		var b_lbl := Label.new()
-		b_lbl.text = str(md["badge"])
-		_apply_font(b_lbl, true)
-		b_lbl.add_theme_font_size_override("font_size", 10)
-		b_lbl.add_theme_color_override("font_color", mcol)
-		b_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		top_hb.add_child(b_lbl)
-
-		var s_lbl := Label.new()
-		s_lbl.text = str(md["sub"])
-		s_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_apply_font(s_lbl, false)
-		s_lbl.add_theme_font_size_override("font_size", 12)
-		s_lbl.add_theme_color_override("font_color", Color(0.76, 0.72, 0.64))
-		s_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		txt_vb.add_child(s_lbl)
-
-		mbtn.pressed.connect(func():
-			play_click_sfx.emit()
-			_select_match_mode(mid)
-		)
-		_apply_choice_btn_style(mbtn, mid == _selected_match_mode, mcol)
-		_attach_mode_card_anim(mbtn, mid, mcol)
-		_mode_cards[mid] = mbtn
-		mode_grid.add_child(mbtn)
-
-	# 2. 3D Duelist Character Picker
+	# 1. 3D Duelist Character Picker (Mode selection lives in the top mode tabs)
 	var c_title := Icons.make_icon_label_row("crown", "CHOOSE YOUR 3D DUELIST", 16, 14, Color(0.95, 0.84, 0.54))
 	for child in c_title.get_children():
 		if child is Label:
@@ -1053,7 +1076,7 @@ func _build_play_loadout_tab(parent_vb: VBoxContainer) -> void:
 		var ch_accent: Color = ch.get("col", Color(0.95, 0.78, 0.30))
 		var cb := Button.new()
 		cb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		cb.custom_minimum_size = Vector2(0, 118)
+		cb.custom_minimum_size = Vector2(0, 144)
 		cb.text = ""
 		cb.tooltip_text = str(ch["desc"])
 		cb.toggle_mode = true
@@ -1205,52 +1228,47 @@ func _rebuild_saved_deck_selector() -> void:
 		c.queue_free()
 	_saved_deck_btns.clear()
 
+	# Always show 1 default "Basic Set" + player's own saved builds from profile["saved_decks"]
+	var basic_btn := Button.new()
+	basic_btn.text = "Basic Set"
+	Icons.apply_button_icon(basic_btn, "cards", 14)
+	basic_btn.custom_minimum_size = Vector2(148, 36)
+	basic_btn.toggle_mode = true
+	var is_basic_sel := _active_saved_deck_id.is_empty()
+	basic_btn.set_pressed_no_signal(is_basic_sel)
+	basic_btn.pressed.connect(func():
+		play_click_sfx.emit()
+		_apply_core_build_preset("GUILLOTINE_ACES")
+	)
+	_apply_choice_btn_style(basic_btn, is_basic_sel, Color(0.95, 0.78, 0.30))
+	_attach_hover_anim(basic_btn)
+	_saved_deck_btns["__BASIC_SET__"] = basic_btn
+	_saved_decks_flow.add_child(basic_btn)
+
 	var saved_decks: Array = _profile.get("saved_decks", [])
-	if saved_decks.is_empty():
-		# Fallback 1-click preset pills from core Catalog.DECK_BUILDS if player hasn't saved custom decks yet
-		for db in Catalog.DECK_BUILDS:
-			var bid := str(db.get("id", "GUILLOTINE_ACES"))
-			var bcol: Color = db.get("col", Color(0.95, 0.78, 0.30))
-			var bloc := Catalog.get_deck_build_loc(bid, _lang)
-			var btn := Button.new()
-			btn.text = str(bloc.get("name", bid))
-			Icons.apply_button_icon(btn, "cards", 14)
-			btn.custom_minimum_size = Vector2(148, 36)
-			btn.toggle_mode = true
-			var is_sel := (selected_arch_id == bid)
-			btn.set_pressed_no_signal(is_sel)
-			btn.pressed.connect(func():
-				play_click_sfx.emit()
-				_apply_core_build_preset(bid)
-			)
-			_apply_choice_btn_style(btn, is_sel, bcol)
-			_attach_hover_anim(btn)
-			_saved_deck_btns[bid] = btn
-			_saved_decks_flow.add_child(btn)
-	else:
-		for sd_v in saved_decks:
-			if not (sd_v is Dictionary):
-				continue
-			var sd := sd_v as Dictionary
-			var did := str(sd.get("id", ""))
-			var dname := str(sd.get("name", "Saved Build"))
-			var bid := str(sd.get("build_id", "GUILLOTINE_ACES"))
-			var bcol: Color = Catalog.get_deck_build(bid).get("col", Color(0.95, 0.78, 0.30))
-			var btn := Button.new()
-			btn.text = dname
-			Icons.apply_button_icon(btn, "cards", 14)
-			btn.custom_minimum_size = Vector2(148, 36)
-			btn.toggle_mode = true
-			var is_sel := (_active_saved_deck_id == did)
-			btn.set_pressed_no_signal(is_sel)
-			btn.pressed.connect(func():
-				play_click_sfx.emit()
-				_apply_saved_deck_preset(did)
-			)
-			_apply_choice_btn_style(btn, is_sel, bcol)
-			_attach_hover_anim(btn)
-			_saved_deck_btns[did] = btn
-			_saved_decks_flow.add_child(btn)
+	for sd_v in saved_decks:
+		if not (sd_v is Dictionary):
+			continue
+		var sd := sd_v as Dictionary
+		var did := str(sd.get("id", ""))
+		var dname := str(sd.get("name", "Saved Build"))
+		var bid := str(sd.get("build_id", "GUILLOTINE_ACES"))
+		var bcol: Color = Catalog.get_deck_build(bid).get("col", Color(0.95, 0.78, 0.30))
+		var btn := Button.new()
+		btn.text = dname
+		Icons.apply_button_icon(btn, "cards", 14)
+		btn.custom_minimum_size = Vector2(148, 36)
+		btn.toggle_mode = true
+		var is_sel := (_active_saved_deck_id == did)
+		btn.set_pressed_no_signal(is_sel)
+		btn.pressed.connect(func():
+			play_click_sfx.emit()
+			_apply_saved_deck_preset(did)
+		)
+		_apply_choice_btn_style(btn, is_sel, bcol)
+		_attach_hover_anim(btn)
+		_saved_deck_btns[did] = btn
+		_saved_decks_flow.add_child(btn)
 
 	_update_deck_summary(Config.get_archetype(selected_arch_id))
 
@@ -1376,7 +1394,7 @@ func _build_char_bust_portrait(ch: Dictionary, back_tex: Texture2D, idx: int) ->
 	cc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var frame := PanelContainer.new()
-	frame.custom_minimum_size = Vector2(78, 78)
+	frame.custom_minimum_size = Vector2(104, 104)
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var frame_sb := _make_tavern_panel_sb(Color(0.04, 0.032, 0.026, 0.90), Color(ch_accent.r, ch_accent.g, ch_accent.b, 0.55), 1, 8, 2)
 	frame.add_theme_stylebox_override("panel", frame_sb)
@@ -1385,18 +1403,21 @@ func _build_char_bust_portrait(ch: Dictionary, back_tex: Texture2D, idx: int) ->
 	if DisplayServer.get_name() != "headless":
 		var bust := _load_char_bust_glb(str(ch.get("glb", "")))
 		if bust != null:
-			var svpc := SubViewportContainer.new()
-			svpc.custom_minimum_size = Vector2(74, 74)
-			svpc.stretch = true
-			svpc.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			frame.add_child(svpc)
-
 			var svp := SubViewport.new()
-			svp.size = Vector2i(74, 74)
+			svp.size = Vector2i(256, 256)
+			svp.msaa_3d = Viewport.MSAA_4X
 			svp.own_world_3d = true
 			svp.transparent_bg = true
-			svp.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
-			svpc.add_child(svp)
+			svp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+			frame.add_child(svp)
+
+			var tr := TextureRect.new()
+			tr.custom_minimum_size = Vector2(100, 100)
+			tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			tr.texture = svp.get_texture()
+			tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			frame.add_child(tr)
 
 			var env := Environment.new()
 			env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -1421,7 +1442,7 @@ func _build_char_bust_portrait(ch: Dictionary, back_tex: Texture2D, idx: int) ->
 			var cam := Camera3D.new()
 			cam.fov = 30.0
 			cam.current = true
-			cam.look_at_from_position(Vector3(0.0, 0.45, 0.76), Vector3(0.0, 0.41, 0.0), Vector3.UP)
+			cam.look_at_from_position(Vector3(0.0, 0.56, 1.50), Vector3(0.0, 0.48, 0.0), Vector3.UP)
 			svp.add_child(cam)
 
 			var pivot := Node3D.new()
@@ -1431,7 +1452,7 @@ func _build_char_bust_portrait(ch: Dictionary, back_tex: Texture2D, idx: int) ->
 			return cc
 
 	var fb_center := CenterContainer.new()
-	fb_center.custom_minimum_size = Vector2(74, 74)
+	fb_center.custom_minimum_size = Vector2(100, 100)
 	fb_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	frame.add_child(fb_center)
 	if back_tex != null:
@@ -1515,10 +1536,23 @@ func _copy_and_toast(addr: String, label: String) -> void:
 	_on_status_changed("Copied %s (%s) to clipboard!" % [label, addr], false)
 
 
+func _resolve_default_player_name() -> String:
+	if Engine.has_singleton("Steam"):
+		var steam_obj: Object = Engine.get_singleton("Steam")
+		if steam_obj != null and steam_obj.has_method("getPersonaName"):
+			var persona := str(steam_obj.getPersonaName()).strip_edges()
+			if not persona.is_empty():
+				return persona
+	return TESTER_FALLBACK_NAMES[randi() % TESTER_FALLBACK_NAMES.size()]
+
+
 func _apply_saved_prefs() -> void:
 	var saved_name := str(_prefs.get("player_name", "")).strip_edges()
-	if not saved_name.is_empty() and is_instance_valid(name_edit):
-		name_edit.text = saved_name
+	if is_instance_valid(name_edit):
+		if saved_name.is_empty() or saved_name.begins_with("Duelist_"):
+			name_edit.text = _resolve_default_player_name()
+		else:
+			name_edit.text = saved_name
 	var saved_ip := str(_prefs.get("last_ip", "")).strip_edges()
 	if not saved_ip.is_empty() and is_instance_valid(ip_edit):
 		ip_edit.text = saved_ip
@@ -1901,6 +1935,52 @@ func _update_deck_summary(arch: Dictionary) -> void:
 		_build_summary_lbl.text = "Powers: %s  |  Table Relics: %s  |  Passives: %s" % [pnames, tnames, rnames]
 
 
+func _on_play_match_pressed() -> void:
+	play_click_sfx.emit()
+	_persist_ui_prefs()
+	if mp_net == null or bool(mp_net.get("in_session")):
+		return
+	var port := maxi(1024, int(port_edit.text.to_int())) if is_instance_valid(port_edit) else Config.DEFAULT_PORT
+	var target_ip := ip_edit.text.strip_edges() if is_instance_valid(ip_edit) else "127.0.0.1"
+	mp_net.room_settings["vista_era"] = _selected_vista_era
+	mp_net.room_settings["match_mode"] = _selected_match_mode
+	if _selected_match_mode == Config.MODE_RANKED:
+		mp_net.room_settings["rule_mode"] = Config.RULE_BALANCED_ARENA
+	if not target_ip.is_empty() and target_ip != "127.0.0.1" and target_ip != "localhost":
+		mp_net.join_room(target_ip, port, name_edit.text, mp_net.local_deck_cfg)
+		_local_ready = false
+		_on_status_changed("Searching & joining %s:%d..." % [target_ip, port], false)
+	else:
+		var err: int = int(mp_net.host_room(port, name_edit.text, mp_net.local_deck_cfg))
+		if err == OK:
+			_local_ready = true
+		else:
+			mp_net.join_room("127.0.0.1", port, name_edit.text, mp_net.local_deck_cfg)
+			_local_ready = false
+			_on_status_changed("Found active local table — joining...", false)
+	_refresh_controls()
+
+
+func _on_private_join_pressed() -> void:
+	play_click_sfx.emit()
+	_persist_ui_prefs()
+	if mp_net == null:
+		return
+	var rc := room_code_edit.text.strip_edges().to_upper() if is_instance_valid(room_code_edit) else ""
+	if rc.is_empty():
+		_on_status_changed("Enter a Room Code to join a Private Match, or click CREATE ROOM.", true)
+		return
+	mp_net.room_settings["room_code"] = rc
+	var port := maxi(1024, int(port_edit.text.to_int())) if is_instance_valid(port_edit) else Config.DEFAULT_PORT
+	var target_ip := ip_edit.text.strip_edges() if is_instance_valid(ip_edit) else "127.0.0.1"
+	if target_ip.is_empty():
+		target_ip = "127.0.0.1"
+	mp_net.join_room(target_ip, port, name_edit.text, mp_net.local_deck_cfg)
+	_local_ready = false
+	_on_status_changed("Joining Private Room [%s]..." % rc, false)
+	_refresh_controls()
+
+
 func _on_host_pressed() -> void:
 	play_click_sfx.emit()
 	_persist_ui_prefs()
@@ -2149,6 +2229,19 @@ func _refresh_controls() -> void:
 
 	host_btn.disabled = in_s
 	join_btn.disabled = in_s
+	if is_instance_valid(play_match_btn):
+		play_match_btn.visible = (_selected_match_mode != Config.MODE_PRIVATE)
+		play_match_btn.disabled = in_s
+	if is_instance_valid(room_code_box):
+		room_code_box.visible = (_selected_match_mode == Config.MODE_PRIVATE)
+	if is_instance_valid(private_create_btn):
+		private_create_btn.disabled = in_s
+	if is_instance_valid(private_join_btn):
+		private_join_btn.disabled = in_s
+	for k in _mode_cards.keys():
+		var mbtn: Button = _mode_cards[k]
+		if is_instance_valid(mbtn):
+			mbtn.disabled = in_s and not is_h
 	leave_btn.visible = in_s
 	leave_btn.disabled = not in_s
 	if is_instance_valid(chat_panel):

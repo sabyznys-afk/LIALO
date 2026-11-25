@@ -439,6 +439,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				if vp_ri2 != null:
 					vp_ri2.set_input_as_handled()
 				return
+			if hovered_tavern_prop != "":
+				_inspect_mp_table_prop(hovered_tavern_prop)
+				var vp_rp := get_viewport()
+				if vp_rp != null:
+					vp_rp.set_input_as_handled()
+				return
 			if my_turn and not top_down_manual and hovered_card_idx >= 0 and hovered_card_idx < my_hand.size():
 				_toggle_mp_stage_card(hovered_card_idx)
 				var vp_r := get_viewport()
@@ -448,19 +454,26 @@ func _unhandled_input(event: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_LEFT and is_instance_valid(cam):
 			_mp_cursor_pos = mb.position
 			if hovered_item_id != "" or hovered_item_uid != "":
-				if top_down_manual or not my_turn:
-					_inspect_mp_table_relic(hovered_item_id, hovered_item_uid)
-				elif my_turn and mp_net != null:
+				var u_key := hovered_item_uid if hovered_item_uid != "" else hovered_item_id
+				var rem_u := maxi(0, MAX_MP_ITEM_USES - int(mp_item_uses.get(u_key, 0)))
+				if my_turn and mp_net != null and rem_u > 0:
 					play_sfx_requested.emit("prop_coins")
-					mp_net.send_use_item(hovered_item_uid if hovered_item_uid != "" else hovered_item_id, selected_target)
+					mp_net.send_use_item(u_key, selected_target)
+				else:
+					_inspect_mp_table_relic(hovered_item_id, hovered_item_uid)
 				return
 			if hovered_draw_deck:
 				if my_turn and mp_net != null:
 					play_sfx_requested.emit("btn_wooden_slam")
 					mp_net.send_draw_card()
+				elif top_down_manual:
+					_inspect_mp_table_prop("deck")
 				return
 			if hovered_tavern_prop != "":
-				_trigger_mp_tavern_prop(hovered_tavern_prop)
+				if top_down_manual and not my_turn:
+					_inspect_mp_table_prop(hovered_tavern_prop)
+				else:
+					_trigger_mp_tavern_prop(hovered_tavern_prop)
 				return
 			if hovered_card_idx >= 0 and hovered_card_idx < my_hand.size() and not top_down_manual:
 				if my_turn:
@@ -1615,8 +1628,16 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			var combo_lbl := str(evt.get("combo_label", "Slam"))
 			_append_combat_log("[color=#ffd966]%s[/color] played %d card(s) ([color=#9be2ff]%s[/color]) -> [color=#ff8a7a]%s[/color] (%d DMG)" % [fn, cards_arr.size(), combo_lbl, tn, dmg_v])
 			var c_tier := clampi(cards_arr.size(), 1, 4)
-			var b_hold := 2.1 + float(c_tier - 1) * 0.32
-			_show_calligraphic_banner(combo_lbl.to_upper(), "%s -> %s (%d DMG)" % [fn, tn, dmg_v], c_tier, b_hold)
+			var mult_f := float(maxi(1, cards_arr.size()))
+			var b_hold := 2.1 + float(c_tier - 1) * 0.35
+			var slam_prefix := ""
+			if c_tier >= 4:
+				slam_prefix = "4× CATACLYSM! "
+			elif c_tier == 3:
+				slam_prefix = "3× FURY! "
+			elif c_tier == 2:
+				slam_prefix = "2× SLAM! "
+			_show_calligraphic_banner((slam_prefix + combo_lbl).to_upper(), "%s -> %s (%d DMG)" % [fn, tn, dmg_v], c_tier, b_hold)
 			play_sfx_requested.emit("card_slam")
 			if cards_arr.size() >= 2:
 				play_sfx_requested.emit("anim_combo_slam")
@@ -1633,7 +1654,7 @@ func _on_vfx_event(evt: Dictionary) -> void:
 				elif lpid == "" and lr == "H":
 					play_sfx_requested.emit("card_suit_shift")
 			_top_down_auto_timer = maxf(_top_down_auto_timer, 1.35)
-			cam_kick_shake = maxf(cam_kick_shake, 0.32)
+			cam_kick_shake = maxf(cam_kick_shake, clampf(0.28 + (mult_f - 1.0) * 0.24, 0.28, 1.10))
 			var lead_c: Dictionary = cards_arr[0] if not cards_arr.is_empty() and typeof(cards_arr[0]) == TYPE_DICTIONARY else {}
 			var play_suit_id := str(lead_c.get("suit", public_state.get("active_suit", "CERVEN")))
 			var play_suit_col: Color = Config.get_suit(play_suit_id).get("col", Color(0.92, 0.24, 0.26))
@@ -1641,7 +1662,13 @@ func _on_vfx_event(evt: Dictionary) -> void:
 				discard_suit_ring_mat.albedo_color = Color(play_suit_col.r, play_suit_col.g, play_suit_col.b, 0.88)
 				discard_suit_ring_mat.emission = play_suit_col
 				discard_suit_ring_mat.emission_energy_multiplier = 2.6
-			Fx.ring(self, Vector3(0.0, 0.845, 0.0), play_suit_col, 0.52, 0.42, 0.04, 1.8, 5.0)
+			Fx.ring(self, Vector3(0.0, 0.845, 0.0), play_suit_col, 0.52 + (mult_f - 1.0) * 0.14, 0.42, 0.04, 1.8, 5.0)
+			if c_tier >= 2:
+				Fx.beam(self, center + Vector3(0.0, 0.12, 0.0), to_p + Vector3(0.0, 0.16, 0.0), Color(0.45, 0.94, 1.0) if c_tier >= 3 else play_suit_col.lightened(0.25), 0.26)
+				Fx.burst(self, center + Vector3(0.0, 0.12, 0.0), play_suit_col.lightened(0.2), 14 + c_tier * 6, 1.3, 0.48, 0.030, 1.4, true, 160.0)
+			var mp_float_sz := 86 if c_tier >= 4 else (76 if c_tier == 3 else (66 if c_tier == 2 else 54))
+			var mp_float_sc := clampf(1.35 + (mult_f - 1.0) * 0.22, 1.35, 2.05)
+			Fx.float_number(self, center + Vector3(0.0, 0.30, 0.0), ("%d× +%d" % [c_tier, dmg_v]) if c_tier >= 2 else ("+%d" % dmg_v), play_suit_col.lightened(0.28), mp_float_sz, 0.30, 1.05, mp_float_sc)
 			SwordCardAnim.play_ancient_circle_sigil(self, lead_c, center)
 			if tavern_env != null:
 				tavern_env.trigger_suit_pulse(1.3)
@@ -1656,7 +1683,10 @@ func _on_vfx_event(evt: Dictionary) -> void:
 				clampf(1.0 + float(maxi(0, cards_arr.size() - 1)) * 0.4, 1.0, 2.5),
 				bool(evt.get("is_knight", false))
 			)
-			cam_spring.trigger_score_recoil(int(evt.get("dmg", 32)) * 3, 2.2, 0.58)
+			cam_spring.trigger_score_recoil(int(evt.get("dmg", 32)) * 3, mult_f * 1.25, clampf(0.58 + (mult_f - 1.0) * 0.24, 0.58, 1.45))
+			if c_tier >= 2 and is_inside_tree():
+				Engine.time_scale = 0.25
+				get_tree().create_timer(0.045, true, false, true).timeout.connect(func(): Engine.time_scale = 1.0)
 		"ITEM_CAST":
 			var fs_i := int(evt.get("from_seat", 0))
 			var ts_i := int(evt.get("to_seat", 1))
@@ -2805,6 +2835,48 @@ func _show_calligraphic_banner(title_txt: String, sub_txt: String = "", tier: in
 		if is_instance_valid(calligraphic_banner_grp):
 			calligraphic_banner_grp.visible = false
 	)
+
+
+func _inspect_mp_table_prop(prop_id: String) -> void:
+	if not is_instance_valid(relic_inspect_3d) or prop_id.is_empty():
+		return
+	var custom_n: Node3D = null
+	var p_title := prop_id.capitalize()
+	var p_desc := "Tavern tabletop artifact."
+	var accent := Color(0.92, 0.74, 0.34)
+	match prop_id:
+		"mug":
+			custom_n = Node3D.new()
+			RelicMesh.build_tavern_mug_meshes(custom_n)
+			p_title = "Spiced Mead Tankard"
+			p_desc = "Click to clink tankards and steady your nerve."
+		"coins":
+			custom_n = Node3D.new()
+			RelicMesh.build_coins_pouch_meshes(custom_n)
+			p_title = "Florin Purse"
+			p_desc = "Tavern gold pouch on the felt."
+			accent = Color(1.0, 0.84, 0.28)
+		"dice":
+			custom_n = Node3D.new()
+			RelicMesh.build_bone_dice_meshes(custom_n)
+			p_title = "Bone Fortune Dice"
+			p_desc = "Carved bone dice for luck and atmosphere."
+		"bell":
+			custom_n = Node3D.new()
+			RelicMesh.build_shop_bell_meshes(custom_n)
+			p_title = "Tavern Brass Bell"
+			p_desc = "Signals round transitions."
+		"phial":
+			custom_n = Node3D.new()
+			RelicMesh.build_hellfire_phial_meshes(custom_n)
+			p_title = "Hellfire Phial"
+			p_desc = "Volatile tavern alchemy phial."
+			accent = Color(0.84, 0.42, 1.0)
+		"deck":
+			p_title = "Draw Deck"
+			p_desc = "Click on your turn to draw a card."
+	relic_inspect_3d.call("inspect_prop", prop_id, p_title, "MP TABLE ITEM", p_desc, "", accent, "en", custom_n)
+	play_sfx_requested.emit("ui_click")
 
 
 func _inspect_mp_table_relic(item_id: String, item_uid: String = "") -> void:
