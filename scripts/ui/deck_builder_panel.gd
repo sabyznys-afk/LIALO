@@ -1,10 +1,10 @@
 class_name DeckBuilderPanel
 extends Control
-## Unified 5-Step Wizard Deck Builder (Campaign + Multiplayer) for LIALO v0.193
-## Step 1: Base Cards & Archetype Selection
-## Step 2: Power Cards (Max 3, Max 1 Mythic)
-## Step 3: 4-Card Grand Seal (4/4) + Live FX Preview
-## Step 4: 2x Core Relics, 2x Tabletop Relics (with 3D Inspect), Card Back & Sword
+## Unified 5-Step Tavern Deck Forge (Campaign + Multiplayer) for LIALO v0.194
+## Step 1: Archetype & Physical Base Cards (Click card to cycle Class)
+## Step 2: Graphical Power Cards (Max 3, Max 1 Mythic)
+## Step 3: 4-Card Grand Seal (4/4) + Graphical Picker + Live FX Preview
+## Step 4: 2x 3D Tabletop Relics (with SubViewport & 3D Inspect), Card Back & Sword
 ## Step 5: Name & Save (Named Decks + Save & Play)
 
 signal deck_changed(profile: Dictionary)
@@ -17,10 +17,10 @@ const BankaiFxScript := preload("res://scripts/battle/bankai_fx.gd")
 const RELIC_INSPECT_PATH := "res://scripts/ui/relic_inspect_3d.gd"
 
 const SUITS := [
-	{"id": "CERVEN", "icon": "heart",  "en": "Hearts", "cs": "Červený", "col": Color(0.92, 0.24, 0.28)},
-	{"id": "ZELEN",  "icon": "leaves", "en": "Leaves", "cs": "Zelený",  "col": Color(0.24, 0.78, 0.52)},
-	{"id": "ZALUD",  "icon": "acorn",  "en": "Acorns", "cs": "Žaludy",  "col": Color(0.86, 0.64, 0.34)},
-	{"id": "GULA",   "icon": "bell",   "en": "Bells",  "cs": "Kule",    "col": Color(0.98, 0.62, 0.22)},
+	{"id": "CERVEN", "icon": "heart",  "en": "Hearts", "cs": "Červený", "col": Color(0.92, 0.28, 0.30)},
+	{"id": "ZELEN",  "icon": "leaves", "en": "Leaves", "cs": "Zelený",  "col": Color(0.28, 0.80, 0.50)},
+	{"id": "ZALUD",  "icon": "acorn",  "en": "Acorns", "cs": "Žaludy",  "col": Color(0.88, 0.66, 0.32)},
+	{"id": "GULA",   "icon": "bell",   "en": "Bells",  "cs": "Kule",    "col": Color(0.98, 0.64, 0.24)},
 ]
 const RANKS := ["7", "8", "9", "10", "D", "H", "K", "E"]
 const CLASS_CYCLE := ["NORMAL", "KNIGHT", "MAGE", "THIEF", "MERCHANT"]
@@ -38,34 +38,49 @@ const CARD_BACKS := [
 
 const BUILD_ICONS := {
 	"GUILLOTINE_ACES": "dagger",
-	"PHOENIX_CHAINS": "fire",
-	"MIRROR_TRICKS": "mist",
-	"CRIMSON_GAMBIT": "blood",
+	"MIRROR_MONARCH": "crown",
+	"CHAOS_JESTER": "dice",
+	"MISTBLADE_DUELIST": "mist",
 }
+
+const COL_WALNUT_BG := Color(0.085, 0.060, 0.044, 0.96)
+const COL_WALNUT_CARD := Color(0.125, 0.088, 0.062, 0.95)
+const COL_WALNUT_DEEP := Color(0.058, 0.042, 0.032, 0.96)
+const COL_GOLD_BORDER := Color(0.84, 0.66, 0.30, 0.90)
+const COL_GOLD_TEXT := Color(1.0, 0.88, 0.46)
+const COL_PARCHMENT := Color(0.94, 0.89, 0.78)
+const COL_PARCHMENT_DIM := Color(0.76, 0.70, 0.58)
 
 var _profile: Dictionary = {}
 var _lang: String = "en"
 var _font_disp: Font
 var _font_body: Font
 var _card_cache: Dictionary = {}
+var _table_cache: Dictionary = {}
 
 var _current_step: int = 0
 var _step_dir: int = 1
+var _guide_open: bool = false
 var _bg_fx: Control
 var _content_vb: VBoxContainer
 var _step_body_wrap: Control
 var _step_tween: Tween
 var _editing_seal_slot: int = -1
-var _seal_picker_wrap: PanelContainer
+var _flash_seal_slot: int = -1
+var _bounce_relic_id: String = ""
+var _flip_back_id: String = ""
+var _pop_card_key: String = ""
+var _save_flare_pending: bool = false
 var _bankai_fx_preview: BankaiFxScript
 var _relic_inspect: Control
 var _deck_name_edit: LineEdit
 var _status_toast: Label
 
 var _fx_time: float = 0.0
-var _fx_col: Color = Color(0.32, 0.88, 1.0)
-var _fx_target_col: Color = Color(0.32, 0.88, 1.0)
+var _fx_col: Color = Color(0.88, 0.68, 0.28)
+var _fx_target_col: Color = Color(0.88, 0.68, 0.28)
 var _motes: Array[Dictionary] = []
+var _relic_pivots: Array[Node3D] = []
 var _rng := RandomNumberGenerator.new()
 
 
@@ -74,14 +89,14 @@ func _ready() -> void:
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	custom_minimum_size = Vector2(1160, 780)
 	_font_disp = load("res://assets/fonts/LialoDisplay.ttf") as Font if ResourceLoader.exists("res://assets/fonts/LialoDisplay.ttf") else ThemeDB.fallback_font
-	_font_body = load("res://assets/fonts/LialoUI.ttf") as Font if ResourceLoader.exists("res://assets/fonts/LialoUI.ttf") else ThemeDB.fallback_font
+	_font_body = load("res://assets/fonts/LialoBody.ttf") as Font if ResourceLoader.exists("res://assets/fonts/LialoBody.ttf") else ThemeDB.fallback_font
 
-	for _i in range(36):
+	for _i in range(34):
 		_motes.append({
 			"x": _rng.randf(),
 			"y": _rng.randf(),
-			"spd": _rng.randf_range(0.03, 0.09),
-			"sz": _rng.randf_range(1.6, 4.2),
+			"spd": _rng.randf_range(0.025, 0.075),
+			"sz": _rng.randf_range(1.6, 3.8),
 			"ph": _rng.randf_range(0.0, TAU),
 		})
 
@@ -96,12 +111,12 @@ func _ready() -> void:
 	margin.add_theme_constant_override("margin_left", 14)
 	margin.add_theme_constant_override("margin_right", 14)
 	margin.add_theme_constant_override("margin_top", 10)
-	margin.add_theme_constant_override("margin_bottom", 14)
+	margin.add_theme_constant_override("margin_bottom", 12)
 	add_child(margin)
 
 	_content_vb = VBoxContainer.new()
 	_content_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_content_vb.add_theme_constant_override("separation", 12)
+	_content_vb.add_theme_constant_override("separation", 10)
 	margin.add_child(_content_vb)
 
 
@@ -112,7 +127,7 @@ func setup_builder(prof: Dictionary, lang: String = "en", card_face_cache: Dicti
 	_editing_seal_slot = -1
 	_sanitize_local_loadout()
 	var b := Catalog.get_deck_build(str(_profile.get("selected_build_id", "GUILLOTINE_ACES")))
-	_fx_target_col = b.get("col", Color(0.32, 0.88, 1.0))
+	_fx_target_col = b.get("col", Color(0.88, 0.68, 0.28))
 	_rebuild_ui()
 
 
@@ -131,6 +146,9 @@ func _process(delta: float) -> void:
 		if float(m["y"]) < -0.05:
 			m["y"] = 1.05
 			m["x"] = _rng.randf()
+	for piv in _relic_pivots:
+		if is_instance_valid(piv):
+			piv.rotation.y += dt * 0.75
 	if is_instance_valid(_bg_fx):
 		_bg_fx.queue_redraw()
 
@@ -139,21 +157,22 @@ func _draw_animated_bg() -> void:
 	var sz := _bg_fx.size
 	if sz.x < 20.0 or sz.y < 20.0:
 		return
-	_bg_fx.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.045, 0.036, 0.042, 0.84))
-	var center := Vector2(sz.x * 0.5, 290.0)
+	_bg_fx.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.048, 0.034, 0.025, 0.90))
+	var center := Vector2(sz.x * 0.5, 300.0)
 	var r := minf(sz.x * 0.34, 240.0)
-	_bg_fx.draw_arc(center, r, 0.0, TAU, 80, Color(_fx_col.r, _fx_col.g, _fx_col.b, 0.16), 2.2)
-	_bg_fx.draw_arc(center, r * 0.78, 0.0, TAU, 64, Color(_fx_col.r, _fx_col.g, _fx_col.b, 0.10), 1.4)
+	var warm_col := _fx_col.lerp(Color(0.92, 0.70, 0.30), 0.35)
+	_bg_fx.draw_arc(center, r, 0.0, TAU, 80, Color(warm_col.r, warm_col.g, warm_col.b, 0.14), 2.0)
+	_bg_fx.draw_arc(center, r * 0.78, 0.0, TAU, 64, Color(warm_col.r, warm_col.g, warm_col.b, 0.09), 1.4)
 	for ti in range(16):
-		var a := float(ti) * (TAU / 16.0) + _fx_time * 0.22
+		var a := float(ti) * (TAU / 16.0) + _fx_time * 0.18
 		var p1 := center + Vector2(cos(a), sin(a)) * (r * 0.94)
 		var p2 := center + Vector2(cos(a), sin(a)) * (r * 1.04)
-		_bg_fx.draw_line(p1, p2, Color(_fx_col.r, _fx_col.g, _fx_col.b, 0.22), 1.8)
+		_bg_fx.draw_line(p1, p2, Color(warm_col.r, warm_col.g, warm_col.b, 0.18), 1.6)
 	for m in _motes:
-		var mx := float(m["x"]) * sz.x + sin(_fx_time * 1.8 + float(m["ph"])) * 16.0
+		var mx := float(m["x"]) * sz.x + sin(_fx_time * 1.6 + float(m["ph"])) * 14.0
 		var my := float(m["y"]) * sz.y
-		var a := 0.22 + 0.20 * sin(_fx_time * 3.2 + float(m["ph"]))
-		_bg_fx.draw_circle(Vector2(mx, my), float(m["sz"]), Color(_fx_col.r, _fx_col.g, _fx_col.b, a))
+		var a := 0.18 + 0.18 * sin(_fx_time * 2.8 + float(m["ph"]))
+		_bg_fx.draw_circle(Vector2(mx, my), float(m["sz"]), Color(1.0, 0.76, 0.34, a))
 
 
 func _make_box_style(bg: Color, border: Color, rad: int = 10, pad: int = 10) -> StyleBoxFlat:
@@ -177,8 +196,26 @@ func _get_card_tex(ck: String) -> Texture2D:
 	return t
 
 
+func _get_table_tex(path: String) -> Texture2D:
+	if _table_cache.has(path) and _table_cache[path] is Texture2D:
+		return _table_cache[path] as Texture2D
+	var t := Toon.tex(path)
+	if t != null:
+		_table_cache[path] = t
+	return t
+
+
+func _strip_seal_prefix(raw_name: String) -> String:
+	var s := raw_name.strip_edges()
+	var prefixes := ["GRAND SEAL:", "VELKÁ PEČEŤ:", "Grand Seal:", "Velká pečeť:", "BANKAI:", "Bankai:"]
+	for pref in prefixes:
+		if s.begins_with(pref):
+			s = s.substr(pref.length()).strip_edges()
+	s = s.replace("Bankai", "Grand Seal").replace("BANKAI", "GRAND SEAL")
+	return s
+
+
 func _sanitize_local_loadout() -> void:
-	# Deduplicate and cap power cards to LialoCatalog.MAX_POWER_CARDS (3), max 1 Mythic
 	var raw_pc: Array = _profile.get("custom_cards", [])
 	if raw_pc.is_empty() and _profile.get("mp_loadout") is Dictionary:
 		raw_pc = (_profile["mp_loadout"] as Dictionary).get("power_cards", [])
@@ -200,19 +237,6 @@ func _sanitize_local_loadout() -> void:
 			break
 	_profile["custom_cards"] = clean_pc
 
-	# Deduplicate and cap Core Relics to LialoCatalog.MAX_ACTIVE_RELICS (2)
-	var raw_ar: Array = _profile.get("active_relics", [])
-	var clean_ar: Array = []
-	for rv in raw_ar:
-		var rid := str(rv)
-		if rid in clean_ar or Catalog.get_relic(rid).is_empty():
-			continue
-		clean_ar.append(rid)
-		if clean_ar.size() >= Catalog.MAX_ACTIVE_RELICS:
-			break
-	_profile["active_relics"] = clean_ar
-
-	# Deduplicate and cap Tabletop 3D Relics to 2
 	var raw_tr: Array = _profile.get("table_relics", [])
 	var clean_tr: Array = []
 	for tv in raw_tr:
@@ -224,7 +248,6 @@ func _sanitize_local_loadout() -> void:
 			break
 	_profile["table_relics"] = clean_tr
 
-	# Ensure 4-card Grand Seal combo
 	var cur_b := Catalog.get_deck_build(str(_profile.get("selected_build_id", "GUILLOTINE_ACES")))
 	var def_seal: Array = cur_b.get("default_bankai", ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"])
 	var raw_seal: Array = _profile.get("bankai_combo", [])
@@ -258,11 +281,112 @@ func _sync_and_save() -> void:
 	deck_changed.emit(_profile)
 
 
+# ============================================================================
+# UI ANIMATION HELPERS (10+ TANGIBLE ANIMATIONS)
+# ============================================================================
+func _attach_button_hover(btn: Control, hover_scale: float = 1.04) -> void:
+	btn.mouse_entered.connect(func():
+		if not is_instance_valid(btn):
+			return
+		btn.pivot_offset = btn.size * 0.5
+		var tw := btn.create_tween()
+		tw.tween_property(btn, "scale", Vector2(hover_scale, hover_scale), 0.11).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	)
+	btn.mouse_exited.connect(func():
+		if not is_instance_valid(btn):
+			return
+		btn.pivot_offset = btn.size * 0.5
+		var tw := btn.create_tween()
+		tw.tween_property(btn, "scale", Vector2.ONE, 0.13).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	)
+
+
+func _attach_card_hover(card_ctrl: Control, tilt_rad: float = 0.032, lift_px: float = 6.0, hover_scale: float = 1.10) -> void:
+	var base_z := card_ctrl.z_index
+	card_ctrl.mouse_entered.connect(func():
+		if not is_instance_valid(card_ctrl):
+			return
+		card_ctrl.pivot_offset = card_ctrl.size * 0.5
+		card_ctrl.z_index = base_z + 12
+		var dir := -1.0 if int(card_ctrl.position.x) % 2 == 0 else 1.0
+		var tw := card_ctrl.create_tween().set_parallel(true)
+		tw.tween_property(card_ctrl, "scale", Vector2(hover_scale, hover_scale), 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(card_ctrl, "rotation", dir * tilt_rad, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(card_ctrl, "pivot_offset:y", card_ctrl.size.y * 0.5 + lift_px, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	)
+	card_ctrl.mouse_exited.connect(func():
+		if not is_instance_valid(card_ctrl):
+			return
+		card_ctrl.z_index = base_z
+		var tw := card_ctrl.create_tween().set_parallel(true)
+		tw.tween_property(card_ctrl, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(card_ctrl, "rotation", 0.0, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(card_ctrl, "pivot_offset:y", card_ctrl.size.y * 0.5, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	)
+
+
 func _animate_btn_pop(ctrl: Control) -> void:
+	if not is_instance_valid(ctrl):
+		return
 	ctrl.pivot_offset = ctrl.size * 0.5
 	var tw := ctrl.create_tween()
-	tw.tween_property(ctrl, "scale", Vector2(1.06, 1.06), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tw.tween_property(ctrl, "scale", Vector2.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ctrl, "scale", Vector2(1.09, 1.09), 0.08).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ctrl, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+func _animate_card_flip(ctrl: Control) -> void:
+	if not is_instance_valid(ctrl):
+		return
+	ctrl.pivot_offset = ctrl.size * 0.5
+	var tw := ctrl.create_tween()
+	tw.tween_property(ctrl, "scale:x", 0.08, 0.11).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(ctrl, "scale:x", 1.0, 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+func _animate_relic_bounce(ctrl: Control) -> void:
+	if not is_instance_valid(ctrl):
+		return
+	ctrl.pivot_offset = ctrl.size * 0.5
+	ctrl.scale = Vector2(0.86, 0.86)
+	var tw := ctrl.create_tween()
+	tw.tween_property(ctrl, "scale", Vector2(1.06, 1.06), 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ctrl, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+
+func _animate_seal_slot_pulse(ctrl: Control) -> void:
+	if not is_instance_valid(ctrl):
+		return
+	ctrl.pivot_offset = ctrl.size * 0.5
+	var tw := ctrl.create_tween().set_loops()
+	tw.tween_property(ctrl, "scale", Vector2(1.045, 1.045), 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(ctrl, "scale", Vector2.ONE, 0.55).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+
+func _animate_seal_flash(ctrl: Control) -> void:
+	if not is_instance_valid(ctrl):
+		return
+	var flash := ColorRect.new()
+	flash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	flash.color = Color(1.0, 0.92, 0.45, 0.78)
+	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ctrl.add_child(flash)
+	_animate_btn_pop(ctrl)
+	var tw := flash.create_tween()
+	tw.tween_property(flash, "color:a", 0.0, 0.36).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(flash.queue_free)
+
+
+func _animate_save_flare(ctrl: Control) -> void:
+	if not is_instance_valid(ctrl):
+		return
+	var flare := ColorRect.new()
+	flare.set_anchors_preset(Control.PRESET_FULL_RECT)
+	flare.color = Color(0.55, 1.0, 0.65, 0.55)
+	flare.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ctrl.add_child(flare)
+	var tw := flare.create_tween()
+	tw.tween_property(flare, "color:a", 0.0, 0.42).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(flare.queue_free)
 
 
 func _go_to_step(step_idx: int) -> void:
@@ -280,17 +404,13 @@ func _ensure_relic_inspect() -> Control:
 	if script_res == null:
 		return null
 	_relic_inspect = script_res.new() as Control
-	var host: Node = get_tree().root if get_tree() != null else self
 	var parent_layer: Node = self
-	# Try to attach to nearest CanvasLayer ancestor so modal covers full viewport cleanly
 	var p := get_parent()
 	while p != null:
 		if p is CanvasLayer:
 			parent_layer = p
 			break
 		p = p.get_parent()
-	if parent_layer == self and host != self:
-		parent_layer = self
 	parent_layer.add_child(_relic_inspect)
 	return _relic_inspect
 
@@ -302,60 +422,109 @@ func _open_relic_inspect(relic_id: String, is_unlocked: bool, is_equipped: bool,
 		modal.call("inspect_relic", relic_id, _lang, is_unlocked, is_equipped, source_text)
 
 
-func _rebuild_ui(animate_step: bool = false) -> void:
+func _rebuild_ui(animate_step: bool = false, animate_guide: bool = false) -> void:
 	if not is_instance_valid(_content_vb):
 		return
+	_relic_pivots.clear()
 	_sanitize_local_loadout()
 	for ch in _content_vb.get_children():
 		ch.queue_free()
 
 	var sel_build_id := str(_profile.get("selected_build_id", "GUILLOTINE_ACES"))
 	var cur_build := Catalog.get_deck_build_loc(sel_build_id, _lang)
-	_fx_target_col = cur_build.get("col", Color(0.32, 0.88, 1.0))
+	_fx_target_col = cur_build.get("col", Color(0.88, 0.68, 0.28))
 
-	# === HEADER BAR ===
+	# === TAVERN WOODCUT HEADER BAR ===
 	var hdr_pan := PanelContainer.new()
-	hdr_pan.add_theme_stylebox_override("panel", _make_box_style(Color(0.08, 0.06, 0.055, 0.94), _fx_target_col, 12, 12))
+	hdr_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_BG, COL_GOLD_BORDER, 12, 10))
 	_content_vb.add_child(hdr_pan)
 
 	var hdr_hb := HBoxContainer.new()
 	hdr_hb.add_theme_constant_override("separation", 12)
 	hdr_pan.add_child(hdr_hb)
 
-	hdr_hb.add_child(LialoIcons.make_icon_rect("cards", 28, Color(1.0, 0.88, 0.44)))
+	hdr_hb.add_child(LialoIcons.make_icon_rect("cards", 28, COL_GOLD_TEXT))
 
 	var hdr_vb := VBoxContainer.new()
 	hdr_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hdr_hb.add_child(hdr_vb)
 
 	var t_lbl := Label.new()
-	t_lbl.text = _tr("DECK FORGE WIZARD — CAMPAIGN & MULTIPLAYER", "TVORBA BALÍČKU — KAMPAŇ & MULTIPLAYER")
+	t_lbl.text = _tr("TAVERN DECK FORGE", "KRČMOVÁ KOVÁRNA BALÍČKU")
 	t_lbl.add_theme_font_override("font", _font_disp)
 	t_lbl.add_theme_font_size_override("font_size", 21)
-	t_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.44))
+	t_lbl.add_theme_color_override("font_color", COL_GOLD_TEXT)
 	hdr_vb.add_child(t_lbl)
 
 	var sub_lbl := Label.new()
-	sub_lbl.text = _tr(
-		"Step %d of 5 • Build: %s • Synced to Campaign & Online Duels" % [_current_step + 1, str(cur_build["name"])],
-		"Krok %d z 5 • Build: %s • Synchronizováno s kampaní i online duely" % [_current_step + 1, str(cur_build["name"])]
-	)
+	sub_lbl.text = "%s  •  %d / 5" % [str(cur_build["name"]), _current_step + 1]
 	sub_lbl.add_theme_font_override("font", _font_body)
 	sub_lbl.add_theme_font_size_override("font_size", 13)
-	sub_lbl.add_theme_color_override("font_color", Color(0.86, 0.82, 0.74))
+	sub_lbl.add_theme_color_override("font_color", COL_PARCHMENT_DIM)
 	hdr_vb.add_child(sub_lbl)
 
-	var sync_row := LialoIcons.make_icon_label_row("check", _tr("CAMPAIGN + MP SYNCED", "KAMPAŇ + MP SYNC"), 16, 13, Color(0.42, 1.0, 0.62))
-	hdr_hb.add_child(sync_row)
+	var guide_btn := Button.new()
+	guide_btn.custom_minimum_size = Vector2(158, 36)
+	guide_btn.text = _tr("How to Build", "Jak postavit build")
+	LialoIcons.apply_button_icon(guide_btn, "help", 16)
+	guide_btn.add_theme_font_override("font", _font_disp)
+	guide_btn.add_theme_font_size_override("font_size", 13)
+	guide_btn.add_theme_color_override("font_color", COL_GOLD_TEXT if _guide_open else COL_PARCHMENT)
+	guide_btn.add_theme_stylebox_override("normal", _make_box_style(
+		Color(0.22, 0.15, 0.08, 0.96) if _guide_open else COL_WALNUT_CARD,
+		COL_GOLD_TEXT if _guide_open else COL_GOLD_BORDER, 8, 6
+	))
+	_attach_button_hover(guide_btn, 1.04)
+	guide_btn.pressed.connect(func():
+		sfx_requested.emit("ui_click")
+		_guide_open = not _guide_open
+		_rebuild_ui(false, _guide_open)
+	)
+	hdr_hb.add_child(guide_btn)
 
-	# === TOP 5-STEP PROGRESS BAR ===
+	hdr_hb.add_child(LialoIcons.make_icon_label_row("check", _tr("SYNCED", "SYNC"), 16, 13, Color(0.46, 0.96, 0.62)))
+
+	# === COLLAPSIBLE VISUAL "HOW TO BUILD" STEP GUIDE ===
+	if _guide_open:
+		var guide_pan := PanelContainer.new()
+		guide_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_DEEP, COL_GOLD_BORDER, 10, 8))
+		_content_vb.add_child(guide_pan)
+
+		var g_hb := HBoxContainer.new()
+		g_hb.add_theme_constant_override("separation", 8)
+		guide_pan.add_child(g_hb)
+
+		var tips := [
+			{"ic": "crown", "en": "1. Pick Build & tap cards for Class", "cs": "1. Vyber build a třídu karet"},
+			{"ic": "bolt",  "en": "2. Equip up to 3 Power Cards", "cs": "2. Vybav až 3 Mocné karty"},
+			{"ic": "seal",  "en": "3. Set 4 Grand Seal cards", "cs": "3. Nastav 4 karty Pečeti"},
+			{"ic": "trophy","en": "4. Equip 2 Relics, Back & Sword", "cs": "4. Vyber 2 Relikvie, rub a meč"},
+			{"ic": "scroll","en": "5. Name & Save your Deck", "cs": "5. Pojmenuj a ulož balíček"},
+		]
+		for tp in tips:
+			var tp_pan := PanelContainer.new()
+			tp_pan.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			tp_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_CARD, Color(0.55, 0.42, 0.24, 0.70), 8, 6))
+			var tp_row := LialoIcons.make_icon_label_row(str(tp["ic"]), _tr(str(tp["en"]), str(tp["cs"])), 16, 12, COL_PARCHMENT)
+			tp_pan.add_child(tp_row)
+			g_hb.add_child(tp_pan)
+
+		if animate_guide:
+			guide_pan.modulate.a = 0.0
+			guide_pan.scale = Vector2(0.98, 0.85)
+			var g_tw := guide_pan.create_tween().set_parallel(true)
+			g_tw.tween_property(guide_pan, "modulate:a", 1.0, 0.20).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			g_tw.tween_property(guide_pan, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+	# === TOP 5-STEP PILLS ===
 	var pc_cnt: int = (_profile.get("custom_cards", []) as Array).size()
+	var tr_cnt: int = (_profile.get("table_relics", []) as Array).size()
 	var step_defs := [
-		{"icon": "cards", "en": "1. Base Cards", "cs": "1. Základní karty"},
-		{"icon": "bolt",  "en": "2. Power Cards (%d/%d)" % [pc_cnt, Catalog.MAX_POWER_CARDS], "cs": "2. Mocné karty (%d/%d)" % [pc_cnt, Catalog.MAX_POWER_CARDS]},
-		{"icon": "seal",  "en": "3. Grand Seal (4 Cards)", "cs": "3. Velká pečeť (4 karty)"},
-		{"icon": "relic", "en": "4. 2x Relics, Back & Sword", "cs": "4. 2x Relikvie, rub a meč"},
-		{"icon": "check", "en": "5. Name & Save", "cs": "5. Název a uložení"},
+		{"icon": "cards",  "en": "1. Base Cards", "cs": "1. Základní karty"},
+		{"icon": "bolt",   "en": "2. Power (%d/%d)" % [pc_cnt, Catalog.MAX_POWER_CARDS], "cs": "2. Mocné (%d/%d)" % [pc_cnt, Catalog.MAX_POWER_CARDS]},
+		{"icon": "seal",   "en": "3. Grand Seal", "cs": "3. Velká pečeť"},
+		{"icon": "trophy", "en": "4. Relics (%d/2)" % tr_cnt, "cs": "4. Relikvie (%d/2)" % tr_cnt},
+		{"icon": "check",  "en": "5. Save", "cs": "5. Uložit"},
 	]
 	var prog_hb := HBoxContainer.new()
 	prog_hb.add_theme_constant_override("separation", 8)
@@ -367,21 +536,24 @@ func _rebuild_ui(animate_step: bool = false) -> void:
 		var is_done := (si < _current_step)
 		var sb := Button.new()
 		sb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		sb.custom_minimum_size = Vector2(0, 44)
+		sb.custom_minimum_size = Vector2(0, 42)
 		sb.text = _tr(str(sd["en"]), str(sd["cs"]))
 		LialoIcons.apply_button_icon(sb, str(sd["icon"]), 18)
 		sb.add_theme_font_override("font", _font_disp)
 		sb.add_theme_font_size_override("font_size", 13)
-		sb.add_theme_color_override("font_color", Color.WHITE if is_cur else (Color(0.56, 0.96, 0.66) if is_done else Color(0.78, 0.74, 0.68)))
+		sb.add_theme_color_override("font_color", COL_GOLD_TEXT if is_cur else (Color(0.58, 0.94, 0.64) if is_done else COL_PARCHMENT_DIM))
 		sb.add_theme_stylebox_override("normal", _make_box_style(
-			Color(_fx_target_col.r * 0.28, _fx_target_col.g * 0.28, _fx_target_col.b * 0.28, 0.98) if is_cur else (Color(0.08, 0.16, 0.10, 0.90) if is_done else Color(0.07, 0.06, 0.06, 0.88)),
-			_fx_target_col if is_cur else (Color(0.38, 0.82, 0.48, 0.85) if is_done else Color(0.34, 0.28, 0.22, 0.70)),
+			Color(0.20, 0.14, 0.08, 0.98) if is_cur else (Color(0.09, 0.15, 0.09, 0.92) if is_done else COL_WALNUT_DEEP),
+			COL_GOLD_TEXT if is_cur else (Color(0.42, 0.78, 0.46, 0.82) if is_done else Color(0.40, 0.30, 0.18, 0.75)),
 			8, 6
 		))
 		sb.add_theme_stylebox_override("hover", _make_box_style(
-			Color(_fx_target_col.r * 0.34, _fx_target_col.g * 0.34, _fx_target_col.b * 0.34, 1.0),
-			_fx_target_col.lightened(0.2), 8, 6
+			Color(0.24, 0.17, 0.10, 1.0), COL_GOLD_TEXT, 8, 6
 		))
+		_attach_button_hover(sb, 1.03)
+		if is_cur and animate_step:
+			sb.call_deferred("set_pivot_offset", Vector2(90, 21))
+			_animate_btn_pop(sb)
 		var target_step := si
 		sb.pressed.connect(func():
 			sfx_requested.emit("ui_click")
@@ -389,18 +561,18 @@ func _rebuild_ui(animate_step: bool = false) -> void:
 		)
 		prog_hb.add_child(sb)
 
-	# === STEP BODY CONTAINER (Animated with Tween) ===
+	# === STEP BODY CONTAINER ===
 	_step_body_wrap = VBoxContainer.new()
 	_step_body_wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_step_body_wrap.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	(_step_body_wrap as VBoxContainer).add_theme_constant_override("separation", 12)
+	(_step_body_wrap as VBoxContainer).add_theme_constant_override("separation", 10)
 	_content_vb.add_child(_step_body_wrap)
 
 	match _current_step:
 		0: _build_step_1_base_cards(_step_body_wrap as VBoxContainer, sel_build_id)
 		1: _build_step_2_power_cards(_step_body_wrap as VBoxContainer)
 		2: _build_step_3_grand_seal(_step_body_wrap as VBoxContainer, sel_build_id, cur_build)
-		3: _build_step_4_relics_cosmetics(_step_body_wrap as VBoxContainer, sel_build_id)
+		3: _build_step_4_relics_cosmetics(_step_body_wrap as VBoxContainer)
 		4: _build_step_5_name_save(_step_body_wrap as VBoxContainer, sel_build_id, cur_build)
 
 	# === BOTTOM WIZARD NAVIGATION BAR ===
@@ -409,12 +581,14 @@ func _rebuild_ui(animate_step: bool = false) -> void:
 	_content_vb.add_child(nav_hb)
 
 	var prev_btn := Button.new()
-	prev_btn.custom_minimum_size = Vector2(180, 44)
-	prev_btn.text = _tr("< Previous Step", "< Předchozí krok")
+	prev_btn.custom_minimum_size = Vector2(170, 42)
+	prev_btn.text = _tr("< Back", "< Zpět")
 	prev_btn.disabled = (_current_step <= 0)
 	prev_btn.add_theme_font_override("font", _font_disp)
 	prev_btn.add_theme_font_size_override("font_size", 14)
-	prev_btn.add_theme_stylebox_override("normal", _make_box_style(Color(0.09, 0.08, 0.08, 0.94), Color(0.55, 0.45, 0.30), 8, 8))
+	prev_btn.add_theme_color_override("font_color", COL_PARCHMENT)
+	prev_btn.add_theme_stylebox_override("normal", _make_box_style(COL_WALNUT_CARD, Color(0.56, 0.44, 0.26), 8, 8))
+	_attach_button_hover(prev_btn, 1.04)
 	prev_btn.pressed.connect(func():
 		sfx_requested.emit("ui_click")
 		_go_to_step(_current_step - 1)
@@ -427,19 +601,18 @@ func _rebuild_ui(animate_step: bool = false) -> void:
 	_status_toast.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_status_toast.add_theme_font_override("font", _font_body)
 	_status_toast.add_theme_font_size_override("font_size", 13)
-	_status_toast.add_theme_color_override("font_color", Color(0.95, 0.85, 0.55))
+	_status_toast.add_theme_color_override("font_color", COL_GOLD_TEXT)
 	nav_hb.add_child(_status_toast)
 
 	if _current_step < 4:
 		var next_btn := Button.new()
-		next_btn.custom_minimum_size = Vector2(210, 44)
-		next_btn.text = _tr("Next Step >", "Další krok >")
+		next_btn.custom_minimum_size = Vector2(190, 42)
+		next_btn.text = _tr("Next >", "Další >")
 		next_btn.add_theme_font_override("font", _font_disp)
 		next_btn.add_theme_font_size_override("font_size", 15)
-		next_btn.add_theme_stylebox_override("normal", _make_box_style(
-			Color(_fx_target_col.r * 0.26, _fx_target_col.g * 0.26, _fx_target_col.b * 0.26, 0.98),
-			_fx_target_col, 8, 8
-		))
+		next_btn.add_theme_color_override("font_color", COL_GOLD_TEXT)
+		next_btn.add_theme_stylebox_override("normal", _make_box_style(Color(0.22, 0.15, 0.08, 0.98), COL_GOLD_BORDER, 8, 8))
+		_attach_button_hover(next_btn, 1.05)
 		next_btn.pressed.connect(func():
 			sfx_requested.emit("ui_click")
 			_go_to_step(_current_step + 1)
@@ -456,23 +629,28 @@ func _rebuild_ui(animate_step: bool = false) -> void:
 		_step_tween.tween_property(_step_body_wrap, "modulate:a", 1.0, 0.20).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 		_step_tween.tween_property(_step_body_wrap, "position:x", 0.0, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
+	_flash_seal_slot = -1
+	_bounce_relic_id = ""
+	_flip_back_id = ""
+	_pop_card_key = ""
+
 
 # ============================================================================
-# STEP 1: BASE CARDS & ARCHETYPE SELECTION
+# STEP 1: ARCHETYPE & PHYSICAL BASE CARDS
 # ============================================================================
 func _build_step_1_base_cards(parent: VBoxContainer, sel_build_id: String) -> void:
 	var arch_pan := PanelContainer.new()
-	arch_pan.add_theme_stylebox_override("panel", _make_box_style(Color(0.06, 0.05, 0.055, 0.94), _fx_target_col, 10, 12))
+	arch_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_BG, COL_GOLD_BORDER, 10, 10))
 	parent.add_child(arch_pan)
 
 	var arch_vb := VBoxContainer.new()
-	arch_vb.add_theme_constant_override("separation", 10)
+	arch_vb.add_theme_constant_override("separation", 8)
 	arch_pan.add_child(arch_vb)
 
 	arch_vb.add_child(LialoIcons.make_icon_label_row(
 		"crown",
-		_tr("CHOOSE DECK ARCHETYPE (4 PLAYSTYLES)", "VYBER ARCHETYP BALÍČKU (4 HERNÍ STYLY)"),
-		20, 16, Color(1.0, 0.88, 0.44)
+		_tr("ARCHETYPE", "ARCHETYP BALÍČKU"),
+		18, 15, COL_GOLD_TEXT
 	))
 
 	var builds_hb := HBoxContainer.new()
@@ -486,119 +664,151 @@ func _build_step_1_base_cards(parent: VBoxContainer, sel_build_id: String) -> vo
 		var is_sel := (bid == sel_build_id)
 		var b_btn := Button.new()
 		b_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b_btn.custom_minimum_size = Vector2(0, 78)
-		var seal_name := str(b.get("bankai_name", "")).replace("Bankai", "Grand Seal").replace("BANKAI", "GRAND SEAL")
-		b_btn.text = "%s\n%s" % [str(b["name"]), _tr("ACTIVE BUILD", "AKTIVNÍ BUILD") if is_sel else seal_name]
-		LialoIcons.apply_button_icon(b_btn, "check" if is_sel else str(BUILD_ICONS.get(bid, "cards")), 22)
+		b_btn.custom_minimum_size = Vector2(0, 62)
+		var seal_clean := _strip_seal_prefix(str(b.get("bankai_name", "")))
+		b_btn.text = "%s\n%s" % [str(b["name"]), _tr("ACTIVE", "AKTIVNÍ") if is_sel else seal_clean]
+		b_btn.tooltip_text = str(b.get("desc", ""))
+		LialoIcons.apply_button_icon(b_btn, "check" if is_sel else str(BUILD_ICONS.get(bid, "cards")), 20)
 		b_btn.add_theme_font_override("font", _font_disp)
-		b_btn.add_theme_font_size_override("font_size", 14)
-		b_btn.add_theme_color_override("font_color", Color.WHITE if is_sel else Color(0.86, 0.82, 0.74))
+		b_btn.add_theme_font_size_override("font_size", 13)
+		b_btn.add_theme_color_override("font_color", COL_GOLD_TEXT if is_sel else COL_PARCHMENT)
 		b_btn.add_theme_stylebox_override("normal", _make_box_style(
-			Color(b_col.r * 0.26, b_col.g * 0.26, b_col.b * 0.26, 0.96) if is_sel else Color(0.08, 0.065, 0.06, 0.90),
-			b_col if is_sel else Color(0.42, 0.34, 0.24, 0.75), 10, 8
+			Color(0.22, 0.16, 0.08, 0.98) if is_sel else COL_WALNUT_CARD,
+			COL_GOLD_TEXT if is_sel else Color(b_col.r, b_col.g, b_col.b, 0.55), 10, 8
 		))
 		b_btn.add_theme_stylebox_override("hover", _make_box_style(
-			Color(b_col.r * 0.34, b_col.g * 0.34, b_col.b * 0.34, 1.0), b_col.lightened(0.2), 10, 8
+			Color(0.26, 0.19, 0.10, 1.0), COL_GOLD_TEXT, 10, 8
 		))
+		_attach_button_hover(b_btn, 1.03)
 		b_btn.pressed.connect(func():
 			sfx_requested.emit("ui_click")
 			_profile["selected_build_id"] = bid
-			var def_b := Catalog.get_deck_build(bid)
-			var auto_rels: Array = []
-			for r_id in def_b.get("relics", []):
-				if Catalog.is_relic_unlocked(_profile, str(r_id)):
-					auto_rels.append(str(r_id))
-			if not auto_rels.is_empty():
-				_profile["active_relics"] = auto_rels.slice(0, Catalog.MAX_ACTIVE_RELICS)
 			_sync_and_save()
 			_rebuild_ui()
 		)
 		builds_hb.add_child(b_btn)
 
-	# Base 32-Card Overview + Suit/Rank Notes
+	# Physical 32-Card Suit-Grouped Grid
 	var base_pan := PanelContainer.new()
-	base_pan.add_theme_stylebox_override("panel", _make_box_style(Color(0.055, 0.05, 0.06, 0.94), Color(0.55, 0.45, 0.30, 0.80), 10, 12))
+	base_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_BG, Color(0.62, 0.48, 0.26, 0.85), 10, 10))
 	parent.add_child(base_pan)
 
 	var base_vb := VBoxContainer.new()
-	base_vb.add_theme_constant_override("separation", 10)
+	base_vb.add_theme_constant_override("separation", 8)
 	base_pan.add_child(base_vb)
 
-	base_vb.add_child(LialoIcons.make_icon_label_row(
+	var hdr_row := HBoxContainer.new()
+	hdr_row.add_theme_constant_override("separation", 10)
+	base_vb.add_child(hdr_row)
+	hdr_row.add_child(LialoIcons.make_icon_label_row(
 		"cards",
-		_tr("BASE 32-CARD TAVERN DECK (4 SUITS × 8 RANKS: 7, 8, 9, 10, D, H, K, E)", "ZÁKLADNÍ BALÍČEK 32 KARET (4 BARVY × 8 HODNOSTÍ: 7, 8, 9, 10, D, H, K, E)"),
-		18, 15, Color(0.95, 0.86, 0.62)
+		_tr("32 BASE CARDS — CLICK TO CYCLE CLASS", "32 ZÁKLADNÍCH KARET — KLIKNUTÍM ZMĚŇ TŘÍDU"),
+		18, 14, COL_GOLD_TEXT
 	))
 
-	var suits_hb := HBoxContainer.new()
-	suits_hb.add_theme_constant_override("separation", 10)
-	base_vb.add_child(suits_hb)
-
-	for s in SUITS:
-		var sp := PanelContainer.new()
-		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var sc: Color = s["col"]
-		sp.add_theme_stylebox_override("panel", _make_box_style(Color(0.08, 0.065, 0.06, 0.92), Color(sc.r, sc.g, sc.b, 0.65), 8, 8))
-		var svb := VBoxContainer.new()
-		svb.add_theme_constant_override("separation", 4)
-		sp.add_child(svb)
-		svb.add_child(LialoIcons.make_icon_label_row(str(s["icon"]), _tr(str(s["en"]), str(s["cs"])), 18, 14, sc.lightened(0.2)))
-		var r_lbl := Label.new()
-		r_lbl.text = "7  8  9  10  D  H  K  E"
-		r_lbl.add_theme_font_override("font", _font_body)
-		r_lbl.add_theme_font_size_override("font_size", 12)
-		r_lbl.add_theme_color_override("font_color", Color(0.84, 0.80, 0.72))
-		svb.add_child(r_lbl)
-		suits_hb.add_child(sp)
-
-	var note_lbl := Label.new()
-	note_lbl.text = _tr(
-		"Key Ranks: 7 (+2 Draw) • 8 (Chain Stack) • D (Shield) • H (Suit Shift) • K (Curse) • E (Ace Strike). Click signature cards below to infuse a Class:",
-		"Klíčové karty: 7 (+2 lízání) • 8 (Řetězení) • D (Štít) • H (Změna barvy) • K (Kletba) • E (Úder esa). Kliknutím níže změň třídu karty:"
-	)
-	note_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note_lbl.add_theme_font_override("font", _font_body)
-	note_lbl.add_theme_font_size_override("font_size", 13)
-	note_lbl.add_theme_color_override("font_color", Color(0.82, 0.80, 0.74))
-	base_vb.add_child(note_lbl)
-
-	var cls_grid := GridContainer.new()
-	cls_grid.columns = 4
-	cls_grid.add_theme_constant_override("h_separation", 8)
-	cls_grid.add_theme_constant_override("v_separation", 8)
-	base_vb.add_child(cls_grid)
-
 	var ce: Dictionary = _profile.get("card_editions", {})
-	var featured_keys := ["CERVEN_E", "ZALUD_E", "CERVEN_K", "GULA_K", "CERVEN_7", "ZELEN_7", "ZELEN_8", "GULA_8"]
-	for fk in featured_keys:
-		var cur_cls := Catalog.normalize_card_class(str(ce.get(fk, "NORMAL")))
-		var cls_d := Catalog.get_card_class_loc(cur_cls, _lang)
-		var cb := Button.new()
-		cb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		cb.custom_minimum_size = Vector2(0, 38)
-		cb.text = "%s: %s" % [_pretty_card_key(fk), str(cls_d.get("short_cls", cur_cls))]
-		LialoIcons.apply_button_icon(cb, _suit_icon_for_key(fk), 16)
-		cb.add_theme_font_override("font", _font_body)
-		cb.add_theme_font_size_override("font_size", 13)
-		cb.add_theme_color_override("font_color", cls_d["col"])
-		cb.pressed.connect(func():
-			sfx_requested.emit("card_hover")
-			var idx := CLASS_CYCLE.find(cur_cls)
-			var next_cls: String = str(CLASS_CYCLE[(idx + 1) % CLASS_CYCLE.size()])
-			var ce_map: Dictionary = _profile.get("card_editions", {}).duplicate()
-			if next_cls == "NORMAL":
-				ce_map.erase(fk)
-			else:
-				ce_map[fk] = next_cls
-			_profile["card_editions"] = ce_map
-			_sync_and_save()
-			_rebuild_ui()
-		)
-		cls_grid.add_child(cb)
+	for s in SUITS:
+		var suit_id := str(s["id"])
+		var sc: Color = s["col"]
+		var suit_row := HBoxContainer.new()
+		suit_row.add_theme_constant_override("separation", 8)
+		base_vb.add_child(suit_row)
+
+		var s_tag := PanelContainer.new()
+		s_tag.custom_minimum_size = Vector2(104, 86)
+		s_tag.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_DEEP, Color(sc.r, sc.g, sc.b, 0.70), 8, 6))
+		var s_vb := VBoxContainer.new()
+		s_vb.alignment = BoxContainer.ALIGNMENT_CENTER
+		s_vb.add_theme_constant_override("separation", 4)
+		s_tag.add_child(s_vb)
+		var ic_r := LialoIcons.make_icon_rect(str(s["icon"]), 22, sc.lightened(0.2))
+		ic_r.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		s_vb.add_child(ic_r)
+		var s_lbl := Label.new()
+		s_lbl.text = _tr(str(s["en"]), str(s["cs"]))
+		s_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		s_lbl.add_theme_font_override("font", _font_disp)
+		s_lbl.add_theme_font_size_override("font_size", 12)
+		s_lbl.add_theme_color_override("font_color", COL_PARCHMENT)
+		s_vb.add_child(s_lbl)
+		suit_row.add_child(s_tag)
+
+		var cards_hb := HBoxContainer.new()
+		cards_hb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cards_hb.add_theme_constant_override("separation", 8)
+		suit_row.add_child(cards_hb)
+
+		for r in RANKS:
+			var fk := "%s_%s" % [suit_id, r]
+			var cur_cls := Catalog.normalize_card_class(str(ce.get(fk, "NORMAL")))
+			var cls_d := Catalog.get_card_class_loc(cur_cls, _lang)
+			var cls_col: Color = cls_d.get("col", COL_GOLD_BORDER)
+			var is_mod := (cur_cls != "NORMAL")
+
+			var card_btn := Button.new()
+			card_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			card_btn.custom_minimum_size = Vector2(64, 86)
+			card_btn.tooltip_text = "%s (%s) — %s" % [
+				_pretty_card_key(fk),
+				str(cls_d.get("name", cur_cls)),
+				_tr("Click to cycle Class", "Kliknutím změň třídu")
+			]
+			card_btn.add_theme_stylebox_override("normal", _make_box_style(
+				Color(0.16, 0.11, 0.07, 0.96) if is_mod else COL_WALNUT_DEEP,
+				cls_col if is_mod else Color(0.45, 0.35, 0.22, 0.72), 8, 3
+			))
+			card_btn.add_theme_stylebox_override("hover", _make_box_style(
+				Color(0.24, 0.17, 0.10, 1.0), COL_GOLD_TEXT, 8, 3
+			))
+
+			var card_vb := VBoxContainer.new()
+			card_vb.set_anchors_preset(Control.PRESET_FULL_RECT)
+			card_vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			card_vb.alignment = BoxContainer.ALIGNMENT_CENTER
+			card_vb.add_theme_constant_override("separation", 2)
+			card_btn.add_child(card_vb)
+
+			var tex_r := TextureRect.new()
+			tex_r.texture = _get_card_tex(fk)
+			tex_r.custom_minimum_size = Vector2(46, 62)
+			tex_r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tex_r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			tex_r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			card_vb.add_child(tex_r)
+
+			var cls_lbl := Label.new()
+			cls_lbl.text = str(cls_d.get("short_cls", cur_cls)) if is_mod else r
+			cls_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			cls_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			cls_lbl.add_theme_font_override("font", _font_disp if is_mod else _font_body)
+			cls_lbl.add_theme_font_size_override("font_size", 10)
+			cls_lbl.add_theme_color_override("font_color", cls_col if is_mod else COL_PARCHMENT_DIM)
+			card_vb.add_child(cls_lbl)
+
+			_attach_card_hover(card_btn, 0.036, 5.0, 1.12)
+			if _pop_card_key == fk:
+				card_btn.call_deferred("set_pivot_offset", Vector2(32, 43))
+				_animate_btn_pop(card_btn)
+
+			card_btn.pressed.connect(func():
+				sfx_requested.emit("card_hover")
+				var idx := CLASS_CYCLE.find(cur_cls)
+				var next_cls: String = str(CLASS_CYCLE[(idx + 1) % CLASS_CYCLE.size()])
+				var ce_map: Dictionary = _profile.get("card_editions", {}).duplicate()
+				if next_cls == "NORMAL":
+					ce_map.erase(fk)
+				else:
+					ce_map[fk] = next_cls
+				_profile["card_editions"] = ce_map
+				_pop_card_key = fk
+				_sync_and_save()
+				_rebuild_ui()
+			)
+			cards_hb.add_child(card_btn)
 
 
 # ============================================================================
-# STEP 2: POWER CARDS (MAX 3, MAX 1 MYTHIC)
+# STEP 2: GRAPHICAL POWER CARDS (MAX 3, MAX 1 MYTHIC)
 # ============================================================================
 func _build_step_2_power_cards(parent: VBoxContainer) -> void:
 	var eq_pcs: Array = _profile.get("custom_cards", [])
@@ -609,7 +819,7 @@ func _build_step_2_power_cards(parent: VBoxContainer) -> void:
 			mythic_equipped += 1
 
 	var pc_pan := PanelContainer.new()
-	pc_pan.add_theme_stylebox_override("panel", _make_box_style(Color(0.06, 0.05, 0.065, 0.94), Color(0.68, 0.46, 0.96, 0.85), 10, 12))
+	pc_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_BG, COL_GOLD_BORDER, 10, 12))
 	parent.add_child(pc_pan)
 
 	var pc_vb := VBoxContainer.new()
@@ -617,19 +827,40 @@ func _build_step_2_power_cards(parent: VBoxContainer) -> void:
 	pc_pan.add_child(pc_vb)
 
 	var hdr_hb := HBoxContainer.new()
-	hdr_hb.add_theme_constant_override("separation", 10)
+	hdr_hb.add_theme_constant_override("separation", 12)
 	pc_vb.add_child(hdr_hb)
+
 	hdr_hb.add_child(LialoIcons.make_icon_label_row(
 		"bolt",
-		_tr(
-			"POWER CARDS IN DECK (%d / %d)  •  Mythic: %d / 1" % [eq_pcs.size(), Catalog.MAX_POWER_CARDS, mythic_equipped],
-			"MOCNÉ KARTY V BALÍČKU (%d / %d)  •  Mýtická: %d / 1" % [eq_pcs.size(), Catalog.MAX_POWER_CARDS, mythic_equipped]
-		),
-		20, 16, Color(0.84, 0.70, 1.0)
+		_tr("POWER CARDS", "MOCNÉ KARTY"),
+		20, 16, COL_GOLD_TEXT
 	))
 
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hdr_hb.add_child(spacer)
+
+	# Crisp visual X / 3 badge + Mythic 0/1 badge
+	var badge_pan := PanelContainer.new()
+	badge_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_DEEP, COL_GOLD_TEXT, 8, 6))
+	var badge_hb := HBoxContainer.new()
+	badge_hb.add_theme_constant_override("separation", 8)
+	badge_pan.add_child(badge_hb)
+
+	for slot_i in range(Catalog.MAX_POWER_CARDS):
+		var filled := slot_i < eq_pcs.size()
+		badge_hb.add_child(LialoIcons.make_icon_rect("bolt" if filled else "cards", 16, COL_GOLD_TEXT if filled else Color(0.42, 0.36, 0.28)))
+
+	var cnt_lbl := Label.new()
+	cnt_lbl.text = "%d / %d  •  %s: %d/1" % [eq_pcs.size(), Catalog.MAX_POWER_CARDS, _tr("Mythic", "Mýtická"), mythic_equipped]
+	cnt_lbl.add_theme_font_override("font", _font_disp)
+	cnt_lbl.add_theme_font_size_override("font_size", 13)
+	cnt_lbl.add_theme_color_override("font_color", COL_GOLD_TEXT)
+	badge_hb.add_child(cnt_lbl)
+	hdr_hb.add_child(badge_pan)
+
 	var pc_grid := GridContainer.new()
-	pc_grid.columns = 4
+	pc_grid.columns = 8
 	pc_grid.add_theme_constant_override("h_separation", 8)
 	pc_grid.add_theme_constant_override("v_separation", 8)
 	pc_vb.add_child(pc_grid)
@@ -640,21 +871,74 @@ func _build_step_2_power_cards(parent: VBoxContainer) -> void:
 		var is_ul := Catalog.is_power_card_unlocked(_profile, pid) or (pid in eq_pcs)
 		var is_eq := pid in eq_pcs
 		var is_mythic := str(pc_raw.get("rarity", "")) == "Mythic"
+		var accent: Color = pcl["accent"]
+
 		var pb := Button.new()
 		pb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		pb.custom_minimum_size = Vector2(0, 56)
-		var rar_tag := _tr(" [MYTHIC]", " [MÝTICKÁ]") if is_mythic else ""
-		pb.text = "%s%s\n%s" % [str(pcl["short"]), rar_tag, _tr("EQUIPPED", "VYBAVENO") if is_eq else (_tr("Click to Equip", "Klikni pro výběr") if is_ul else _tr("Locked", "Zamčeno"))]
-		LialoIcons.apply_button_icon(pb, "check" if is_eq else ("star" if is_mythic and is_ul else ("bolt" if is_ul else "lock")), 18)
+		pb.custom_minimum_size = Vector2(118, 168)
 		pb.disabled = not is_ul
 		pb.tooltip_text = "%s — %s" % [str(pcl["name"]), str(pcl["desc"])]
-		pb.add_theme_font_override("font", _font_body)
-		pb.add_theme_font_size_override("font_size", 12)
 		pb.add_theme_stylebox_override("normal", _make_box_style(
-			Color(0.16, 0.11, 0.28, 0.96) if is_eq else Color(0.08, 0.07, 0.08, 0.88),
-			pcl["accent"] if is_eq else (Color(0.95, 0.72, 0.22, 0.75) if is_mythic else Color(0.38, 0.34, 0.42)),
-			8, 6
+			Color(0.22, 0.16, 0.08, 0.98) if is_eq else COL_WALNUT_DEEP,
+			COL_GOLD_TEXT if is_eq else (Color(0.96, 0.72, 0.24, 0.85) if is_mythic else Color(0.46, 0.36, 0.24, 0.78)),
+			8, 4
 		))
+		pb.add_theme_stylebox_override("hover", _make_box_style(
+			Color(0.26, 0.19, 0.10, 1.0), accent.lightened(0.25), 8, 4
+		))
+
+		var card_vb := VBoxContainer.new()
+		card_vb.set_anchors_preset(Control.PRESET_FULL_RECT)
+		card_vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card_vb.alignment = BoxContainer.ALIGNMENT_CENTER
+		card_vb.add_theme_constant_override("separation", 3)
+		pb.add_child(card_vb)
+
+		var tex_wrap := Control.new()
+		tex_wrap.custom_minimum_size = Vector2(88, 114)
+		tex_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card_vb.add_child(tex_wrap)
+
+		var tex_r := TextureRect.new()
+		tex_r.set_anchors_preset(Control.PRESET_FULL_RECT)
+		tex_r.texture = _get_card_tex(pid)
+		tex_r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex_r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex_r.modulate = Color.WHITE if is_ul else Color(0.36, 0.32, 0.30, 0.75)
+		tex_r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tex_wrap.add_child(tex_r)
+
+		if is_eq or not is_ul or is_mythic:
+			var badge_ic := LialoIcons.make_icon_rect(
+				"check" if is_eq else ("lock" if not is_ul else "star"),
+				18,
+				Color(0.46, 1.0, 0.62) if is_eq else (COL_PARCHMENT_DIM if not is_ul else COL_GOLD_TEXT)
+			)
+			badge_ic.position = Vector2(4, 4)
+			tex_wrap.add_child(badge_ic)
+
+		var name_lbl := Label.new()
+		name_lbl.text = str(pcl["short"])
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		name_lbl.add_theme_font_override("font", _font_disp)
+		name_lbl.add_theme_font_size_override("font_size", 11)
+		name_lbl.add_theme_color_override("font_color", COL_GOLD_TEXT if is_eq else COL_PARCHMENT)
+		card_vb.add_child(name_lbl)
+
+		var pwr_lbl := Label.new()
+		pwr_lbl.text = str(pcl.get("power_line", ""))
+		pwr_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		pwr_lbl.clip_text = true
+		pwr_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		pwr_lbl.add_theme_font_override("font", _font_body)
+		pwr_lbl.add_theme_font_size_override("font_size", 10)
+		pwr_lbl.add_theme_color_override("font_color", COL_PARCHMENT_DIM)
+		card_vb.add_child(pwr_lbl)
+
+		if is_ul:
+			_attach_card_hover(pb, 0.030, 6.0, 1.08)
+
 		pb.pressed.connect(func():
 			sfx_requested.emit("card_hover")
 			var arr: Array = _profile.get("custom_cards", []).duplicate()
@@ -662,7 +946,6 @@ func _build_step_2_power_cards(parent: VBoxContainer) -> void:
 				arr.erase(pid)
 			else:
 				if is_mythic:
-					# Enforce max 1 Mythic by replacing any existing Mythic
 					var filtered: Array = []
 					for existing_id in arr:
 						if str(Catalog.get_power_card(str(existing_id)).get("rarity", "")) != "Mythic":
@@ -679,11 +962,11 @@ func _build_step_2_power_cards(parent: VBoxContainer) -> void:
 
 
 # ============================================================================
-# STEP 3: 4-CARD GRAND SEAL (NO "Bankai" TEXT IN UI)
+# STEP 3: 4-CARD GRAND SEAL (GRAPHICAL PICKER & HOVER ANIMATIONS)
 # ============================================================================
 func _build_step_3_grand_seal(parent: VBoxContainer, sel_build_id: String, cur_build: Dictionary) -> void:
 	var seal_pan := PanelContainer.new()
-	seal_pan.add_theme_stylebox_override("panel", _make_box_style(Color(0.065, 0.048, 0.065, 0.95), _fx_target_col, 12, 12))
+	seal_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_BG, COL_GOLD_BORDER, 12, 12))
 	parent.add_child(seal_pan)
 
 	var bk_vb := VBoxContainer.new()
@@ -698,31 +981,29 @@ func _build_step_3_grand_seal(parent: VBoxContainer, sel_build_id: String, cur_b
 	bk_info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bk_hdr.add_child(bk_info)
 
-	var raw_seal_title := str(cur_build.get("bankai_name", "Grand Seal")).replace("Bankai", "Grand Seal").replace("BANKAI", "GRAND SEAL")
+	var raw_seal_title := _strip_seal_prefix(str(cur_build.get("bankai_name", "Grand Seal")))
 	bk_info.add_child(LialoIcons.make_icon_label_row(
 		"seal",
-		_tr("GRAND SEAL: %s (4 / 4 CARDS)" % raw_seal_title, "VELKÁ PEČEŤ: %s (4 / 4 KARTY)" % raw_seal_title),
-		22, 18, _fx_target_col.lightened(0.25)
+		_tr("GRAND SEAL: %s (4 / 4)" % raw_seal_title, "VELKÁ PEČEŤ: %s (4 / 4)" % raw_seal_title),
+		22, 17, COL_GOLD_TEXT
 	))
 
 	var bk_desc := Label.new()
-	var clean_desc := str(cur_build.get("bankai_desc", "")).replace("Bankai", "Grand Seal").replace("BANKAI", "GRAND SEAL")
-	bk_desc.text = "%s\n%s" % [
-		clean_desc,
-		_tr("Play all 4 Seal cards (in 1 slam or across the duel 0/4 -> 4/4) to unleash your Grand Seal!", "Zahraj všechny 4 karty Pečeti (najednou nebo během duelu 0/4 -> 4/4) pro spuštění Velké Pečeti!")
-	]
+	bk_desc.text = str(cur_build.get("bankai_desc", "")).replace("Bankai", "Grand Seal").replace("BANKAI", "GRAND SEAL")
 	bk_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	bk_desc.add_theme_font_override("font", _font_body)
-	bk_desc.add_theme_font_size_override("font_size", 14)
-	bk_desc.add_theme_color_override("font_color", Color(0.92, 0.88, 0.80))
+	bk_desc.add_theme_font_size_override("font_size", 13)
+	bk_desc.add_theme_color_override("font_color", COL_PARCHMENT)
 	bk_info.add_child(bk_desc)
 
 	var preset_btn := Button.new()
-	preset_btn.text = _tr("Build Preset", "Výchozí pečeť")
-	preset_btn.custom_minimum_size = Vector2(150, 40)
+	preset_btn.text = _tr("Preset", "Výchozí")
+	preset_btn.custom_minimum_size = Vector2(126, 38)
 	LialoIcons.apply_button_icon(preset_btn, "redraw", 16)
 	preset_btn.add_theme_font_override("font", _font_disp)
 	preset_btn.add_theme_font_size_override("font_size", 13)
+	preset_btn.add_theme_stylebox_override("normal", _make_box_style(COL_WALNUT_CARD, COL_GOLD_BORDER, 8, 6))
+	_attach_button_hover(preset_btn, 1.04)
 	preset_btn.pressed.connect(func():
 		sfx_requested.emit("card_shuffle")
 		_profile["bankai_combo"] = (cur_build.get("default_bankai", ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"]) as Array).duplicate()
@@ -733,12 +1014,14 @@ func _build_step_3_grand_seal(parent: VBoxContainer, sel_build_id: String, cur_b
 	bk_hdr.add_child(preset_btn)
 
 	var preview_btn := Button.new()
-	preview_btn.text = _tr("Preview Grand Seal FX", "Ukázka Velké Pečeti")
-	preview_btn.custom_minimum_size = Vector2(198, 40)
+	preview_btn.text = _tr("Preview FX", "Ukázka FX")
+	preview_btn.custom_minimum_size = Vector2(148, 38)
 	LialoIcons.apply_button_icon(preview_btn, "bolt", 16)
 	preview_btn.add_theme_font_override("font", _font_disp)
 	preview_btn.add_theme_font_size_override("font_size", 13)
-	preview_btn.add_theme_stylebox_override("normal", _make_box_style(Color(_fx_target_col.r * 0.25, _fx_target_col.g * 0.25, _fx_target_col.b * 0.25, 0.96), _fx_target_col, 8, 6))
+	preview_btn.add_theme_color_override("font_color", COL_GOLD_TEXT)
+	preview_btn.add_theme_stylebox_override("normal", _make_box_style(Color(0.22, 0.15, 0.08, 0.96), COL_GOLD_TEXT, 8, 6))
+	_attach_button_hover(preview_btn, 1.05)
 	preview_btn.pressed.connect(func():
 		sfx_requested.emit("card_ace_strike")
 		_play_grand_seal_preview(sel_build_id)
@@ -756,12 +1039,12 @@ func _build_step_3_grand_seal(parent: VBoxContainer, sel_build_id: String, cur_b
 		var ck := str(combo_arr[si]) if si < combo_arr.size() else "CERVEN_E"
 		var is_ed := (si == _editing_seal_slot)
 		var slot_btn := Button.new()
-		slot_btn.custom_minimum_size = Vector2(148, 174)
+		slot_btn.custom_minimum_size = Vector2(142, 168)
 		slot_btn.add_theme_stylebox_override("normal", _make_box_style(
-			Color(0.14, 0.10, 0.12, 0.98) if is_ed else Color(0.08, 0.06, 0.07, 0.95),
-			Color(1.0, 0.90, 0.38) if is_ed else _fx_target_col, 10, 6
+			Color(0.22, 0.15, 0.08, 0.98) if is_ed else COL_WALNUT_DEEP,
+			COL_GOLD_TEXT if is_ed else _fx_target_col, 10, 6
 		))
-		slot_btn.add_theme_stylebox_override("hover", _make_box_style(Color(0.18, 0.13, 0.15, 1.0), Color(1.0, 0.92, 0.46), 10, 6))
+		slot_btn.add_theme_stylebox_override("hover", _make_box_style(Color(0.26, 0.18, 0.10, 1.0), COL_GOLD_TEXT, 10, 6))
 
 		var svb := VBoxContainer.new()
 		svb.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -771,50 +1054,59 @@ func _build_step_3_grand_seal(parent: VBoxContainer, sel_build_id: String, cur_b
 
 		var tex_r := TextureRect.new()
 		tex_r.texture = _get_card_tex(ck)
-		tex_r.custom_minimum_size = Vector2(96, 128)
+		tex_r.custom_minimum_size = Vector2(92, 122)
 		tex_r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tex_r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		tex_r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		svb.add_child(tex_r)
 
 		var cap := Label.new()
-		cap.text = "%s %d • %s" % [_tr("SEAL", "PEČEŤ"), si + 1, _pretty_card_key(ck)]
+		cap.text = "#%d • %s" % [si + 1, _pretty_card_key(ck)]
 		cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		cap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cap.add_theme_font_override("font", _font_disp)
 		cap.add_theme_font_size_override("font_size", 12)
-		cap.add_theme_color_override("font_color", Color(1.0, 0.92, 0.52) if is_ed else Color(0.92, 0.88, 0.80))
+		cap.add_theme_color_override("font_color", COL_GOLD_TEXT if is_ed else COL_PARCHMENT)
 		svb.add_child(cap)
+
+		if is_ed:
+			slot_btn.call_deferred("set_pivot_offset", Vector2(71, 84))
+			_animate_seal_slot_pulse(slot_btn)
+		else:
+			_attach_card_hover(slot_btn, 0.024, 4.0, 1.06)
+
+		if _flash_seal_slot == si:
+			slot_btn.call_deferred("set_pivot_offset", Vector2(71, 84))
+			_animate_seal_flash(slot_btn)
 
 		var slot_idx_cap := si
 		slot_btn.pressed.connect(func():
 			sfx_requested.emit("card_hover")
-			_animate_btn_pop(slot_btn)
 			_editing_seal_slot = -1 if _editing_seal_slot == slot_idx_cap else slot_idx_cap
 			_rebuild_ui()
 		)
 		slots_hb.add_child(slot_btn)
 
+	# Graphical Card Picker for Active Seal Slot
 	if _editing_seal_slot >= 0 and _editing_seal_slot < 4:
-		_seal_picker_wrap = PanelContainer.new()
-		_seal_picker_wrap.add_theme_stylebox_override("panel", _make_box_style(Color(0.05, 0.04, 0.055, 0.98), Color(1.0, 0.84, 0.34), 10, 10))
-		bk_vb.add_child(_seal_picker_wrap)
+		var picker_wrap := PanelContainer.new()
+		picker_wrap.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_DEEP, COL_GOLD_TEXT, 10, 10))
+		bk_vb.add_child(picker_wrap)
 
 		var pk_vb := VBoxContainer.new()
-		pk_vb.add_theme_constant_override("separation", 8)
-		_seal_picker_wrap.add_child(pk_vb)
+		pk_vb.add_theme_constant_override("separation", 6)
+		picker_wrap.add_child(pk_vb)
 
-		var pk_lbl := Label.new()
-		pk_lbl.text = _tr("Pick a card for Grand Seal Slot #%d:" % (_editing_seal_slot + 1), "Vyber kartu pro Velkou Pečeť #%d:" % (_editing_seal_slot + 1))
-		pk_lbl.add_theme_font_override("font", _font_disp)
-		pk_lbl.add_theme_font_size_override("font_size", 15)
-		pk_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.42))
-		pk_vb.add_child(pk_lbl)
+		pk_vb.add_child(LialoIcons.make_icon_label_row(
+			"cards",
+			_tr("SLOT #%d — PICK CARD" % (_editing_seal_slot + 1), "SLOT #%d — VYBER KARTU" % (_editing_seal_slot + 1)),
+			18, 14, COL_GOLD_TEXT
+		))
 
 		var pk_grid := GridContainer.new()
 		pk_grid.columns = 8
-		pk_grid.add_theme_constant_override("h_separation", 6)
-		pk_grid.add_theme_constant_override("v_separation", 6)
+		pk_grid.add_theme_constant_override("h_separation", 8)
+		pk_grid.add_theme_constant_override("v_separation", 8)
 		pk_vb.add_child(pk_grid)
 
 		for s in SUITS:
@@ -822,19 +1114,51 @@ func _build_step_3_grand_seal(parent: VBoxContainer, sel_build_id: String, cur_b
 				var key := "%s_%s" % [str(s["id"]), r]
 				var already_in := key in combo_arr
 				var pb := Button.new()
-				pb.custom_minimum_size = Vector2(118, 34)
-				pb.text = r
-				LialoIcons.apply_button_icon(pb, str(s["icon"]), 16)
-				pb.add_theme_font_override("font", _font_disp)
-				pb.add_theme_font_size_override("font_size", 13)
-				pb.add_theme_color_override("font_color", Color(0.42, 1.0, 0.62) if already_in else (s["col"] as Color).lightened(0.25))
+				pb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				pb.custom_minimum_size = Vector2(68, 86)
+				pb.tooltip_text = _pretty_card_key(key)
+				pb.add_theme_stylebox_override("normal", _make_box_style(
+					Color(0.14, 0.24, 0.14, 0.96) if already_in else COL_WALNUT_CARD,
+					Color(0.46, 0.96, 0.62) if already_in else Color(0.50, 0.38, 0.22, 0.80), 8, 3
+				))
+				pb.add_theme_stylebox_override("hover", _make_box_style(
+					Color(0.24, 0.18, 0.10, 1.0), COL_GOLD_TEXT, 8, 3
+				))
+
+				var p_vb := VBoxContainer.new()
+				p_vb.set_anchors_preset(Control.PRESET_FULL_RECT)
+				p_vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				p_vb.alignment = BoxContainer.ALIGNMENT_CENTER
+				p_vb.add_theme_constant_override("separation", 1)
+				pb.add_child(p_vb)
+
+				var ctex := TextureRect.new()
+				ctex.texture = _get_card_tex(key)
+				ctex.custom_minimum_size = Vector2(46, 64)
+				ctex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				ctex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				ctex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				p_vb.add_child(ctex)
+
+				var r_lbl := Label.new()
+				r_lbl.text = r
+				r_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				r_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				r_lbl.add_theme_font_override("font", _font_disp)
+				r_lbl.add_theme_font_size_override("font_size", 10)
+				r_lbl.add_theme_color_override("font_color", Color(0.46, 1.0, 0.62) if already_in else COL_PARCHMENT_DIM)
+				p_vb.add_child(r_lbl)
+
+				_attach_card_hover(pb, 0.036, 6.0, 1.12)
+				var target_slot := _editing_seal_slot
 				pb.pressed.connect(func():
 					sfx_requested.emit("ui_click")
 					var next_c: Array = _profile.get("bankai_combo", []).duplicate()
 					while next_c.size() < 4:
 						next_c.append("CERVEN_E")
-					next_c[_editing_seal_slot] = key
+					next_c[target_slot] = key
 					_profile["bankai_combo"] = next_c
+					_flash_seal_slot = target_slot
 					_editing_seal_slot = -1
 					_sync_and_save()
 					_rebuild_ui()
@@ -843,124 +1167,127 @@ func _build_step_3_grand_seal(parent: VBoxContainer, sel_build_id: String, cur_b
 
 
 # ============================================================================
-# STEP 4: 2x CORE RELICS, 2x TABLETOP 3D RELICS, CARD BACK & SWORD SKIN
+# STEP 4: 3D TABLETOP RELICS ONLY + VISUAL CARD BACKS & SWORD SKINS
 # ============================================================================
-func _build_step_4_relics_cosmetics(parent: VBoxContainer, sel_build_id: String) -> void:
-	var top_hb := HBoxContainer.new()
-	top_hb.add_theme_constant_override("separation", 12)
-	parent.add_child(top_hb)
-
-	# Left: 2x Passive Core Relics
-	var act_rels: Array = _profile.get("active_relics", [])
-	var rel_pan := PanelContainer.new()
-	rel_pan.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	rel_pan.add_theme_stylebox_override("panel", _make_box_style(Color(0.06, 0.05, 0.048, 0.94), Color(0.84, 0.66, 0.28, 0.85), 10, 10))
-	top_hb.add_child(rel_pan)
-
-	var rel_vb := VBoxContainer.new()
-	rel_vb.add_theme_constant_override("separation", 6)
-	rel_pan.add_child(rel_vb)
-
-	rel_vb.add_child(LialoIcons.make_icon_label_row(
-		"relic",
-		_tr("CORE PASSIVE RELICS (%d / %d)" % [act_rels.size(), Catalog.MAX_ACTIVE_RELICS], "PASIVNÍ RELIKVIE (%d / %d)" % [act_rels.size(), Catalog.MAX_ACTIVE_RELICS]),
-		18, 15, Color(1.0, 0.86, 0.42)
-	))
-
-	for r_raw in Catalog.RELICS:
-		var rid := str(r_raw["id"])
-		if Catalog.is_relic_hidden(rid):
-			continue
-		var rloc := Catalog.get_relic_loc(rid, _lang)
-		var is_ul := Catalog.is_relic_unlocked(_profile, rid) or (rid in act_rels)
-		var is_eq := rid in act_rels
-		var is_sig := (str(r_raw.get("build_id", "")) == sel_build_id)
-
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 6)
-		rel_vb.add_child(row)
-
-		var rb := Button.new()
-		rb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		rb.custom_minimum_size = Vector2(0, 38)
-		var tag := _tr("EQUIPPED", "VYBAVENO") if is_eq else (_tr("Equip", "Vybrat") if is_ul else _tr("Locked", "Zamčeno"))
-		rb.text = "%s [%s]" % [str(rloc["name"]), tag]
-		LialoIcons.apply_button_icon(rb, "check" if is_eq else ("star" if is_sig and is_ul else ("relic" if is_ul else "lock")), 16)
-		rb.disabled = not is_ul
-		rb.tooltip_text = str(rloc["desc"])
-		rb.add_theme_font_override("font", _font_body)
-		rb.add_theme_font_size_override("font_size", 12)
-		rb.add_theme_stylebox_override("normal", _make_box_style(
-			Color(0.10, 0.24, 0.14, 0.96) if is_eq else Color(0.10, 0.085, 0.075, 0.90),
-			Color(0.42, 1.0, 0.58) if is_eq else (rloc["col"] if is_sig else Color(0.42, 0.36, 0.28)), 6, 4
-		))
-		rb.pressed.connect(func():
-			sfx_requested.emit("ui_click")
-			var arr: Array = _profile.get("active_relics", []).duplicate()
-			if rid in arr:
-				arr.erase(rid)
-			else:
-				while arr.size() >= Catalog.MAX_ACTIVE_RELICS:
-					arr.pop_front()
-				arr.append(rid)
-			_profile["active_relics"] = arr
-			_sync_and_save()
-			_rebuild_ui()
-		)
-		row.add_child(rb)
-
-		var insp := Button.new()
-		insp.custom_minimum_size = Vector2(76, 38)
-		insp.text = "3D"
-		LialoIcons.apply_button_icon(insp, "help", 14)
-		insp.tooltip_text = _tr("Inspect 3D Relic", "Prohlédnout 3D relikvii")
-		insp.pressed.connect(func():
-			_open_relic_inspect(rid, is_ul, is_eq, Catalog.get_unlock_source_label(rid, _lang))
-		)
-		row.add_child(insp)
-
-	# Right: 2x Active Tabletop 3D Relics
+func _build_step_4_relics_cosmetics(parent: VBoxContainer) -> void:
+	var is_headless := DisplayServer.get_name() == "headless"
 	var tbl_rels: Array = _profile.get("table_relics", [])
+
+	# Top: 2x 3D Tabletop Relics ONLY (with live SubViewport preview + 3D Inspect)
 	var tr_pan := PanelContainer.new()
-	tr_pan.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tr_pan.add_theme_stylebox_override("panel", _make_box_style(Color(0.06, 0.05, 0.065, 0.94), Color(0.46, 0.78, 0.96, 0.85), 10, 10))
-	top_hb.add_child(tr_pan)
+	tr_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_BG, COL_GOLD_BORDER, 10, 10))
+	parent.add_child(tr_pan)
 
 	var tr_vb := VBoxContainer.new()
-	tr_vb.add_theme_constant_override("separation", 6)
+	tr_vb.add_theme_constant_override("separation", 8)
 	tr_pan.add_child(tr_vb)
 
 	tr_vb.add_child(LialoIcons.make_icon_label_row(
 		"trophy",
-		_tr("TABLETOP 3D RELICS (%d / 2)" % tbl_rels.size(), "STOLNÍ 3D RELIKVIE (%d / 2)" % tbl_rels.size()),
-		18, 15, Color(0.58, 0.88, 1.0)
+		_tr("3D TABLETOP RELICS (%d / 2)" % tbl_rels.size(), "3D STOLNÍ RELIKVIE (%d / 2)" % tbl_rels.size()),
+		18, 15, COL_GOLD_TEXT
 	))
+
+	var tr_grid := GridContainer.new()
+	tr_grid.columns = 5
+	tr_grid.add_theme_constant_override("h_separation", 8)
+	tr_grid.add_theme_constant_override("v_separation", 8)
+	tr_vb.add_child(tr_grid)
 
 	for t_raw in Catalog.TABLE_RELICS:
 		var tid := str(t_raw["id"])
 		var tloc := Catalog.get_table_relic_loc(tid, _lang)
 		var is_ul := Catalog.is_table_relic_unlocked(_profile, tid) or (tid in tbl_rels)
 		var is_eq := tid in tbl_rels
+		var rcol: Color = tloc.get("col", COL_GOLD_TEXT)
 
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 6)
-		tr_vb.add_child(row)
-
-		var tb := Button.new()
-		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tb.custom_minimum_size = Vector2(0, 34)
-		var tag := _tr("ON TABLE", "NA STOLE") if is_eq else (_tr("Equip", "Vybrat") if is_ul else _tr("Locked", "Zamčeno"))
-		tb.text = "%s [%s]" % [str(tloc["name"]), tag]
-		LialoIcons.apply_button_icon(tb, "check" if is_eq else ("trophy" if is_ul else "lock"), 15)
-		tb.disabled = not is_ul
-		tb.tooltip_text = str(tloc["desc"])
-		tb.add_theme_font_override("font", _font_body)
-		tb.add_theme_font_size_override("font_size", 12)
-		tb.add_theme_stylebox_override("normal", _make_box_style(
-			Color(0.10, 0.22, 0.28, 0.96) if is_eq else Color(0.08, 0.08, 0.10, 0.88),
-			Color(0.42, 0.92, 1.0) if is_eq else Color(0.36, 0.40, 0.48), 6, 4
+		var card_pan := PanelContainer.new()
+		card_pan.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		card_pan.custom_minimum_size = Vector2(180, 146)
+		card_pan.tooltip_text = str(tloc["desc"])
+		card_pan.add_theme_stylebox_override("panel", _make_box_style(
+			Color(0.20, 0.15, 0.08, 0.98) if is_eq else COL_WALNUT_DEEP,
+			COL_GOLD_TEXT if is_eq else (Color(0.55, 0.42, 0.24, 0.80) if is_ul else Color(0.32, 0.26, 0.20, 0.65)),
+			8, 6
 		))
-		tb.pressed.connect(func():
+
+		var cvb := VBoxContainer.new()
+		cvb.add_theme_constant_override("separation", 4)
+		card_pan.add_child(cvb)
+
+		# Live 3D SubViewport preview (headless-safe)
+		var vp_wrap := PanelContainer.new()
+		vp_wrap.custom_minimum_size = Vector2(0, 66)
+		vp_wrap.add_theme_stylebox_override("panel", _make_box_style(Color(0.04, 0.03, 0.025, 0.95), Color(0.38, 0.30, 0.18, 0.65), 6, 2))
+		cvb.add_child(vp_wrap)
+
+		if not is_headless:
+			var svc := SubViewportContainer.new()
+			svc.set_anchors_preset(Control.PRESET_FULL_RECT)
+			svc.stretch = true
+			svc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			vp_wrap.add_child(svc)
+
+			var svp := SubViewport.new()
+			svp.size = Vector2i(140, 66)
+			svp.own_world_3d = true
+			svp.transparent_bg = true
+			svp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+			svc.add_child(svp)
+
+			var env := WorldEnvironment.new()
+			var we := Environment.new()
+			we.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+			we.ambient_light_color = Color(0.55, 0.48, 0.40)
+			we.ambient_light_energy = 1.25
+			env.environment = we
+			svp.add_child(env)
+
+			var dl := DirectionalLight3D.new()
+			dl.rotation_degrees = Vector3(-40.0, 35.0, 0.0)
+			dl.light_energy = 1.6
+			svp.add_child(dl)
+
+			var cam := Camera3D.new()
+			cam.position = Vector3(0.0, 0.15, 1.35)
+			cam.fov = 36.0
+			svp.add_child(cam)
+
+			var piv := Node3D.new()
+			svp.add_child(piv)
+			_relic_pivots.append(piv)
+			_populate_mini_relic_3d(piv, tid, rcol)
+		else:
+			var hl_row := CenterContainer.new()
+			hl_row.add_child(LialoIcons.make_icon_rect("trophy" if is_ul else "lock", 26, rcol if is_ul else COL_PARCHMENT_DIM))
+			vp_wrap.add_child(hl_row)
+
+		var n_lbl := Label.new()
+		n_lbl.text = str(tloc["name"])
+		n_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		n_lbl.clip_text = true
+		n_lbl.add_theme_font_override("font", _font_disp)
+		n_lbl.add_theme_font_size_override("font_size", 11)
+		n_lbl.add_theme_color_override("font_color", COL_GOLD_TEXT if is_eq else (COL_PARCHMENT if is_ul else COL_PARCHMENT_DIM))
+		cvb.add_child(n_lbl)
+
+		var act_hb := HBoxContainer.new()
+		act_hb.add_theme_constant_override("separation", 4)
+		cvb.add_child(act_hb)
+
+		var eq_btn := Button.new()
+		eq_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		eq_btn.custom_minimum_size = Vector2(0, 28)
+		eq_btn.text = _tr("EQUIPPED", "NA STOLE") if is_eq else (_tr("Equip", "Vybrat") if is_ul else _tr("Locked", "Zamčeno"))
+		LialoIcons.apply_button_icon(eq_btn, "check" if is_eq else ("trophy" if is_ul else "lock"), 13)
+		eq_btn.disabled = not is_ul
+		eq_btn.add_theme_font_override("font", _font_body)
+		eq_btn.add_theme_font_size_override("font_size", 11)
+		eq_btn.add_theme_stylebox_override("normal", _make_box_style(
+			Color(0.14, 0.28, 0.14, 0.96) if is_eq else COL_WALNUT_CARD,
+			Color(0.46, 0.96, 0.58) if is_eq else Color(0.45, 0.36, 0.24), 6, 3
+		))
+		eq_btn.pressed.connect(func():
 			sfx_requested.emit("ui_click")
 			var arr: Array = _profile.get("table_relics", []).duplicate()
 			if tid in arr:
@@ -969,42 +1296,51 @@ func _build_step_4_relics_cosmetics(parent: VBoxContainer, sel_build_id: String)
 				while arr.size() >= 2:
 					arr.pop_front()
 				arr.append(tid)
+				_bounce_relic_id = tid
 			_profile["table_relics"] = arr
 			_sync_and_save()
 			_rebuild_ui()
 		)
-		row.add_child(tb)
+		act_hb.add_child(eq_btn)
 
-		var insp := Button.new()
-		insp.custom_minimum_size = Vector2(76, 34)
-		insp.text = "3D"
-		LialoIcons.apply_button_icon(insp, "help", 14)
-		insp.tooltip_text = _tr("Inspect 3D Relic", "Prohlédnout 3D relikvii")
-		insp.pressed.connect(func():
+		var insp_btn := Button.new()
+		insp_btn.custom_minimum_size = Vector2(46, 28)
+		insp_btn.text = "3D"
+		insp_btn.tooltip_text = _tr("Inspect 3D Relic", "Prohlédnout 3D relikvii")
+		insp_btn.add_theme_font_override("font", _font_disp)
+		insp_btn.add_theme_font_size_override("font_size", 11)
+		insp_btn.add_theme_stylebox_override("normal", _make_box_style(COL_WALNUT_CARD, COL_GOLD_BORDER, 6, 3))
+		insp_btn.pressed.connect(func():
 			_open_relic_inspect(tid, is_ul, is_eq, str(tloc.get("unlock_hint", "")))
 		)
-		row.add_child(insp)
+		act_hb.add_child(insp_btn)
 
-	# Bottom Row: Card Back & Sword Skin
+		if _bounce_relic_id == tid:
+			card_pan.call_deferred("set_pivot_offset", Vector2(90, 73))
+			_animate_relic_bounce(card_pan)
+
+		tr_grid.add_child(card_pan)
+
+	# Bottom Row: Visual Card Backs & Visual Sword Skins
 	var cos_hb := HBoxContainer.new()
 	cos_hb.add_theme_constant_override("separation", 12)
 	parent.add_child(cos_hb)
 
-	# Card Back
+	# Card Backs (Graphical Previews + Flip Tween)
 	var cb_pan := PanelContainer.new()
 	cb_pan.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cb_pan.add_theme_stylebox_override("panel", _make_box_style(Color(0.06, 0.05, 0.05, 0.94), Color(0.75, 0.60, 0.32, 0.80), 10, 10))
+	cb_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_BG, COL_GOLD_BORDER, 10, 10))
 	cos_hb.add_child(cb_pan)
 
 	var cb_vb := VBoxContainer.new()
-	cb_vb.add_theme_constant_override("separation", 6)
+	cb_vb.add_theme_constant_override("separation", 8)
 	cb_pan.add_child(cb_vb)
-	cb_vb.add_child(LialoIcons.make_icon_label_row("cards", _tr("CARD BACK", "RUB KARET"), 18, 15, Color(1.0, 0.88, 0.44)))
+	cb_vb.add_child(LialoIcons.make_icon_label_row("cards", _tr("CARD BACK", "RUB KARET"), 18, 15, COL_GOLD_TEXT))
 
 	var cb_grid := GridContainer.new()
 	cb_grid.columns = 4
-	cb_grid.add_theme_constant_override("h_separation", 6)
-	cb_grid.add_theme_constant_override("v_separation", 6)
+	cb_grid.add_theme_constant_override("h_separation", 8)
+	cb_grid.add_theme_constant_override("v_separation", 8)
 	cb_vb.add_child(cb_grid)
 
 	var sel_deck := str(_profile.get("selected_deck", "klasic"))
@@ -1013,38 +1349,71 @@ func _build_step_4_relics_cosmetics(parent: VBoxContainer, sel_build_id: String)
 		var is_sel := (did == sel_deck)
 		var btn := Button.new()
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.custom_minimum_size = Vector2(0, 36)
-		btn.text = _tr(str(d["en"]), str(d["cs"]))
-		LialoIcons.apply_button_icon(btn, "check" if is_sel else "cards", 14)
-		btn.add_theme_font_override("font", _font_body)
-		btn.add_theme_font_size_override("font_size", 12)
+		btn.custom_minimum_size = Vector2(96, 98)
+		btn.tooltip_text = _tr(str(d["en"]), str(d["cs"]))
 		btn.add_theme_stylebox_override("normal", _make_box_style(
-			Color(0.14, 0.22, 0.14, 0.96) if is_sel else Color(0.08, 0.07, 0.07, 0.88),
-			d["col"] if is_sel else Color(0.38, 0.34, 0.28), 6, 4
+			Color(0.22, 0.16, 0.08, 0.98) if is_sel else COL_WALNUT_DEEP,
+			COL_GOLD_TEXT if is_sel else Color(0.45, 0.35, 0.22, 0.78), 8, 4
 		))
+		btn.add_theme_stylebox_override("hover", _make_box_style(Color(0.26, 0.19, 0.10, 1.0), COL_GOLD_TEXT, 8, 4))
+
+		var b_vb := VBoxContainer.new()
+		b_vb.set_anchors_preset(Control.PRESET_FULL_RECT)
+		b_vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b_vb.alignment = BoxContainer.ALIGNMENT_CENTER
+		b_vb.add_theme_constant_override("separation", 3)
+		btn.add_child(b_vb)
+
+		var b_tex := TextureRect.new()
+		b_tex.texture = _get_table_tex(str(d["tex"]))
+		b_tex.custom_minimum_size = Vector2(52, 68)
+		b_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		b_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		b_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b_vb.add_child(b_tex)
+
+		var b_lbl := Label.new()
+		b_lbl.text = _tr(str(d["en"]), str(d["cs"]))
+		b_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		b_lbl.clip_text = true
+		b_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b_lbl.add_theme_font_override("font", _font_body)
+		b_lbl.add_theme_font_size_override("font_size", 10)
+		b_lbl.add_theme_color_override("font_color", COL_GOLD_TEXT if is_sel else COL_PARCHMENT_DIM)
+		b_vb.add_child(b_lbl)
+
+		btn.mouse_entered.connect(func():
+			if is_instance_valid(btn):
+				_animate_card_flip(btn)
+		)
+		if _flip_back_id == did:
+			btn.call_deferred("set_pivot_offset", Vector2(48, 49))
+			_animate_card_flip(btn)
+
 		btn.pressed.connect(func():
 			sfx_requested.emit("card_hover")
 			_profile["selected_deck"] = did
+			_flip_back_id = did
 			_sync_and_save()
 			_rebuild_ui()
 		)
 		cb_grid.add_child(btn)
 
-	# Sword Skin
+	# Sword Skins (Visual Blade Previews)
 	var sw_pan := PanelContainer.new()
 	sw_pan.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sw_pan.add_theme_stylebox_override("panel", _make_box_style(Color(0.06, 0.05, 0.05, 0.94), Color(0.75, 0.48, 0.32, 0.80), 10, 10))
+	sw_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_BG, COL_GOLD_BORDER, 10, 10))
 	cos_hb.add_child(sw_pan)
 
 	var sw_vb := VBoxContainer.new()
-	sw_vb.add_theme_constant_override("separation", 6)
+	sw_vb.add_theme_constant_override("separation", 8)
 	sw_pan.add_child(sw_vb)
-	sw_vb.add_child(LialoIcons.make_icon_label_row("sword", _tr("SWORD SKIN", "VZHLED MEČE"), 18, 15, Color(1.0, 0.80, 0.56)))
+	sw_vb.add_child(LialoIcons.make_icon_label_row("sword", _tr("SWORD SKIN", "VZHLED MEČE"), 18, 15, COL_GOLD_TEXT))
 
 	var sw_grid := GridContainer.new()
 	sw_grid.columns = 3
-	sw_grid.add_theme_constant_override("h_separation", 6)
-	sw_grid.add_theme_constant_override("v_separation", 6)
+	sw_grid.add_theme_constant_override("h_separation", 8)
+	sw_grid.add_theme_constant_override("v_separation", 8)
 	sw_vb.add_child(sw_grid)
 
 	var owned_sw: Array = _profile.get("unlocked_swords", ["SWORD_IRON"])
@@ -1054,19 +1423,58 @@ func _build_step_4_relics_cosmetics(parent: VBoxContainer, sel_build_id: String)
 		var swl := Catalog.get_sword_skin_loc(sid, _lang)
 		var is_ul := (sid in owned_sw) or (sid == "SWORD_IRON")
 		var is_eq := (sid == eq_sw)
+		var blade_c: Color = swl.get("blade_col", Color.SILVER)
+		var guard_c: Color = swl.get("guard_col", COL_GOLD_TEXT)
+		var trail_c: Color = swl.get("trail_col", COL_GOLD_TEXT)
+
 		var sbtn := Button.new()
 		sbtn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		sbtn.custom_minimum_size = Vector2(0, 36)
-		sbtn.text = str(swl["name"])
-		LialoIcons.apply_button_icon(sbtn, "check" if is_eq else ("sword" if is_ul else "lock"), 14)
+		sbtn.custom_minimum_size = Vector2(110, 98)
 		sbtn.disabled = not is_ul
 		sbtn.tooltip_text = str(swl["desc"])
-		sbtn.add_theme_font_override("font", _font_body)
-		sbtn.add_theme_font_size_override("font_size", 12)
 		sbtn.add_theme_stylebox_override("normal", _make_box_style(
-			Color(0.22, 0.14, 0.10, 0.96) if is_eq else Color(0.08, 0.07, 0.07, 0.88),
-			swl["trail_col"] if is_eq else Color(0.38, 0.34, 0.28), 6, 4
+			Color(0.22, 0.15, 0.08, 0.98) if is_eq else COL_WALNUT_DEEP,
+			trail_c if is_eq else Color(0.45, 0.35, 0.22, 0.78), 8, 5
 		))
+		sbtn.add_theme_stylebox_override("hover", _make_box_style(Color(0.26, 0.19, 0.10, 1.0), trail_c, 8, 5))
+
+		var svb := VBoxContainer.new()
+		svb.set_anchors_preset(Control.PRESET_FULL_RECT)
+		svb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		svb.alignment = BoxContainer.ALIGNMENT_CENTER
+		svb.add_theme_constant_override("separation", 5)
+		sbtn.add_child(svb)
+
+		var sw_ic := LialoIcons.make_icon_rect("sword" if is_ul else "lock", 30, trail_c if is_ul else COL_PARCHMENT_DIM)
+		sw_ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		svb.add_child(sw_ic)
+
+		# Visual blade + guard + trail color bar
+		var swatch_hb := HBoxContainer.new()
+		swatch_hb.alignment = BoxContainer.ALIGNMENT_CENTER
+		swatch_hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		swatch_hb.add_theme_constant_override("separation", 2)
+		svb.add_child(swatch_hb)
+		for sc_item in [{"w": 24, "c": blade_c}, {"w": 10, "c": guard_c}, {"w": 18, "c": trail_c}]:
+			var cr := ColorRect.new()
+			cr.custom_minimum_size = Vector2(int(sc_item["w"]), 6)
+			cr.color = sc_item["c"]
+			cr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			swatch_hb.add_child(cr)
+
+		var sw_lbl := Label.new()
+		sw_lbl.text = str(swl["name"])
+		sw_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		sw_lbl.clip_text = true
+		sw_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		sw_lbl.add_theme_font_override("font", _font_body)
+		sw_lbl.add_theme_font_size_override("font_size", 11)
+		sw_lbl.add_theme_color_override("font_color", COL_GOLD_TEXT if is_eq else COL_PARCHMENT)
+		svb.add_child(sw_lbl)
+
+		if is_ul:
+			_attach_button_hover(sbtn, 1.04)
+
 		sbtn.pressed.connect(func():
 			sfx_requested.emit("ui_click")
 			_profile["equipped_sword"] = sid
@@ -1076,42 +1484,91 @@ func _build_step_4_relics_cosmetics(parent: VBoxContainer, sel_build_id: String)
 		sw_grid.add_child(sbtn)
 
 
+func _populate_mini_relic_3d(pivot: Node3D, relic_id: String, accent: Color) -> void:
+	var glb_path := Catalog.get_relic_glb_path(relic_id)
+	if glb_path != "" and ResourceLoader.exists(glb_path):
+		var packed := load(glb_path) as PackedScene
+		if packed != null:
+			var inst := packed.instantiate()
+			if inst is Node3D:
+				var n3 := inst as Node3D
+				pivot.add_child(n3)
+				var aabb := _compute_aabb(n3)
+				var max_dim := maxf(aabb.size.x, maxf(aabb.size.y, aabb.size.z))
+				if max_dim > 0.001:
+					var sf := 0.65 / max_dim
+					n3.scale = Vector3.ONE * sf
+					n3.position = -aabb.get_center() * sf
+				return
+	var mi := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.42, 0.42, 0.42)
+	mi.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = accent
+	mat.metallic = 0.75
+	mat.roughness = 0.25
+	mi.material_override = mat
+	pivot.add_child(mi)
+
+
+func _compute_aabb(node: Node3D) -> AABB:
+	var has_box := false
+	var total := AABB()
+	var stack: Array[Node] = [node]
+	while not stack.is_empty():
+		var cur: Node = stack.pop_back()
+		if cur is MeshInstance3D:
+			var b := (cur as MeshInstance3D).get_aabb()
+			if not has_box:
+				total = b
+				has_box = true
+			else:
+				total = total.merge(b)
+		for ch in cur.get_children():
+			stack.append(ch)
+	return total if has_box else AABB(Vector3(-0.25, -0.25, -0.25), Vector3(0.5, 0.5, 0.5))
+
+
 # ============================================================================
 # STEP 5: NAME & SAVE (NAMED DECKS + SAVE & PLAY)
 # ============================================================================
 func _build_step_5_name_save(parent: VBoxContainer, _sel_build_id: String, cur_build: Dictionary) -> void:
 	var save_pan := PanelContainer.new()
-	save_pan.add_theme_stylebox_override("panel", _make_box_style(Color(0.06, 0.05, 0.055, 0.95), _fx_target_col, 12, 14))
+	save_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_BG, COL_GOLD_BORDER, 12, 14))
 	parent.add_child(save_pan)
 
+	if _save_flare_pending:
+		_save_flare_pending = false
+		save_pan.call_deferred("set_pivot_offset", Vector2(560, 80))
+		_animate_save_flare(save_pan)
+
 	var svb := VBoxContainer.new()
-	svb.add_theme_constant_override("separation", 12)
+	svb.add_theme_constant_override("separation", 10)
 	save_pan.add_child(svb)
 
 	svb.add_child(LialoIcons.make_icon_label_row(
 		"scroll",
-		_tr("NAME & SAVE YOUR DECK", "POJMENUJ A ULOŽ SVŮJ BALÍČEK"),
-		20, 17, Color(1.0, 0.88, 0.44)
+		_tr("NAME & SAVE", "POJMENOVAT A ULOŽIT"),
+		20, 17, COL_GOLD_TEXT
 	))
 
 	var pc_arr: Array = _profile.get("custom_cards", [])
-	var ar_arr: Array = _profile.get("active_relics", [])
 	var tr_arr: Array = _profile.get("table_relics", [])
 	var seal_arr: Array = _profile.get("bankai_combo", [])
 	var sw_loc := Catalog.get_sword_skin_loc(str(_profile.get("equipped_sword", "SWORD_IRON")), _lang)
+
 	var sum_lbl := Label.new()
-	sum_lbl.text = _tr(
-		"Build: %s  |  Power Cards: %d / %d  |  Grand Seal: %d / 4  |  Core Relics: %d / %d  |  Table Relics: %d / 2  |  Sword: %s" % [
-			str(cur_build["name"]), pc_arr.size(), Catalog.MAX_POWER_CARDS, seal_arr.size(), ar_arr.size(), Catalog.MAX_ACTIVE_RELICS, tr_arr.size(), str(sw_loc["name"])
-		],
-		"Build: %s  |  Mocné karty: %d / %d  |  Velká pečeť: %d / 4  |  Relikvie: %d / %d  |  Stolní: %d / 2  |  Meč: %s" % [
-			str(cur_build["name"]), pc_arr.size(), Catalog.MAX_POWER_CARDS, seal_arr.size(), ar_arr.size(), Catalog.MAX_ACTIVE_RELICS, tr_arr.size(), str(sw_loc["name"])
-		]
-	)
-	sum_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	sum_lbl.text = "%s  •  %s: %d/%d  •  %s: %d/4  •  %s: %d/2  •  %s" % [
+		str(cur_build["name"]),
+		_tr("Power", "Mocné"), pc_arr.size(), Catalog.MAX_POWER_CARDS,
+		_tr("Seal", "Pečeť"), seal_arr.size(),
+		_tr("Relics", "Relikvie"), tr_arr.size(),
+		str(sw_loc["name"])
+	]
 	sum_lbl.add_theme_font_override("font", _font_body)
 	sum_lbl.add_theme_font_size_override("font_size", 13)
-	sum_lbl.add_theme_color_override("font_color", Color(0.88, 0.85, 0.78))
+	sum_lbl.add_theme_color_override("font_color", COL_PARCHMENT)
 	svb.add_child(sum_lbl)
 
 	var name_hb := HBoxContainer.new()
@@ -1122,51 +1579,56 @@ func _build_step_5_name_save(parent: VBoxContainer, _sel_build_id: String, cur_b
 	_deck_name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_deck_name_edit.custom_minimum_size = Vector2(0, 44)
 	_deck_name_edit.max_length = 28
-	_deck_name_edit.placeholder_text = _tr("Enter deck name (e.g. Crimson Guillotine)...", "Zadej název balíčku (např. Rudá gilotina)...")
+	_deck_name_edit.placeholder_text = _tr("Deck name...", "Název balíčku...")
 	_deck_name_edit.add_theme_font_override("font", _font_body)
 	_deck_name_edit.add_theme_font_size_override("font_size", 14)
+	_deck_name_edit.add_theme_stylebox_override("normal", _make_box_style(COL_WALNUT_DEEP, COL_GOLD_BORDER, 8, 8))
 	name_hb.add_child(_deck_name_edit)
 
 	var save_btn := Button.new()
-	save_btn.custom_minimum_size = Vector2(170, 44)
-	save_btn.text = _tr("Save Deck", "Uložit balíček")
+	save_btn.custom_minimum_size = Vector2(160, 44)
+	save_btn.text = _tr("Save Deck", "Uložit")
 	LialoIcons.apply_button_icon(save_btn, "scroll", 18)
 	save_btn.add_theme_font_override("font", _font_disp)
 	save_btn.add_theme_font_size_override("font_size", 14)
+	save_btn.add_theme_stylebox_override("normal", _make_box_style(COL_WALNUT_CARD, COL_GOLD_BORDER, 8, 8))
+	_attach_button_hover(save_btn, 1.04)
 	save_btn.pressed.connect(func():
 		sfx_requested.emit("ui_click")
 		var dname := _deck_name_edit.text.strip_edges() if is_instance_valid(_deck_name_edit) else ""
 		if dname.is_empty():
 			dname = str(cur_build["name"])
 		Catalog.save_named_deck(_profile, dname)
+		_save_flare_pending = true
 		_sync_and_save()
 		_rebuild_ui()
 		if is_instance_valid(_status_toast):
-			_status_toast.text = _tr("Saved deck: %s" % dname, "Balíček uložen: %s" % dname)
+			_status_toast.text = _tr("Saved: %s" % dname, "Uloženo: %s" % dname)
 	)
 	name_hb.add_child(save_btn)
 
 	var play_btn := Button.new()
-	play_btn.custom_minimum_size = Vector2(210, 44)
+	play_btn.custom_minimum_size = Vector2(190, 44)
 	play_btn.text = _tr("SAVE & PLAY", "ULOŽIT A HRÁT")
 	LialoIcons.apply_button_icon(play_btn, "check", 18)
 	play_btn.add_theme_font_override("font", _font_disp)
 	play_btn.add_theme_font_size_override("font_size", 15)
-	play_btn.add_theme_stylebox_override("normal", _make_box_style(Color(0.14, 0.34, 0.18, 0.98), Color(0.45, 0.96, 0.56), 10, 8))
+	play_btn.add_theme_stylebox_override("normal", _make_box_style(Color(0.14, 0.32, 0.16, 0.98), Color(0.46, 0.96, 0.56), 10, 8))
+	_attach_button_hover(play_btn, 1.05)
 	play_btn.pressed.connect(func():
 		sfx_requested.emit("ui_click")
 		var dname := _deck_name_edit.text.strip_edges() if is_instance_valid(_deck_name_edit) else ""
 		if not dname.is_empty():
 			Catalog.save_named_deck(_profile, dname)
+		_animate_save_flare(save_pan)
 		_sync_and_save()
 		if is_instance_valid(_status_toast):
-			_status_toast.text = _tr("Loadout saved & ready for battle!", "Balíček uložen a připraven do boje!")
+			_status_toast.text = _tr("Ready for battle!", "Připraveno do boje!")
 	)
 	name_hb.add_child(play_btn)
 
-	# Saved Decks List
 	var list_pan := PanelContainer.new()
-	list_pan.add_theme_stylebox_override("panel", _make_box_style(Color(0.055, 0.048, 0.055, 0.92), Color(0.48, 0.40, 0.28, 0.78), 10, 12))
+	list_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_BG, Color(0.55, 0.42, 0.24, 0.80), 10, 12))
 	parent.add_child(list_pan)
 
 	var lvb := VBoxContainer.new()
@@ -1176,16 +1638,16 @@ func _build_step_5_name_save(parent: VBoxContainer, _sel_build_id: String, cur_b
 	var saved_decks: Array = _profile.get("saved_decks", [])
 	lvb.add_child(LialoIcons.make_icon_label_row(
 		"cards",
-		_tr("SAVED DECK PRESETS (%d / 8)" % saved_decks.size(), "ULOŽENÉ BALÍČKY (%d / 8)" % saved_decks.size()),
-		18, 15, Color(0.95, 0.85, 0.58)
+		_tr("SAVED DECKS (%d / 8)" % saved_decks.size(), "ULOŽENÉ BALÍČKY (%d / 8)" % saved_decks.size()),
+		18, 15, COL_GOLD_TEXT
 	))
 
 	if saved_decks.is_empty():
 		var emp := Label.new()
-		emp.text = _tr("No saved decks yet. Enter a name above and click Save Deck.", "Zatím nemáš uložený žádný balíček. Zadej název výše a klikni na Uložit.")
+		emp.text = _tr("No saved decks yet.", "Zatím žádný uložený balíček.")
 		emp.add_theme_font_override("font", _font_body)
 		emp.add_theme_font_size_override("font_size", 13)
-		emp.add_theme_color_override("font_color", Color(0.72, 0.68, 0.62))
+		emp.add_theme_color_override("font_color", COL_PARCHMENT_DIM)
 		lvb.add_child(emp)
 	else:
 		for d_v in saved_decks:
@@ -1201,20 +1663,19 @@ func _build_step_5_name_save(parent: VBoxContainer, _sel_build_id: String, cur_b
 
 			var info := Label.new()
 			info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			info.text = "%s  •  %s  (%d Power, %d Relics)" % [
-				dname, str(db["name"]),
-				(d.get("power_cards", []) as Array).size(),
-				(d.get("active_relics", []) as Array).size()
-			]
+			info.text = "%s  •  %s" % [dname, str(db["name"])]
 			info.add_theme_font_override("font", _font_body)
 			info.add_theme_font_size_override("font_size", 13)
-			info.add_theme_color_override("font_color", Color(0.92, 0.88, 0.80))
+			info.add_theme_color_override("font_color", COL_PARCHMENT)
 			row.add_child(info)
 
 			var load_b := Button.new()
-			load_b.custom_minimum_size = Vector2(110, 34)
+			load_b.custom_minimum_size = Vector2(104, 34)
 			load_b.text = _tr("Load", "Načíst")
 			LialoIcons.apply_button_icon(load_b, "check", 14)
+			load_b.add_theme_font_override("font", _font_disp)
+			load_b.add_theme_font_size_override("font_size", 12)
+			load_b.add_theme_stylebox_override("normal", _make_box_style(COL_WALNUT_CARD, COL_GOLD_BORDER, 6, 4))
 			load_b.pressed.connect(func():
 				sfx_requested.emit("card_shuffle")
 				if Catalog.apply_saved_deck(_profile, did):
@@ -1224,9 +1685,12 @@ func _build_step_5_name_save(parent: VBoxContainer, _sel_build_id: String, cur_b
 			row.add_child(load_b)
 
 			var del_b := Button.new()
-			del_b.custom_minimum_size = Vector2(110, 34)
+			del_b.custom_minimum_size = Vector2(104, 34)
 			del_b.text = _tr("Delete", "Smazat")
 			LialoIcons.apply_button_icon(del_b, "cross", 14)
+			del_b.add_theme_font_override("font", _font_disp)
+			del_b.add_theme_font_size_override("font_size", 12)
+			del_b.add_theme_stylebox_override("normal", _make_box_style(Color(0.22, 0.08, 0.08, 0.94), Color(0.82, 0.34, 0.30), 6, 4))
 			del_b.pressed.connect(func():
 				sfx_requested.emit("ui_click")
 				Catalog.delete_saved_deck(_profile, did)
@@ -1234,18 +1698,6 @@ func _build_step_5_name_save(parent: VBoxContainer, _sel_build_id: String, cur_b
 				_rebuild_ui()
 			)
 			row.add_child(del_b)
-
-
-func _suit_icon_for_key(ck: String) -> String:
-	if ck.begins_with("CERVEN_"):
-		return "heart"
-	if ck.begins_with("ZELEN_"):
-		return "leaves"
-	if ck.begins_with("ZALUD_"):
-		return "acorn"
-	if ck.begins_with("GULA_"):
-		return "bell"
-	return "cards"
 
 
 func _pretty_card_key(ck: String) -> String:
