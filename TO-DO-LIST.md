@@ -20,7 +20,5 @@ Sdílený seznam úkolů a poznámek mezi námi v repozitáři.
 **Zbývající otevřené úkoly:**
 1. **Live Playtest (Kampaň + 2–4P MP přes Radmin VPN / Tailscale / LAN):**
    - Otestovat nový Ouroboros loading screen při startu, plynulost kamery v Nastavení, 30–45 s odpočet tahu + auto-draw, nový Deck Builder & 8 relikvií a spuštění 4-kartového Bankai komba v Kampani i MP.
-   - Ověřit MP rematch (`⚔ SEND REMATCH`), `🏛 Return to Lobby (Keep Room)` a přepínání atmosféry oken.
-2. **Lobby vizuální doladění:** Přidat 3D/2D portréty MP postav (`CHAR_GUILLOTINE`, `CHAR_MONARCH`, `CHAR_JESTER`, `CHAR_MISTBLADE`) k výběru postav a případně klasické textové pole pro chat vedle rychlých emotů.
-3. **Singleplayer test (`tools/verify_battle_redesign.gd`):** Opravit pre-existující selhání 5 assertů u `CinematicDirector` v singleplayeru (`battle_table_3d.gd`).
-4. **Export Windows buildu (`build/windows/LIALO.exe`):** Po finálním playtestu znovu vyexportovat `.exe`, aby obsahovalo všechny novinky v0.192 i Ouroboros loading screen.
+   - Ověřit MP rematch (`⚔ SEND REMATCH`), `🏛 Return to Lobby (Keep Room)`, 3D portréty MP postav, textový chat v lobby a přepínání atmosféry oken.
+2. **Export Windows buildu (`build/windows/LIALO.exe`):** Po finálním playtestu znovu vyexportovat `.exe` (vyžaduje nainstalované Godot 4.7.2 export šablony v `AppData/Roaming/Godot/export_templates/4.7.2.stable/`), aby obsahovalo všechny novinky v0.192, Ouroboros loading screen i 3D portréty + chat v lobby.
