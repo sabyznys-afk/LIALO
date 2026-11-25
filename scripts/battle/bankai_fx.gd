@@ -21,7 +21,7 @@ var _sparks: Array[Dictionary] = []
 var _time_acc: float = 0.0
 var _rng := RandomNumberGenerator.new()
 var _sfx_player: AudioStreamPlayer
-var _sfx_bankai: AudioStreamWAV
+var _sfx_bankai: AudioStream
 var _font_disp: Font
 var _font_body: Font
 
@@ -46,36 +46,17 @@ func _ready() -> void:
 	_sfx_player = AudioStreamPlayer.new()
 	_sfx_player.volume_db = -3.0
 	add_child(_sfx_player)
-	_sfx_bankai = _synth_bankai_stinger()
+	_sfx_bankai = _load_bankai_stinger()
 
 
-func _synth_bankai_stinger() -> AudioStreamWAV:
-	var sr := 22050
-	var n := int(sr * 1.45)
-	var samples := PackedFloat32Array()
-	samples.resize(n)
-	for i in range(n):
-		var t := float(i) / float(sr)
-		# Sub-bass spiritual pressure drop + crystalline katana resonance + rising harmonic sweep
-		var bass_f := lerpf(128.0, 44.0, minf(1.0, t * 2.2))
-		var bass := sin(TAU * bass_f * t) * exp(-t * 2.1) * 0.55
-		var slash_t := maxf(0.0, t - 0.14)
-		var blade := 0.0
-		if slash_t > 0.0:
-			blade = (sin(TAU * 660.0 * slash_t) * 0.35 + sin(TAU * 990.0 * slash_t) * 0.25 + sin(TAU * 1320.0 * slash_t) * 0.18) * exp(-slash_t * 3.8)
-		var choir := (sin(TAU * 220.0 * t) + 0.5 * sin(TAU * 329.63 * t) + 0.35 * sin(TAU * 440.0 * t)) * minf(1.0, t / 0.18) * exp(-t * 1.65) * 0.28
-		samples[i] = clampf(bass + blade + choir, -1.0, 1.0) * 0.85
-	var wav := AudioStreamWAV.new()
-	wav.format = AudioStreamWAV.FORMAT_16_BITS
-	wav.mix_rate = sr
-	wav.stereo = false
-	wav.loop_mode = AudioStreamWAV.LOOP_DISABLED
-	var bytes := PackedByteArray()
-	bytes.resize(n * 2)
-	for i in range(n):
-		bytes.encode_s16(i * 2, clampi(int(round(samples[i] * 32767.0)), -32768, 32767))
-	wav.data = bytes
-	return wav
+func _load_bankai_stinger() -> AudioStream:
+	# Use rich studio impact SFX instead of simple procedural sine-wave tones
+	for p in ["res://assets/audio/sfx_anim_sword_cleave.mp3", "res://assets/audio/sfx_card_ace_strike.mp3"]:
+		if ResourceLoader.exists(p):
+			return load(p) as AudioStream
+		if FileAccess.file_exists(p):
+			return AudioStreamMP3.load_from_buffer(FileAccess.get_file_as_bytes(p))
+	return null
 
 
 func trigger_bankai(build_id: String, caster_name: String, combo_keys: Array, lang: String = "en", persist_aura: bool = true) -> void:
