@@ -52,6 +52,7 @@ var _recent_tab_btn: Button
 
 var arch_buttons: Dictionary = {}
 var char_buttons: Dictionary = {}
+var _char_portrait_pivots: Array[Dictionary] = []
 var selected_char_id: String = "CHAR_GUILLOTINE"
 var selected_arch_id: String = "GUILLOTINE_ACES"
 var extra_aces_val: int = 4
@@ -69,6 +70,8 @@ var _last_seat_count: int = 0
 
 var chat_panel: PanelContainer
 var chat_rtl: RichTextLabel
+var chat_input: LineEdit
+var chat_send_btn: Button
 var _chat_lines: Array[String] = []
 
 var add_bot_btn: Button
@@ -146,6 +149,10 @@ func _process(delta: float) -> void:
 		start_btn.scale = Vector2(pulse, pulse)
 	elif is_instance_valid(start_btn):
 		start_btn.scale = Vector2.ONE
+	for pv in _char_portrait_pivots:
+		var pivot := pv.get("node") as Node3D
+		if is_instance_valid(pivot):
+			pivot.rotation.y = sin(_fx_t * 1.15 + float(pv.get("phase", 0.0))) * 0.24
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -154,6 +161,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 		var focused := get_viewport().gui_get_focus_owner() if get_viewport() else null
 		if focused is LineEdit:
+			if focused == chat_input:
+				chat_input.release_focus()
+				if get_viewport():
+					get_viewport().set_input_as_handled()
 			return
 		if get_viewport():
 			get_viewport().set_input_as_handled()
@@ -718,6 +729,28 @@ func _build_ui() -> void:
 				mp_net.send_lobby_chat(msg_send)
 		)
 		em_hb.add_child(eb)
+	var chat_in_hb := HBoxContainer.new()
+	chat_in_hb.add_theme_constant_override("separation", 6)
+	chat_vb.add_child(chat_in_hb)
+	chat_input = LineEdit.new()
+	chat_input.max_length = 140
+	chat_input.placeholder_text = "Napiš zprávu... [Enter]" if _lang == "cs" else "Type a message... [Enter]"
+	chat_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chat_input.custom_minimum_size = Vector2(0, 30)
+	chat_input.add_theme_font_size_override("font_size", 12)
+	_style_tavern_input(chat_input)
+	chat_input.text_submitted.connect(func(_t: String): _send_chat_message())
+	chat_in_hb.add_child(chat_input)
+	chat_send_btn = Button.new()
+	chat_send_btn.text = "Odeslat" if _lang == "cs" else "Send"
+	chat_send_btn.custom_minimum_size = Vector2(74, 30)
+	chat_send_btn.add_theme_font_size_override("font_size", 12)
+	_style_tavern_btn(chat_send_btn, Color(0.18, 0.14, 0.09, 0.95), Color(0.76, 0.58, 0.28, 0.86), false, 6, false)
+	chat_send_btn.pressed.connect(func():
+		play_click_sfx.emit()
+		_send_chat_message()
+	)
+	chat_in_hb.add_child(chat_send_btn)
 
 	var bot_hb := HBoxContainer.new()
 	bot_hb.add_theme_constant_override("separation", 10)
@@ -780,6 +813,114 @@ func _build_ui() -> void:
 	_render_4_seats([], {})
 
 
+func _load_char_bust_glb(glb_path: String) -> Node3D:
+	if glb_path.is_empty():
+		return null
+	if ResourceLoader.exists(glb_path):
+		var ps := ResourceLoader.load(glb_path) as PackedScene
+		if ps != null:
+			var inst := ps.instantiate()
+			if inst is Node3D:
+				return inst as Node3D
+	var abs_p := ProjectSettings.globalize_path(glb_path)
+	if FileAccess.file_exists(abs_p):
+		var doc := GLTFDocument.new()
+		var state := GLTFState.new()
+		if doc.append_from_file(abs_p, state) == OK:
+			var gen := doc.generate_scene(state)
+			if gen is Node3D:
+				return gen as Node3D
+	return null
+
+
+func _build_char_bust_portrait(ch: Dictionary, back_tex: Texture2D, idx: int) -> Control:
+	var ch_accent: Color = ch.get("col", Color(0.95, 0.78, 0.30))
+	var cc := CenterContainer.new()
+	cc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var frame := PanelContainer.new()
+	frame.custom_minimum_size = Vector2(88, 88)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var frame_sb := _make_tavern_panel_sb(Color(0.04, 0.032, 0.026, 0.90), Color(ch_accent.r, ch_accent.g, ch_accent.b, 0.55), 1, 8, 2)
+	frame.add_theme_stylebox_override("panel", frame_sb)
+	cc.add_child(frame)
+
+	if DisplayServer.get_name() != "headless":
+		var bust := _load_char_bust_glb(str(ch.get("glb", "")))
+		if bust != null:
+			var svpc := SubViewportContainer.new()
+			svpc.custom_minimum_size = Vector2(84, 84)
+			svpc.stretch = true
+			svpc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			frame.add_child(svpc)
+
+			var svp := SubViewport.new()
+			svp.size = Vector2i(84, 84)
+			svp.own_world_3d = true
+			svp.transparent_bg = true
+			svp.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
+			svpc.add_child(svp)
+
+			var env := Environment.new()
+			env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+			env.ambient_light_color = Color(0.28, 0.24, 0.20)
+			env.ambient_light_energy = 0.65
+			var we := WorldEnvironment.new()
+			we.environment = env
+			svp.add_child(we)
+
+			var key_light := DirectionalLight3D.new()
+			key_light.light_color = Color(1.0, 0.84, 0.60)
+			key_light.light_energy = 1.65
+			key_light.rotation_degrees = Vector3(-28.0, 32.0, 0.0)
+			svp.add_child(key_light)
+
+			var rim_light := DirectionalLight3D.new()
+			rim_light.light_color = ch_accent
+			rim_light.light_energy = 2.1
+			rim_light.rotation_degrees = Vector3(18.0, -142.0, 0.0)
+			svp.add_child(rim_light)
+
+			var cam := Camera3D.new()
+			cam.fov = 30.0
+			cam.current = true
+			cam.look_at_from_position(Vector3(0.0, 0.45, 0.76), Vector3(0.0, 0.41, 0.0), Vector3.UP)
+			svp.add_child(cam)
+
+			var pivot := Node3D.new()
+			pivot.add_child(bust)
+			svp.add_child(pivot)
+			_char_portrait_pivots.append({"node": pivot, "phase": float(idx) * 1.35})
+			return cc
+
+	# Crisp styled emblem fallback (headless mode or missing GLB)
+	var fb_center := CenterContainer.new()
+	fb_center.custom_minimum_size = Vector2(84, 84)
+	fb_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(fb_center)
+	if back_tex != null:
+		var tr := TextureRect.new()
+		tr.custom_minimum_size = Vector2(68, 68)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tr.texture = back_tex
+		tr.modulate = Color(1.0, 1.0, 1.0, 0.90)
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		fb_center.add_child(tr)
+	else:
+		var glyph_lbl := Label.new()
+		var raw_name := str(ch.get("name", "?"))
+		glyph_lbl.text = raw_name.substr(0, 1)
+		glyph_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		glyph_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_apply_font(glyph_lbl, true)
+		glyph_lbl.add_theme_font_size_override("font_size", 32)
+		glyph_lbl.add_theme_color_override("font_color", ch_accent)
+		glyph_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		fb_center.add_child(glyph_lbl)
+	return cc
+
+
 func _build_duelist_deck_tab(parent_vb: VBoxContainer) -> void:
 	var c_title := Label.new()
 	c_title.text = "CHOOSE YOUR 3D CHARACTER & CARD BACK"
@@ -798,23 +939,42 @@ func _build_duelist_deck_tab(parent_vb: VBoxContainer) -> void:
 	var char_hb := HBoxContainer.new()
 	char_hb.add_theme_constant_override("separation", 8)
 	parent_vb.add_child(char_hb)
-	for ch in Config.CHARACTERS:
+	_char_portrait_pivots.clear()
+	for ch_idx in range(Config.CHARACTERS.size()):
+		var ch: Dictionary = Config.CHARACTERS[ch_idx]
 		var cid := str(ch["id"])
+		var ch_accent: Color = ch.get("col", Color(0.95, 0.78, 0.30))
 		var cb := Button.new()
 		cb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		cb.custom_minimum_size = Vector2(0, 52)
-		cb.text = str(ch["name"])
+		cb.custom_minimum_size = Vector2(0, 126)
+		cb.text = ""
 		cb.tooltip_text = str(ch["desc"])
 		cb.toggle_mode = true
 		var btex := Toon.tex(str(char_back_map.get(cid, "res://assets/table/card_back.png")))
-		if btex != null:
-			cb.icon = btex
-			cb.expand_icon = true
+		var card_vb := VBoxContainer.new()
+		card_vb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		card_vb.offset_left = 6; card_vb.offset_right = -6
+		card_vb.offset_top = 6; card_vb.offset_bottom = -6
+		card_vb.alignment = BoxContainer.ALIGNMENT_CENTER
+		card_vb.add_theme_constant_override("separation", 4)
+		card_vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cb.add_child(card_vb)
+		var portrait_ctrl := _build_char_bust_portrait(ch, btex, ch_idx)
+		card_vb.add_child(portrait_ctrl)
+		var cname_lbl := Label.new()
+		cname_lbl.text = str(ch.get("name_cs" if _lang == "cs" else "name", ch["name"]))
+		cname_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cname_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		_apply_font(cname_lbl, true)
+		cname_lbl.add_theme_font_size_override("font_size", 12)
+		cname_lbl.add_theme_color_override("font_color", Color(0.98, 0.92, 0.78))
+		cname_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card_vb.add_child(cname_lbl)
 		cb.pressed.connect(func():
 			play_click_sfx.emit()
 			_select_character(cid)
 		)
-		_apply_choice_btn_style(cb, cid == selected_char_id, ch.get("col", Color(0.95, 0.78, 0.30)))
+		_apply_choice_btn_style(cb, cid == selected_char_id, ch_accent)
 		_attach_hover_anim(cb)
 		char_buttons[cid] = cb
 		char_hb.add_child(cb)
@@ -1630,8 +1790,21 @@ func _render_4_seats(seats: Array, settings: Dictionary) -> void:
 			seats_box.add_child(empty_slot)
 
 
+func _send_chat_message() -> void:
+	if not is_instance_valid(chat_input):
+		return
+	var txt := chat_input.text.strip_edges()
+	if txt.is_empty():
+		return
+	if mp_net != null and bool(mp_net.get("in_session")) and mp_net.has_method("send_lobby_chat"):
+		mp_net.send_lobby_chat(txt)
+		chat_input.clear()
+
+
 func _on_lobby_chat_received(sender_name: String, text: String) -> void:
-	_chat_lines.append("[color=#ffd966]%s:[/color] %s" % [sender_name, text])
+	var safe_sender := sender_name.replace("[", "[lb]")
+	var safe_text := text.replace("[", "[lb]")
+	_chat_lines.append("[color=#ffd966]%s:[/color] %s" % [safe_sender, safe_text])
 	if _chat_lines.size() > 30:
 		_chat_lines.pop_front()
 	if is_instance_valid(chat_rtl):
