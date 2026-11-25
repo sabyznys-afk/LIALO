@@ -88,6 +88,24 @@ Sdílený seznam úkolů a poznámek mezi námi v repozitáři.
   - **Fix hudby v MP bitvě (`scripts/downpour_root.gd`, ř. `753–765`):**
     - Napojit `_update_battle_music_mix` také na aktivní `MpBattleTable3D` (aktuálně čte jen SP `battle_3d`, takže v MP bitvě zůstává intenzita na `0.0` / `bgm_battle_calm.mp3`).
 
+### 13. Lobby Dev/Debug Tool — Prohlížeč a přehrávač všech animací a klíčových assetů
+- **Soubory:** Nový `scripts/ui/dev_asset_inspector.gd` + tlačítko / klávesová zkratka (`F9` nebo nenápadné dev tlačítko v rohu Lobby) v `scripts/downpour_root.gd` (případně dostupné i z `Dev Settings` v `scripts/mp/mp_lobby_overlay.gd`)
+- **Úkol:**
+  - Vytvořit přehledný **Dev/QA Showcase & Inspector** přímo v Lobby, kde po otevření vývojář vidí seznam všech animací a důležitých assetů ve hře a může si je **okamžitě přehrát a vizuálně zkontrolovat** (vlevo filtrovatelný seznam podle kategorií, vpravo velká živá scéna s ovládáním `Play` / `Replay` / `Loop` / `Speed 0.25×–2×` / `Next` + cesta k souboru a stav `OK / MISSING`):
+  - **1. Animace & VFX (přehrávání na 1 klik):**
+    - Všechny **4 Grand Seal FX** (`scripts/battle/bankai_fx.gd`: `GUILLOTINE_ACES`, `PHOENIX_CHAINS`, `MIRROR_TRICKS`, `CRIMSON_GAMBIT`).
+    - **Bojové & 3D animace:** `scripts/sword_card_animator.gd` (tasení, slash, cleave, parry, 3× Ace poprava), `scripts/blender_vfx_animator.gd`, efekty z `scripts/fx_lib.gd` (oheň, jed, runový kruh, jiskry, krev) a náhled profilů z `scripts/cinematic_director.gd` / `cinematic_profiles.gd`.
+    - **Intro & Loading Screeny:** Fujira Studio intro (hora + let orla + `sfx_splash_fujara.wav`) a Ouroboros loading screen (`scripts/ui/snake_loading_screen.gd` + `sfx_loading_snake.mp3`).
+    - **Scoring & Combo Banner animace:** Testovací spouštěče pro `1×`, `2×`, `3×`, `4×+` kombo a přičítání bodů.
+  - **2. 3D Modely & Relikvie (interaktivní 360° `SubViewport` s rotací a zoomem):**
+    - Všech **10 3D Tabletop Relics** (`scripts/relic_mesh_factory.gd` / `scripts/ui/relic_inspect_3d.gd` / `assets/relics/`).
+    - Všichni **3D Duelisti & Rivali/Bossové** (`assets/models/` — kontrola proporcí, textur i póz rukou).
+    - **5 čepelí (mečů)**, **3D rukavice** (`assets/gloves/`), **stolní rekvizity** (`assets/table/` — pivo, kostky, baňka IGNIS, svícen, balíček).
+  - **3. 2D Karty, Ruby, Ikony & UI Assety:**
+    - Kompletní mřížka všech **32 Base karet**, **Power karet** (`assets/cards/`), **rubů karet** (`assets/table/deck_back_*.png`), **woodcut UI ikon** (`assets/ui/icons/` přes `LialoIcons`), **VFX spritů** (`assets/vfx/`) a klíčových textur (`assets/shop/`, `assets/map/`, `assets/lobby/`) se zvětšením 1:1, zobrazením rozlišení a detekcí chybějících souborů.
+  - **4. Audio & Dynamický BGM Tester (`assets/audio/`):**
+    - Přímé přehrání/zastavení všech BGM a SFX stop + **živý posuvník `battle_music_intensity (0.0–1.0)`** pro okamžitou kontrolu prolínání vrstev `calm` -> `epic` -> `intense` + `amb_tavern`.
+
 ---
 
 ### 🔧 Zbývající build úkol
