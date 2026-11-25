@@ -1,33 +1,46 @@
 class_name MpLobbyOverlay
 extends Control
 
-## Tavern Multiplayer Hall (2-4 Players): Campaign Vault Loadouts, Recent Opponents,
-## Instant Rematch, Radmin/Tailscale VPN Share Bar, Animated Embers & Card Backdrop.
+## Modern Animated Multiplayer Hub (2-4 Players, v0.193):
+## - Animated MULTIPLAYER header with brass/crimson glow
+## - 4 Large Animated Mode Cards (Public Match, Private Match, Ranked, Unranked)
+## - 1-Click Saved Build / Deck Preset Selector + Active Build Summary + Deck Builder Modal
+## - Global / Local Leaderboard & Rivals powered by MpHistory
+## - Zero System/Unicode Emojis (uses LialoIcons everywhere)
 
 const Config = preload("res://scripts/mp/mp_config.gd")
 const History = preload("res://scripts/mp/mp_history.gd")
 const Catalog = preload("res://scripts/lialo_catalog.gd")
 const Toon = preload("res://scripts/toon_style.gd")
+const Icons = preload("res://scripts/ui/lialo_icons.gd")
+const DeckBuilderScript = preload("res://scripts/ui/deck_builder_panel.gd")
 const FONT_DISPLAY_PATH := "res://assets/fonts/LialoDisplay.ttf"
 const FONT_BODY_PATH := "res://assets/fonts/LialoBody.ttf"
 
 signal close_requested
 signal play_click_sfx
+signal open_deck_builder_requested
 
 var mp_net: Node = null
 var _font_display: Font = null
 var _font_body: Font = null
 
 var _main_panel: PanelContainer
+var _hdr_bar: PanelContainer
+var _hdr_title_lbl: Label
+var _hdr_sub_lbl: Label
 var _bg_fx_canvas: Control
 var _fx_t: float = 0.0
 var _embers: Array[Dictionary] = []
 var _bg_cards: Array[Dictionary] = []
 
 var _conn_dot_lbl: Label
+var _conn_dot_icon: TextureRect
 var name_edit: LineEdit
 var ip_edit: LineEdit
 var port_edit: LineEdit
+var room_code_box: HBoxContainer
+var room_code_edit: LineEdit
 var host_btn: Button
 var join_btn: Button
 var spawn_win_btn: Button
@@ -38,29 +51,38 @@ var share_bar: PanelContainer
 var share_vpn_lbl: Label
 var share_lan_lbl: Label
 var share_pub_lbl: Label
+var share_code_lbl: Label
 var copy_vpn_btn: Button
 var copy_lan_btn: Button
 var copy_pub_btn: Button
+var copy_code_btn: Button
 var _vpn_copy_str: String = ""
 var _lan_copy_str: String = ""
 var _pub_copy_str: String = ""
+var _room_code_str: String = ""
 
 var _tab_btns: Array[Button] = []
 var _tab_containers: Array[Control] = []
 var _active_tab: int = 0
-var _recent_tab_btn: Button
+var _leaderboard_tab_btn: Button
 
-var arch_buttons: Dictionary = {}
+var _mode_cards: Dictionary = {}
+var _selected_match_mode: String = Config.MODE_UNRANKED
+
 var char_buttons: Dictionary = {}
 var _char_portrait_pivots: Array[Dictionary] = []
 var selected_char_id: String = "CHAR_GUILLOTINE"
 var selected_arch_id: String = "GUILLOTINE_ACES"
-var extra_aces_val: int = 4
-var aces_lbl: Label
-var _ace_pips_lbl: Label
-var deck_desc_lbl: Label
+var _active_saved_deck_id: String = ""
 
-var recent_list_vb: VBoxContainer
+var _saved_decks_flow: HFlowContainer
+var _saved_deck_btns: Dictionary = {}
+var _build_summary_title: Label
+var _build_summary_lbl: Label
+var _grand_seal_lbl: Label
+var _open_deck_builder_btn: Button
+
+var _leaderboard_vb: VBoxContainer
 
 var rule_btn: Button
 var vista_btn: Button
@@ -83,6 +105,8 @@ var _toast_panel: PanelContainer
 var _toast_lbl: Label
 var _toast_tween: Tween
 
+var _deck_builder_modal: PanelContainer = null
+
 var _profile: Dictionary = {}
 var _prefs: Dictionary = {}
 var _lang: String = "en"
@@ -90,14 +114,6 @@ var selected_power_cards: Array[String] = []
 var selected_table_relics: Array[String] = []
 var selected_passive_relics: Array[String] = []
 var equipped_sword_id: String = "SWORD_IRON"
-var vault_power_btns: Dictionary = {}
-var vault_trel_btns: Dictionary = {}
-var vault_prel_btns: Dictionary = {}
-var vault_power_hdr: Label
-var vault_trel_hdr: Label
-var vault_prel_hdr: Label
-var vault_sword_lbl: Label
-var vault_box: VBoxContainer
 
 
 func configure(network_node: Node) -> void:
@@ -122,7 +138,7 @@ func _ready() -> void:
 		mp_net.session_closed.connect(func(_r: String): _refresh_controls())
 		if mp_net.in_session and not mp_net.lobby_seats.is_empty():
 			_on_lobby_updated(mp_net.lobby_seats, mp_net.room_settings)
-	_refresh_recent_list()
+	_refresh_leaderboard()
 	_refresh_controls()
 	_play_entrance_anim()
 
@@ -143,6 +159,11 @@ func _process(delta: float) -> void:
 			bc["y"] = 1.15
 	if is_instance_valid(_bg_fx_canvas):
 		_bg_fx_canvas.queue_redraw()
+	if is_instance_valid(_hdr_title_lbl):
+		var glow_mix := 0.5 + 0.5 * sin(_fx_t * 2.2)
+		var brass := Color(1.0, 0.86, 0.44)
+		var crimson_gold := Color(1.0, 0.56, 0.34)
+		_hdr_title_lbl.add_theme_color_override("font_color", brass.lerp(crimson_gold, glow_mix * 0.32))
 	if is_instance_valid(start_btn) and start_btn.visible and not start_btn.disabled:
 		var pulse := 1.0 + sin(_fx_t * 3.8) * 0.022
 		start_btn.pivot_offset = start_btn.size * 0.5
@@ -159,6 +180,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not visible:
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		if is_instance_valid(_deck_builder_modal) and _deck_builder_modal.visible:
+			_close_deck_builder_modal()
+			if get_viewport():
+				get_viewport().set_input_as_handled()
+			return
 		var focused := get_viewport().gui_get_focus_owner() if get_viewport() else null
 		if focused is LineEdit:
 			if focused == chat_input:
@@ -209,20 +235,20 @@ func _make_tavern_panel_sb(bg: Color, border: Color, border_w: int = 2, radius: 
 	return sb
 
 
-func _attach_hover_anim(btn: Button) -> void:
+func _attach_hover_anim(btn: Button, hover_scale: float = 1.03) -> void:
 	btn.mouse_entered.connect(func():
 		if btn.disabled or not is_inside_tree():
 			return
 		btn.pivot_offset = btn.size * 0.5
 		var tw := btn.create_tween()
-		tw.tween_property(btn, "scale", Vector2(1.03, 1.03), 0.10).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(btn, "scale", Vector2(hover_scale, hover_scale), 0.11).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	)
 	btn.mouse_exited.connect(func():
 		if not is_inside_tree():
 			return
 		btn.pivot_offset = btn.size * 0.5
 		var tw := btn.create_tween()
-		tw.tween_property(btn, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(btn, "scale", Vector2.ONE, 0.13).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	)
 
 
@@ -272,13 +298,13 @@ func _style_tavern_input(le: LineEdit) -> void:
 func _apply_choice_btn_style(btn: Button, is_selected: bool, accent: Color) -> void:
 	_apply_font(btn, false)
 	if is_selected:
-		var glow_border := Color(0.98, 0.80, 0.30, 0.98).lerp(accent, 0.35)
-		var sb_sel := _make_tavern_panel_sb(Color(0.24, 0.17, 0.08, 0.96), glow_border, 3, 10, 10)
+		var glow_border := Color(0.98, 0.80, 0.30, 0.98).lerp(accent, 0.45)
+		var sb_sel := _make_tavern_panel_sb(Color(0.22, 0.14, 0.08, 0.96), glow_border, 3, 10, 10)
 		sb_sel.border_width_bottom = 3
 		sb_sel.shadow_color = Color(glow_border.r, glow_border.g, glow_border.b, 0.45)
 		sb_sel.shadow_size = 10
 		var sb_sel_h := sb_sel.duplicate() as StyleBoxFlat
-		sb_sel_h.bg_color = Color(0.28, 0.20, 0.10, 0.98)
+		sb_sel_h.bg_color = Color(0.26, 0.17, 0.10, 0.98)
 		btn.add_theme_stylebox_override("normal", sb_sel)
 		btn.add_theme_stylebox_override("hover", sb_sel_h)
 		btn.add_theme_stylebox_override("pressed", sb_sel)
@@ -290,7 +316,7 @@ func _apply_choice_btn_style(btn: Button, is_selected: bool, accent: Color) -> v
 		var sb_unsel := _make_tavern_panel_sb(Color(0.06, 0.05, 0.045, 0.88), Color(0.46, 0.36, 0.24, 0.52), 1, 10, 10)
 		sb_unsel.border_width_bottom = 1
 		sb_unsel.shadow_size = 4
-		var sb_unsel_h := _make_tavern_panel_sb(Color(0.11, 0.085, 0.065, 0.92), Color(0.72, 0.56, 0.32, 0.78), 2, 10, 10)
+		var sb_unsel_h := _make_tavern_panel_sb(Color(0.11, 0.085, 0.065, 0.92), Color(accent.r, accent.g, accent.b, 0.82), 2, 10, 10)
 		sb_unsel_h.border_width_bottom = 2
 		btn.add_theme_stylebox_override("normal", sb_unsel)
 		btn.add_theme_stylebox_override("hover", sb_unsel_h)
@@ -331,8 +357,8 @@ func _draw_bg_fx() -> void:
 	var sz := _bg_fx_canvas.size
 	if sz.x < 10.0 or sz.y < 10.0:
 		return
-	var glow_p := 0.10 + 0.04 * sin(_fx_t * 1.9)
-	_bg_fx_canvas.draw_circle(Vector2(sz.x * 0.5, sz.y * 0.14), sz.x * 0.34, Color(1.0, 0.64, 0.22, glow_p))
+	var glow_p := 0.11 + 0.045 * sin(_fx_t * 1.9)
+	_bg_fx_canvas.draw_circle(Vector2(sz.x * 0.5, sz.y * 0.10), sz.x * 0.36, Color(0.96, 0.42, 0.18, glow_p))
 	for bc in _bg_cards:
 		var cx := float(bc["x"]) * sz.x
 		var cy := float(bc["y"]) * sz.y
@@ -346,11 +372,10 @@ func _draw_bg_fx() -> void:
 		var ex := float(em["x"]) * sz.x + sin(_fx_t * 2.1 + float(em["phase"])) * 16.0
 		var ey := float(em["y"]) * sz.y
 		var ea := float(em["alpha"]) * (0.65 + 0.35 * sin(_fx_t * 3.4 + float(em["phase"])))
-		_bg_fx_canvas.draw_circle(Vector2(ex, ey), float(em["r"]), Color(1.0, 0.72, 0.28, ea))
+		_bg_fx_canvas.draw_circle(Vector2(ex, ey), float(em["r"]), Color(1.0, 0.68, 0.26, ea))
 
 
 func _build_ui() -> void:
-	# Textured Tavern Backdrop + Dark Atmospheric Vignette + Animated Embers/Cards
 	var bg_tex := Toon.tex("res://assets/ui/lobby_tavern_handdrawn.png")
 	if bg_tex == null:
 		bg_tex = Toon.tex("res://assets/lobby/menu_bg_stredovek.png")
@@ -366,7 +391,7 @@ func _build_ui() -> void:
 
 	var dim := ColorRect.new()
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.03, 0.022, 0.018, 0.76)
+	dim.color = Color(0.03, 0.022, 0.018, 0.78)
 	add_child(dim)
 
 	_bg_fx_canvas = Control.new()
@@ -379,21 +404,24 @@ func _build_ui() -> void:
 	_main_panel.anchor_left = 0.03; _main_panel.anchor_right = 0.97
 	_main_panel.anchor_top = 0.03; _main_panel.anchor_bottom = 0.97
 	_main_panel.clip_contents = true
-	_main_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.08, 0.058, 0.042, 0.95), Color(0.84, 0.64, 0.26, 0.94), 3, 14, 16))
+	_main_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.075, 0.055, 0.042, 0.96), Color(0.84, 0.64, 0.26, 0.94), 3, 14, 16))
 	add_child(_main_panel)
 
 	var root_vb := VBoxContainer.new()
 	root_vb.add_theme_constant_override("separation", 10)
 	_main_panel.add_child(root_vb)
 
-	# 1. Stylized Tavern Hall Header Bar (Clean, zero dev banners!)
-	var hdr_bar := PanelContainer.new()
-	hdr_bar.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.14, 0.095, 0.06, 0.96), Color(0.88, 0.68, 0.26, 0.92), 2, 10, 10))
-	root_vb.add_child(hdr_bar)
+	# 1. Modern Animated MULTIPLAYER Header Bar (Brass / Crimson Glow)
+	_hdr_bar = PanelContainer.new()
+	var hdr_sb := _make_tavern_panel_sb(Color(0.14, 0.082, 0.058, 0.98), Color(0.92, 0.68, 0.28, 0.94), 2, 11, 10)
+	hdr_sb.shadow_color = Color(0.76, 0.28, 0.14, 0.36)
+	hdr_sb.shadow_size = 14
+	_hdr_bar.add_theme_stylebox_override("panel", hdr_sb)
+	root_vb.add_child(_hdr_bar)
 
 	var hdr_hb := HBoxContainer.new()
 	hdr_hb.add_theme_constant_override("separation", 12)
-	hdr_bar.add_child(hdr_hb)
+	_hdr_bar.add_child(hdr_hb)
 
 	var logo_tex := Toon.tex("res://assets/lobby/title_lialo.png")
 	if logo_tex != null:
@@ -404,20 +432,41 @@ func _build_ui() -> void:
 		logo_img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		hdr_hb.add_child(logo_img)
 
-	var hall_lbl := Label.new()
-	hall_lbl.text = "⚔  KRČMOVÝ MULTIPLAYER (2–4 HRÁČI)" if _lang == "cs" else "⚔  TAVERN MULTIPLAYER HALL (2–4 PLAYERS)"
-	hall_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_apply_font(hall_lbl, true)
-	hall_lbl.add_theme_font_size_override("font_size", 18)
-	hall_lbl.add_theme_color_override("font_color", Color(1.0, 0.89, 0.52))
-	hdr_hb.add_child(hall_lbl)
+	hdr_hb.add_child(Icons.make_icon_rect("sword", 24, Color(1.0, 0.82, 0.36)))
 
+	var title_vb := VBoxContainer.new()
+	title_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_vb.add_theme_constant_override("separation", 0)
+	hdr_hb.add_child(title_vb)
+
+	_hdr_title_lbl = Label.new()
+	_hdr_title_lbl.text = "MULTIPLAYER"
+	_apply_font(_hdr_title_lbl, true)
+	_hdr_title_lbl.add_theme_font_size_override("font_size", 22)
+	_hdr_title_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.46))
+	title_vb.add_child(_hdr_title_lbl)
+
+	_hdr_sub_lbl = Label.new()
+	_hdr_sub_lbl.text = "Krčmová aréna pro 2–4 hráče" if _lang == "cs" else "Tavern Arena Hub • 2–4 Players"
+	_apply_font(_hdr_sub_lbl, false)
+	_hdr_sub_lbl.add_theme_font_size_override("font_size", 11)
+	_hdr_sub_lbl.add_theme_color_override("font_color", Color(0.84, 0.74, 0.58))
+	title_vb.add_child(_hdr_sub_lbl)
+
+	var conn_pill := PanelContainer.new()
+	conn_pill.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.08, 0.06, 0.05, 0.90), Color(0.52, 0.42, 0.28, 0.60), 1, 8, 7))
+	hdr_hb.add_child(conn_pill)
+	var conn_pill_hb := HBoxContainer.new()
+	conn_pill_hb.add_theme_constant_override("separation", 6)
+	conn_pill.add_child(conn_pill_hb)
+	_conn_dot_icon = Icons.make_icon_rect("globe", 15, Color(0.74, 0.70, 0.64))
+	conn_pill_hb.add_child(_conn_dot_icon)
 	_conn_dot_lbl = Label.new()
-	_conn_dot_lbl.text = "● Offline"
+	_conn_dot_lbl.text = "Offline"
 	_apply_font(_conn_dot_lbl, false)
 	_conn_dot_lbl.add_theme_font_size_override("font_size", 13)
 	_conn_dot_lbl.add_theme_color_override("font_color", Color(0.74, 0.70, 0.64))
-	hdr_hb.add_child(_conn_dot_lbl)
+	conn_pill_hb.add_child(_conn_dot_lbl)
 
 	var ver_badge := PanelContainer.new()
 	ver_badge.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.12, 0.09, 0.06, 0.95), Color(0.72, 0.58, 0.28, 0.82), 1, 6, 8))
@@ -430,8 +479,9 @@ func _build_ui() -> void:
 	ver_badge.add_child(ver_lbl)
 
 	var close_btn := Button.new()
-	close_btn.text = "✕ Zpět" if _lang == "cs" else "✕ Back"
-	_style_tavern_btn(close_btn, Color(0.24, 0.10, 0.09, 0.95), Color(0.78, 0.36, 0.28, 0.88), false, 8)
+	close_btn.text = "Zpět" if _lang == "cs" else "Back"
+	Icons.apply_button_icon(close_btn, "cross", 15)
+	_style_tavern_btn(close_btn, Color(0.26, 0.10, 0.09, 0.95), Color(0.82, 0.36, 0.28, 0.88), false, 8)
 	close_btn.pressed.connect(_close_lobby)
 	hdr_hb.add_child(close_btn)
 
@@ -444,10 +494,10 @@ func _build_ui() -> void:
 	_apply_font(n_lbl, false); n_lbl.add_theme_color_override("font_color", Color(0.90, 0.82, 0.68))
 	conn_hb.add_child(n_lbl)
 	name_edit = LineEdit.new()
-	name_edit.custom_minimum_size = Vector2(130, 36)
+	name_edit.custom_minimum_size = Vector2(126, 36)
 	name_edit.text = "Duelist_%d" % (randi() % 90 + 10)
-	name_edit.text_submitted.connect(func(_t): _persist_ui_prefs())
-	name_edit.focus_exited.connect(_persist_ui_prefs)
+	name_edit.text_submitted.connect(func(_t): _persist_ui_prefs(); _refresh_leaderboard())
+	name_edit.focus_exited.connect(func(): _persist_ui_prefs(); _refresh_leaderboard())
 	_style_tavern_input(name_edit)
 	conn_hb.add_child(name_edit)
 
@@ -455,7 +505,7 @@ func _build_ui() -> void:
 	_apply_font(ip_lbl, false); ip_lbl.add_theme_color_override("font_color", Color(0.90, 0.82, 0.68))
 	conn_hb.add_child(ip_lbl)
 	ip_edit = LineEdit.new()
-	ip_edit.custom_minimum_size = Vector2(136, 36)
+	ip_edit.custom_minimum_size = Vector2(132, 36)
 	ip_edit.text = "127.0.0.1"
 	ip_edit.placeholder_text = "Radmin / LAN IP"
 	_style_tavern_input(ip_edit)
@@ -465,28 +515,45 @@ func _build_ui() -> void:
 	_apply_font(p_lbl, false); p_lbl.add_theme_color_override("font_color", Color(0.90, 0.82, 0.68))
 	conn_hb.add_child(p_lbl)
 	port_edit = LineEdit.new()
-	port_edit.custom_minimum_size = Vector2(68, 36)
+	port_edit.custom_minimum_size = Vector2(66, 36)
 	port_edit.text = str(Config.DEFAULT_PORT)
 	_style_tavern_input(port_edit)
 	conn_hb.add_child(port_edit)
 
+	room_code_box = HBoxContainer.new()
+	room_code_box.add_theme_constant_override("separation", 6)
+	room_code_box.visible = false
+	conn_hb.add_child(room_code_box)
+	var rc_lbl := Label.new(); rc_lbl.text = "Code:"
+	_apply_font(rc_lbl, false); rc_lbl.add_theme_color_override("font_color", Color(0.98, 0.82, 0.42))
+	room_code_box.add_child(rc_lbl)
+	room_code_edit = LineEdit.new()
+	room_code_edit.custom_minimum_size = Vector2(88, 36)
+	room_code_edit.max_length = 8
+	room_code_edit.placeholder_text = "ROOM"
+	_style_tavern_input(room_code_edit)
+	room_code_box.add_child(room_code_edit)
+
 	host_btn = Button.new()
-	host_btn.text = "🔥 HOST TABLE"
-	host_btn.custom_minimum_size = Vector2(132, 36)
+	host_btn.text = "HOST TABLE"
+	Icons.apply_button_icon(host_btn, "fire", 16)
+	host_btn.custom_minimum_size = Vector2(136, 36)
 	_style_tavern_btn(host_btn, Color(0.32, 0.16, 0.08, 0.96), Color(0.94, 0.70, 0.24, 0.94), true, 8)
 	host_btn.pressed.connect(_on_host_pressed)
 	conn_hb.add_child(host_btn)
 
 	join_btn = Button.new()
-	join_btn.text = "🔗 JOIN TABLE"
-	join_btn.custom_minimum_size = Vector2(128, 36)
+	join_btn.text = "JOIN TABLE"
+	Icons.apply_button_icon(join_btn, "players", 16)
+	join_btn.custom_minimum_size = Vector2(132, 36)
 	_style_tavern_btn(join_btn, Color(0.14, 0.22, 0.18, 0.96), Color(0.56, 0.82, 0.62, 0.90), true, 8)
 	join_btn.pressed.connect(_on_join_pressed)
 	conn_hb.add_child(join_btn)
 
 	if OS.has_feature("editor") or ("--mp-test" in OS.get_cmdline_args()):
 		spawn_win_btn = Button.new()
-		spawn_win_btn.text = "🪟 +2nd"
+		spawn_win_btn.text = "+2nd"
+		Icons.apply_button_icon(spawn_win_btn, "dice", 15)
 		spawn_win_btn.tooltip_text = "Open a 2nd local client window for instant loopback testing"
 		spawn_win_btn.custom_minimum_size = Vector2(82, 36)
 		_style_tavern_btn(spawn_win_btn, Color(0.16, 0.13, 0.10, 0.94), Color(0.62, 0.50, 0.30, 0.80), false, 8)
@@ -499,7 +566,8 @@ func _build_ui() -> void:
 
 	leave_btn = Button.new()
 	leave_btn.text = "Disconnect"
-	leave_btn.custom_minimum_size = Vector2(104, 36)
+	Icons.apply_button_icon(leave_btn, "cross", 14)
+	leave_btn.custom_minimum_size = Vector2(114, 36)
 	_style_tavern_btn(leave_btn, Color(0.24, 0.11, 0.10, 0.94), Color(0.74, 0.36, 0.30, 0.85), false, 8)
 	leave_btn.pressed.connect(func():
 		play_click_sfx.emit()
@@ -509,13 +577,13 @@ func _build_ui() -> void:
 	conn_hb.add_child(leave_btn)
 
 	status_lbl = Label.new()
-	status_lbl.text = "Prepare your Duelist & Deck below, then Host Table or Join a Friend (Radmin / Tailscale / LAN)."
+	status_lbl.text = "Choose a match mode & saved build below, then Host Table or Join a Friend."
 	_apply_font(status_lbl, false)
 	status_lbl.add_theme_font_size_override("font_size", 13)
 	status_lbl.add_theme_color_override("font_color", Color(0.88, 0.84, 0.72))
 	root_vb.add_child(status_lbl)
 
-	# 3. Smart VPN + LAN + UPnP Share Address Bar (visible when Hosting)
+	# 3. Smart VPN + LAN + UPnP + Room Code Share Address Bar (visible when Hosting)
 	share_bar = PanelContainer.new()
 	share_bar.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.09, 0.14, 0.11, 0.94), Color(0.46, 0.80, 0.58, 0.88), 1, 9, 8))
 	share_bar.visible = false
@@ -525,6 +593,25 @@ func _build_ui() -> void:
 	share_hb.add_theme_constant_override("separation", 10)
 	share_bar.add_child(share_hb)
 
+	share_code_lbl = Label.new()
+	_apply_font(share_code_lbl, true)
+	share_code_lbl.add_theme_font_size_override("font_size", 13)
+	share_code_lbl.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42))
+	share_code_lbl.visible = false
+	share_hb.add_child(share_code_lbl)
+
+	copy_code_btn = Button.new()
+	copy_code_btn.text = "Copy Code"
+	Icons.apply_button_icon(copy_code_btn, "lock", 14)
+	copy_code_btn.custom_minimum_size = Vector2(104, 28)
+	_style_tavern_btn(copy_code_btn, Color(0.24, 0.18, 0.08, 0.96), Color(0.94, 0.74, 0.28, 0.92), false, 7)
+	copy_code_btn.visible = false
+	copy_code_btn.pressed.connect(func():
+		play_click_sfx.emit()
+		_copy_and_toast(_room_code_str, "Room Code")
+	)
+	share_hb.add_child(copy_code_btn)
+
 	share_vpn_lbl = Label.new()
 	_apply_font(share_vpn_lbl, false)
 	share_vpn_lbl.add_theme_font_size_override("font_size", 13)
@@ -532,8 +619,9 @@ func _build_ui() -> void:
 	share_hb.add_child(share_vpn_lbl)
 
 	copy_vpn_btn = Button.new()
-	copy_vpn_btn.text = "📋 Copy VPN"
-	copy_vpn_btn.custom_minimum_size = Vector2(104, 28)
+	copy_vpn_btn.text = "Copy VPN"
+	Icons.apply_button_icon(copy_vpn_btn, "scroll", 14)
+	copy_vpn_btn.custom_minimum_size = Vector2(102, 28)
 	_style_tavern_btn(copy_vpn_btn, Color(0.14, 0.28, 0.18, 0.96), Color(0.50, 0.92, 0.64, 0.94), false, 7)
 	copy_vpn_btn.pressed.connect(func():
 		play_click_sfx.emit()
@@ -549,8 +637,9 @@ func _build_ui() -> void:
 	share_hb.add_child(share_lan_lbl)
 
 	copy_lan_btn = Button.new()
-	copy_lan_btn.text = "📋 Copy LAN"
-	copy_lan_btn.custom_minimum_size = Vector2(104, 28)
+	copy_lan_btn.text = "Copy LAN"
+	Icons.apply_button_icon(copy_lan_btn, "tavern", 14)
+	copy_lan_btn.custom_minimum_size = Vector2(102, 28)
 	_style_tavern_btn(copy_lan_btn, Color(0.14, 0.22, 0.18, 0.94), Color(0.52, 0.80, 0.64, 0.86), false, 7)
 	copy_lan_btn.pressed.connect(func():
 		play_click_sfx.emit()
@@ -565,7 +654,8 @@ func _build_ui() -> void:
 	share_hb.add_child(share_pub_lbl)
 
 	copy_pub_btn = Button.new()
-	copy_pub_btn.text = "📋 Copy Public"
+	copy_pub_btn.text = "Copy Public"
+	Icons.apply_button_icon(copy_pub_btn, "globe", 14)
 	copy_pub_btn.custom_minimum_size = Vector2(114, 28)
 	_style_tavern_btn(copy_pub_btn, Color(0.14, 0.18, 0.26, 0.94), Color(0.48, 0.74, 0.96, 0.88), false, 7)
 	copy_pub_btn.pressed.connect(func():
@@ -574,7 +664,7 @@ func _build_ui() -> void:
 	)
 	share_hb.add_child(copy_pub_btn)
 
-	# 4. Split Content: Left = 3-Tab Loadout / Vault / Recent Opponents, Right = 4-Seat Table & Chat & Start
+	# 4. Split Content: Left = 2-Tab Hub (Play & Loadout | Leaderboard & Rivals), Right = 4-Seat Table & Chat & Start
 	var body_hb := HBoxContainer.new()
 	body_hb.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body_hb.add_theme_constant_override("separation", 16)
@@ -582,7 +672,7 @@ func _build_ui() -> void:
 
 	var left_col := VBoxContainer.new()
 	left_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left_col.size_flags_stretch_ratio = 1.15
+	left_col.size_flags_stretch_ratio = 1.22
 	left_col.add_theme_constant_override("separation", 8)
 	body_hb.add_child(left_col)
 
@@ -591,17 +681,17 @@ func _build_ui() -> void:
 	left_col.add_child(tab_bar)
 
 	var tab_defs := [
-		"⚔ Duelist & Deck",
-		"🏛 Campaign Vault",
-		"📜 Recent & Rematch",
+		{"label": "Play & Loadout", "icon": "sword"},
+		{"label": "Leaderboard & Rivals", "icon": "trophy"},
 	]
 	_tab_btns.clear()
 	_tab_containers.clear()
 	for ti in range(tab_defs.size()):
 		var tb := Button.new()
-		tb.text = tab_defs[ti]
+		tb.text = str(tab_defs[ti]["label"])
+		Icons.apply_button_icon(tb, str(tab_defs[ti]["icon"]), 16)
 		tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tb.custom_minimum_size = Vector2(0, 36)
+		tb.custom_minimum_size = Vector2(0, 38)
 		tb.toggle_mode = true
 		var tab_idx := ti
 		tb.pressed.connect(func():
@@ -610,8 +700,8 @@ func _build_ui() -> void:
 		)
 		_tab_btns.append(tb)
 		tab_bar.add_child(tb)
-		if ti == 2:
-			_recent_tab_btn = tb
+		if ti == 1:
+			_leaderboard_tab_btn = tb
 
 	var left_scroll := ScrollContainer.new()
 	left_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -623,37 +713,29 @@ func _build_ui() -> void:
 	tabs_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left_scroll.add_child(tabs_host)
 
-	# --- TAB 0: Duelist & Deck ---
+	# --- TAB 0: Play & Loadout (4 Mode Cards + 3D Character + 1-Click Saved Build Selector) ---
 	var tab0 := VBoxContainer.new()
 	tab0.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tab0.add_theme_constant_override("separation", 9)
+	tab0.add_theme_constant_override("separation", 10)
 	tabs_host.add_child(tab0)
 	_tab_containers.append(tab0)
-	_build_duelist_deck_tab(tab0)
+	_build_play_loadout_tab(tab0)
 
-	# --- TAB 1: Campaign Vault ---
+	# --- TAB 1: Global / Local Leaderboard & Recent Rivals ---
 	var tab1 := VBoxContainer.new()
 	tab1.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tab1.add_theme_constant_override("separation", 8)
 	tabs_host.add_child(tab1)
 	_tab_containers.append(tab1)
-	_build_vault_section(tab1)
-
-	# --- TAB 2: Recent Opponents & Quick Rematch ---
-	var tab2 := VBoxContainer.new()
-	tab2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tab2.add_theme_constant_override("separation", 8)
-	tabs_host.add_child(tab2)
-	_tab_containers.append(tab2)
-	recent_list_vb = VBoxContainer.new()
-	recent_list_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	recent_list_vb.add_theme_constant_override("separation", 8)
-	tab2.add_child(recent_list_vb)
+	_leaderboard_vb = VBoxContainer.new()
+	_leaderboard_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_leaderboard_vb.add_theme_constant_override("separation", 8)
+	tab1.add_child(_leaderboard_vb)
 
 	# --- RIGHT COLUMN: 4-Seat Table Roster, Rules, Atmosphere, Chat & Launch ---
 	var right_vb := VBoxContainer.new()
 	right_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right_vb.size_flags_stretch_ratio = 0.95
+	right_vb.size_flags_stretch_ratio = 0.90
 	right_vb.add_theme_constant_override("separation", 8)
 	body_hb.add_child(right_vb)
 
@@ -662,7 +744,8 @@ func _build_ui() -> void:
 	right_vb.add_child(settings_hb)
 
 	rule_btn = Button.new()
-	rule_btn.text = "Ruleset: 🏛 Campaign Vault"
+	rule_btn.text = "Ruleset: Campaign Vault"
+	Icons.apply_button_icon(rule_btn, "shield", 15)
 	rule_btn.clip_text = true
 	rule_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	rule_btn.custom_minimum_size = Vector2(0, 36)
@@ -678,19 +761,19 @@ func _build_ui() -> void:
 	settings_hb.add_child(rule_btn)
 
 	vista_btn = Button.new()
-	vista_btn.text = "🌕 Full Moon Tavern"
+	vista_btn.text = "Full Moon Tavern"
+	Icons.apply_button_icon(vista_btn, "tavern", 15)
 	vista_btn.clip_text = true
 	vista_btn.custom_minimum_size = Vector2(185, 36)
 	_style_tavern_btn(vista_btn, Color(0.12, 0.13, 0.18, 0.94), Color(0.56, 0.68, 0.88, 0.86), false, 8)
 	vista_btn.pressed.connect(_cycle_vista_era)
 	settings_hb.add_child(vista_btn)
 
-	var r_title := Label.new()
-	r_title.text = "TAVERN ROUND TABLE (2–4 SEATS)"
-	_apply_font(r_title, true)
-	r_title.add_theme_font_size_override("font_size", 15)
-	r_title.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42))
-	right_vb.add_child(r_title)
+	var r_title_row := Icons.make_icon_label_row("players", "TAVERN ROUND TABLE (2–4 SEATS)", 18, 15, Color(1.0, 0.86, 0.42))
+	for child in r_title_row.get_children():
+		if child is Label:
+			_apply_font(child, true)
+	right_vb.add_child(r_title_row)
 
 	seats_box = VBoxContainer.new()
 	seats_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -715,14 +798,21 @@ func _build_ui() -> void:
 	var em_hb := HBoxContainer.new()
 	em_hb.add_theme_constant_override("separation", 6)
 	chat_vb.add_child(em_hb)
-	for em_txt in ["⚔ Ready!", "🔥 Rematch!", "🍻 GL HF!", "⏳ Wait 1m"]:
+	var quick_msgs := [
+		{"txt": "Ready!", "icon": "check"},
+		{"txt": "Rematch!", "icon": "fire"},
+		{"txt": "GL HF!", "icon": "tavern"},
+		{"txt": "Wait 1m", "icon": "hourglass"},
+	]
+	for qm in quick_msgs:
 		var eb := Button.new()
-		eb.text = em_txt
+		eb.text = str(qm["txt"])
+		Icons.apply_button_icon(eb, str(qm["icon"]), 13)
 		eb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		eb.custom_minimum_size = Vector2(0, 26)
 		eb.add_theme_font_size_override("font_size", 11)
 		_style_tavern_btn(eb, Color(0.14, 0.11, 0.08, 0.92), Color(0.58, 0.46, 0.26, 0.78), false, 6, false)
-		var msg_send: String = em_txt
+		var msg_send: String = str(qm["txt"])
 		eb.pressed.connect(func():
 			play_click_sfx.emit()
 			if mp_net != null and mp_net.has_method("send_lobby_chat"):
@@ -757,8 +847,9 @@ func _build_ui() -> void:
 	right_vb.add_child(bot_hb)
 
 	add_bot_btn = Button.new()
-	add_bot_btn.text = "🤖 +Add Bot"
-	add_bot_btn.custom_minimum_size = Vector2(138, 44)
+	add_bot_btn.text = "+Add Bot"
+	Icons.apply_button_icon(add_bot_btn, "players", 16)
+	add_bot_btn.custom_minimum_size = Vector2(132, 44)
 	_style_tavern_btn(add_bot_btn, Color(0.16, 0.13, 0.10, 0.96), Color(0.68, 0.54, 0.30, 0.88), false, 9)
 	add_bot_btn.pressed.connect(func():
 		play_click_sfx.emit()
@@ -768,7 +859,8 @@ func _build_ui() -> void:
 	bot_hb.add_child(add_bot_btn)
 
 	ready_btn = Button.new()
-	ready_btn.text = "✓ READY"
+	ready_btn.text = "READY"
+	Icons.apply_button_icon(ready_btn, "check", 16)
 	ready_btn.custom_minimum_size = Vector2(140, 44)
 	_style_tavern_btn(ready_btn, Color(0.14, 0.22, 0.14, 0.96), Color(0.54, 0.82, 0.48, 0.90), true, 9)
 	ready_btn.pressed.connect(func():
@@ -780,7 +872,8 @@ func _build_ui() -> void:
 	bot_hb.add_child(ready_btn)
 
 	start_btn = Button.new()
-	start_btn.text = "⚔ START TAVERN BRAWL!"
+	start_btn.text = "START TAVERN BRAWL"
+	Icons.apply_button_icon(start_btn, "sword", 18)
 	start_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	start_btn.custom_minimum_size = Vector2(200, 44)
 	_style_tavern_btn(start_btn, Color(0.34, 0.16, 0.08, 0.98), Color(0.98, 0.76, 0.26, 0.96), true, 9)
@@ -813,6 +906,450 @@ func _build_ui() -> void:
 	_render_4_seats([], {})
 
 
+func _build_play_loadout_tab(parent_vb: VBoxContainer) -> void:
+	# 1. 4 Large Animated Mode Cards
+	var m_hdr := Icons.make_icon_label_row("tavern", "SELECT MATCH MODE", 16, 14, Color(1.0, 0.86, 0.44))
+	for child in m_hdr.get_children():
+		if child is Label:
+			_apply_font(child, true)
+	parent_vb.add_child(m_hdr)
+
+	var mode_grid := GridContainer.new()
+	mode_grid.columns = 2
+	mode_grid.add_theme_constant_override("h_separation", 10)
+	mode_grid.add_theme_constant_override("v_separation", 10)
+	parent_vb.add_child(mode_grid)
+
+	var mode_defs := [
+		{
+			"id": Config.MODE_PUBLIC,
+			"title": "Public Match",
+			"sub": "Quick Match / Public Lobby",
+			"badge": "OPEN LOBBY",
+			"icon": "globe",
+			"col": Color(0.36, 0.86, 0.98),
+		},
+		{
+			"id": Config.MODE_PRIVATE,
+			"title": "Private Match",
+			"sub": "Host / Join with Room Code or IP",
+			"badge": "CODE / IP",
+			"icon": "lock",
+			"col": Color(0.98, 0.76, 0.28),
+		},
+		{
+			"id": Config.MODE_RANKED,
+			"title": "Ranked",
+			"sub": "Competitive ELO / Ranked Ruleset",
+			"badge": "ELO • FAIR",
+			"icon": "trophy",
+			"col": Color(0.98, 0.38, 0.34),
+		},
+		{
+			"id": Config.MODE_UNRANKED,
+			"title": "Unranked",
+			"sub": "Casual Tavern Duel / Vault Allowed",
+			"badge": "CASUAL",
+			"icon": "sword",
+			"col": Color(0.46, 0.92, 0.58),
+		},
+	]
+	_mode_cards.clear()
+	for md in mode_defs:
+		var mid := str(md["id"])
+		var mcol: Color = md["col"]
+		var mbtn := Button.new()
+		mbtn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mbtn.custom_minimum_size = Vector2(0, 88)
+		mbtn.text = ""
+		mbtn.toggle_mode = true
+
+		var inner := HBoxContainer.new()
+		inner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		inner.offset_left = 12; inner.offset_right = -12
+		inner.offset_top = 8; inner.offset_bottom = -8
+		inner.add_theme_constant_override("separation", 12)
+		inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mbtn.add_child(inner)
+
+		var icon_frame := PanelContainer.new()
+		icon_frame.custom_minimum_size = Vector2(54, 54)
+		icon_frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		icon_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon_frame.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(mcol.r * 0.16, mcol.g * 0.16, mcol.b * 0.16, 0.92), Color(mcol.r, mcol.g, mcol.b, 0.65), 1, 10, 8))
+		inner.add_child(icon_frame)
+		var ic := Icons.make_icon_rect(str(md["icon"]), 30, mcol)
+		ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		icon_frame.add_child(ic)
+
+		var txt_vb := VBoxContainer.new()
+		txt_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		txt_vb.alignment = BoxContainer.ALIGNMENT_CENTER
+		txt_vb.add_theme_constant_override("separation", 3)
+		txt_vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		inner.add_child(txt_vb)
+
+		var top_hb := HBoxContainer.new()
+		top_hb.add_theme_constant_override("separation", 8)
+		top_hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		txt_vb.add_child(top_hb)
+
+		var t_lbl := Label.new()
+		t_lbl.text = str(md["title"])
+		_apply_font(t_lbl, true)
+		t_lbl.add_theme_font_size_override("font_size", 16)
+		t_lbl.add_theme_color_override("font_color", Color(0.98, 0.93, 0.80))
+		t_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		top_hb.add_child(t_lbl)
+
+		var b_lbl := Label.new()
+		b_lbl.text = str(md["badge"])
+		_apply_font(b_lbl, true)
+		b_lbl.add_theme_font_size_override("font_size", 10)
+		b_lbl.add_theme_color_override("font_color", mcol)
+		b_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		top_hb.add_child(b_lbl)
+
+		var s_lbl := Label.new()
+		s_lbl.text = str(md["sub"])
+		s_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_apply_font(s_lbl, false)
+		s_lbl.add_theme_font_size_override("font_size", 12)
+		s_lbl.add_theme_color_override("font_color", Color(0.76, 0.72, 0.64))
+		s_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		txt_vb.add_child(s_lbl)
+
+		mbtn.pressed.connect(func():
+			play_click_sfx.emit()
+			_select_match_mode(mid)
+		)
+		_apply_choice_btn_style(mbtn, mid == _selected_match_mode, mcol)
+		_attach_mode_card_anim(mbtn, mid, mcol)
+		_mode_cards[mid] = mbtn
+		mode_grid.add_child(mbtn)
+
+	# 2. 3D Duelist Character Picker
+	var c_title := Icons.make_icon_label_row("crown", "CHOOSE YOUR 3D DUELIST", 16, 14, Color(0.95, 0.84, 0.54))
+	for child in c_title.get_children():
+		if child is Label:
+			_apply_font(child, true)
+	parent_vb.add_child(c_title)
+
+	var char_back_map := {
+		"CHAR_GUILLOTINE": "res://assets/table/deck_back_obsidian.png",
+		"CHAR_MONARCH": "res://assets/table/deck_back_stredovek.png",
+		"CHAR_JESTER": "res://assets/table/deck_back_prohibicia.png",
+		"CHAR_MISTBLADE": "res://assets/table/deck_back_astral.png",
+	}
+
+	var char_hb := HBoxContainer.new()
+	char_hb.add_theme_constant_override("separation", 8)
+	parent_vb.add_child(char_hb)
+	_char_portrait_pivots.clear()
+	for ch_idx in range(Config.CHARACTERS.size()):
+		var ch: Dictionary = Config.CHARACTERS[ch_idx]
+		var cid := str(ch["id"])
+		var ch_accent: Color = ch.get("col", Color(0.95, 0.78, 0.30))
+		var cb := Button.new()
+		cb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cb.custom_minimum_size = Vector2(0, 118)
+		cb.text = ""
+		cb.tooltip_text = str(ch["desc"])
+		cb.toggle_mode = true
+		var btex := Toon.tex(str(char_back_map.get(cid, "res://assets/table/card_back.png")))
+		var card_vb := VBoxContainer.new()
+		card_vb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		card_vb.offset_left = 6; card_vb.offset_right = -6
+		card_vb.offset_top = 6; card_vb.offset_bottom = -6
+		card_vb.alignment = BoxContainer.ALIGNMENT_CENTER
+		card_vb.add_theme_constant_override("separation", 4)
+		card_vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cb.add_child(card_vb)
+		var portrait_ctrl := _build_char_bust_portrait(ch, btex, ch_idx)
+		card_vb.add_child(portrait_ctrl)
+		var name_row := HBoxContainer.new()
+		name_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		name_row.add_theme_constant_override("separation", 4)
+		name_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		name_row.add_child(Icons.make_icon_rect(str(ch.get("icon", "sword")), 13, ch_accent))
+		var cname_lbl := Label.new()
+		cname_lbl.text = str(ch.get("name_cs" if _lang == "cs" else "name", ch["name"]))
+		cname_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cname_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		_apply_font(cname_lbl, true)
+		cname_lbl.add_theme_font_size_override("font_size", 11)
+		cname_lbl.add_theme_color_override("font_color", Color(0.98, 0.92, 0.78))
+		cname_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		name_row.add_child(cname_lbl)
+		card_vb.add_child(name_row)
+		cb.pressed.connect(func():
+			play_click_sfx.emit()
+			_select_character(cid)
+		)
+		_apply_choice_btn_style(cb, cid == selected_char_id, ch_accent)
+		_attach_hover_anim(cb)
+		char_buttons[cid] = cb
+		char_hb.add_child(cb)
+
+	# 3. 1-Click Saved Build / Deck Preset Selector + Active Build Summary + Open Deck Builder
+	var deck_hdr_hb := HBoxContainer.new()
+	deck_hdr_hb.add_theme_constant_override("separation", 8)
+	parent_vb.add_child(deck_hdr_hb)
+
+	var d_title := Icons.make_icon_label_row("cards", "SAVED BUILDS & DECK PRESETS", 16, 14, Color(1.0, 0.86, 0.42))
+	d_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for child in d_title.get_children():
+		if child is Label:
+			_apply_font(child, true)
+	deck_hdr_hb.add_child(d_title)
+
+	_open_deck_builder_btn = Button.new()
+	_open_deck_builder_btn.text = "Deck Builder"
+	Icons.apply_button_icon(_open_deck_builder_btn, "gear", 14)
+	_open_deck_builder_btn.custom_minimum_size = Vector2(132, 32)
+	_style_tavern_btn(_open_deck_builder_btn, Color(0.20, 0.14, 0.08, 0.96), Color(0.90, 0.70, 0.28, 0.92), true, 8)
+	_open_deck_builder_btn.pressed.connect(func():
+		play_click_sfx.emit()
+		_open_deck_builder_modal()
+	)
+	deck_hdr_hb.add_child(_open_deck_builder_btn)
+
+	_saved_decks_flow = HFlowContainer.new()
+	_saved_decks_flow.add_theme_constant_override("h_separation", 8)
+	_saved_decks_flow.add_theme_constant_override("v_separation", 8)
+	parent_vb.add_child(_saved_decks_flow)
+
+	var sum_pan := PanelContainer.new()
+	sum_pan.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.06, 0.05, 0.038, 0.90), Color(0.60, 0.44, 0.22, 0.72), 1, 10, 12))
+	parent_vb.add_child(sum_pan)
+	var sum_vb := VBoxContainer.new()
+	sum_vb.add_theme_constant_override("separation", 5)
+	sum_pan.add_child(sum_vb)
+
+	var sum_top := HBoxContainer.new()
+	sum_top.add_theme_constant_override("separation", 8)
+	sum_vb.add_child(sum_top)
+	sum_top.add_child(Icons.make_icon_rect("seal", 16, Color(0.45, 0.92, 1.0)))
+	_build_summary_title = Label.new()
+	_build_summary_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_apply_font(_build_summary_title, true)
+	_build_summary_title.add_theme_font_size_override("font_size", 14)
+	_build_summary_title.add_theme_color_override("font_color", Color(1.0, 0.88, 0.50))
+	sum_top.add_child(_build_summary_title)
+
+	_grand_seal_lbl = Label.new()
+	_apply_font(_grand_seal_lbl, false)
+	_grand_seal_lbl.add_theme_font_size_override("font_size", 12)
+	_grand_seal_lbl.add_theme_color_override("font_color", Color(0.55, 0.92, 1.0))
+	sum_vb.add_child(_grand_seal_lbl)
+
+	_build_summary_lbl = Label.new()
+	_build_summary_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_apply_font(_build_summary_lbl, false)
+	_build_summary_lbl.add_theme_font_size_override("font_size", 12)
+	_build_summary_lbl.add_theme_color_override("font_color", Color(0.86, 0.80, 0.68))
+	sum_vb.add_child(_build_summary_lbl)
+
+	_rebuild_saved_deck_selector()
+
+
+func _attach_mode_card_anim(btn: Button, mode_id: String, accent: Color) -> void:
+	btn.mouse_entered.connect(func():
+		if btn.disabled or not is_inside_tree():
+			return
+		btn.pivot_offset = btn.size * 0.5
+		var tw := btn.create_tween().set_parallel(true)
+		tw.tween_property(btn, "scale", Vector2(1.028, 1.028), 0.11).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		var sb := btn.get_theme_stylebox("hover") as StyleBoxFlat
+		if sb != null:
+			sb.border_color = accent.lightened(0.22)
+	)
+	btn.mouse_exited.connect(func():
+		if not is_inside_tree():
+			return
+		btn.pivot_offset = btn.size * 0.5
+		var tw := btn.create_tween()
+		tw.tween_property(btn, "scale", Vector2.ONE, 0.13).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		if mode_id != _selected_match_mode:
+			_apply_choice_btn_style(btn, false, accent)
+	)
+
+
+func _select_match_mode(mode_id: String) -> void:
+	_selected_match_mode = mode_id
+	var mode_colors := {
+		Config.MODE_PUBLIC: Color(0.36, 0.86, 0.98),
+		Config.MODE_PRIVATE: Color(0.98, 0.76, 0.28),
+		Config.MODE_RANKED: Color(0.98, 0.38, 0.34),
+		Config.MODE_UNRANKED: Color(0.46, 0.92, 0.58),
+	}
+	for k in _mode_cards.keys():
+		var m_k := str(k)
+		var is_sel := (m_k == mode_id)
+		var b: Button = _mode_cards[k]
+		b.set_pressed_no_signal(is_sel)
+		_apply_choice_btn_style(b, is_sel, mode_colors.get(m_k, Color(0.95, 0.78, 0.30)))
+	if is_instance_valid(room_code_box):
+		room_code_box.visible = (mode_id == Config.MODE_PRIVATE)
+	if mp_net != null and mp_net.has_method("set_match_mode"):
+		mp_net.set_match_mode(mode_id)
+	_persist_ui_prefs()
+	_refresh_controls()
+
+
+func _rebuild_saved_deck_selector() -> void:
+	if not is_instance_valid(_saved_decks_flow):
+		return
+	for c in _saved_decks_flow.get_children():
+		c.queue_free()
+	_saved_deck_btns.clear()
+
+	var saved_decks: Array = _profile.get("saved_decks", [])
+	if saved_decks.is_empty():
+		# Fallback 1-click preset pills from core Catalog.DECK_BUILDS if player hasn't saved custom decks yet
+		for db in Catalog.DECK_BUILDS:
+			var bid := str(db.get("id", "GUILLOTINE_ACES"))
+			var bcol: Color = db.get("col", Color(0.95, 0.78, 0.30))
+			var bloc := Catalog.get_deck_build_loc(bid, _lang)
+			var btn := Button.new()
+			btn.text = str(bloc.get("name", bid))
+			Icons.apply_button_icon(btn, "cards", 14)
+			btn.custom_minimum_size = Vector2(148, 36)
+			btn.toggle_mode = true
+			var is_sel := (selected_arch_id == bid)
+			btn.set_pressed_no_signal(is_sel)
+			btn.pressed.connect(func():
+				play_click_sfx.emit()
+				_apply_core_build_preset(bid)
+			)
+			_apply_choice_btn_style(btn, is_sel, bcol)
+			_attach_hover_anim(btn)
+			_saved_deck_btns[bid] = btn
+			_saved_decks_flow.add_child(btn)
+	else:
+		for sd_v in saved_decks:
+			if not (sd_v is Dictionary):
+				continue
+			var sd := sd_v as Dictionary
+			var did := str(sd.get("id", ""))
+			var dname := str(sd.get("name", "Saved Build"))
+			var bid := str(sd.get("build_id", "GUILLOTINE_ACES"))
+			var bcol: Color = Catalog.get_deck_build(bid).get("col", Color(0.95, 0.78, 0.30))
+			var btn := Button.new()
+			btn.text = dname
+			Icons.apply_button_icon(btn, "cards", 14)
+			btn.custom_minimum_size = Vector2(148, 36)
+			btn.toggle_mode = true
+			var is_sel := (_active_saved_deck_id == did)
+			btn.set_pressed_no_signal(is_sel)
+			btn.pressed.connect(func():
+				play_click_sfx.emit()
+				_apply_saved_deck_preset(did)
+			)
+			_apply_choice_btn_style(btn, is_sel, bcol)
+			_attach_hover_anim(btn)
+			_saved_deck_btns[did] = btn
+			_saved_decks_flow.add_child(btn)
+
+	_update_deck_summary(Config.get_archetype(selected_arch_id))
+
+
+func _apply_saved_deck_preset(deck_id: String) -> void:
+	if Catalog.apply_saved_deck(_profile, deck_id):
+		_active_saved_deck_id = deck_id
+		Catalog.save_profile(_profile)
+		_load_vault_from_profile()
+		selected_arch_id = str(_profile.get("selected_build_id", selected_arch_id))
+		var def_char := Config.get_character_for_archetype(selected_arch_id)
+		if selected_char_id.is_empty():
+			selected_char_id = str(def_char.get("id", "CHAR_GUILLOTINE"))
+		_rebuild_saved_deck_selector()
+		_push_deck_update()
+		_persist_ui_prefs()
+		_show_toast("Build preset applied!", false)
+
+
+func _apply_core_build_preset(build_id: String) -> void:
+	_active_saved_deck_id = ""
+	selected_arch_id = build_id
+	_profile["selected_build_id"] = build_id
+	var arch := Config.get_archetype(build_id)
+	var def_char := Config.get_character_for_archetype(build_id)
+	_select_character(str(def_char.get("id", "CHAR_GUILLOTINE")))
+	equipped_sword_id = str(arch.get("sword_skin", equipped_sword_id))
+	_save_vault_to_profile()
+	_rebuild_saved_deck_selector()
+	_push_deck_update()
+	_persist_ui_prefs()
+
+
+func _open_deck_builder_modal() -> void:
+	open_deck_builder_requested.emit()
+	if is_instance_valid(_deck_builder_modal):
+		_deck_builder_modal.queue_free()
+		_deck_builder_modal = null
+
+	_deck_builder_modal = PanelContainer.new()
+	_deck_builder_modal.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_deck_builder_modal.anchor_left = 0.04; _deck_builder_modal.anchor_right = 0.96
+	_deck_builder_modal.anchor_top = 0.04; _deck_builder_modal.anchor_bottom = 0.96
+	_deck_builder_modal.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.05, 0.038, 0.028, 0.98), Color(0.92, 0.72, 0.28, 0.96), 3, 14, 14))
+	add_child(_deck_builder_modal)
+
+	var modal_vb := VBoxContainer.new()
+	modal_vb.add_theme_constant_override("separation", 8)
+	_deck_builder_modal.add_child(modal_vb)
+
+	var m_hdr := HBoxContainer.new()
+	m_hdr.add_theme_constant_override("separation", 10)
+	modal_vb.add_child(m_hdr)
+	var m_title := Icons.make_icon_label_row("cards", "DECK BUILDER (CAMPAIGN & MULTIPLAYER)", 18, 16, Color(1.0, 0.88, 0.46))
+	m_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for child in m_title.get_children():
+		if child is Label:
+			_apply_font(child, true)
+	m_hdr.add_child(m_title)
+
+	var done_btn := Button.new()
+	done_btn.text = "Save & Close"
+	Icons.apply_button_icon(done_btn, "check", 15)
+	done_btn.custom_minimum_size = Vector2(138, 34)
+	_style_tavern_btn(done_btn, Color(0.16, 0.26, 0.14, 0.96), Color(0.56, 0.90, 0.46, 0.94), true, 8)
+	done_btn.pressed.connect(func():
+		play_click_sfx.emit()
+		_close_deck_builder_modal()
+	)
+	m_hdr.add_child(done_btn)
+
+	var sc := ScrollContainer.new()
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	modal_vb.add_child(sc)
+
+	var db_panel := DeckBuilderScript.new()
+	db_panel.sfx_requested.connect(func(_sn: String): play_click_sfx.emit())
+	db_panel.deck_changed.connect(func(updated_prof: Dictionary):
+		_profile = updated_prof
+		Catalog.save_profile(_profile)
+		_load_vault_from_profile()
+		selected_arch_id = str(_profile.get("selected_build_id", selected_arch_id))
+		_rebuild_saved_deck_selector()
+		_push_deck_update()
+	)
+	sc.add_child(db_panel)
+	db_panel.setup_builder(_profile, _lang)
+
+
+func _close_deck_builder_modal() -> void:
+	if is_instance_valid(_deck_builder_modal):
+		_deck_builder_modal.queue_free()
+		_deck_builder_modal = null
+	_load_vault_from_profile()
+	_rebuild_saved_deck_selector()
+	_push_deck_update()
+
+
 func _load_char_bust_glb(glb_path: String) -> Node3D:
 	if glb_path.is_empty():
 		return null
@@ -839,7 +1376,7 @@ func _build_char_bust_portrait(ch: Dictionary, back_tex: Texture2D, idx: int) ->
 	cc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var frame := PanelContainer.new()
-	frame.custom_minimum_size = Vector2(88, 88)
+	frame.custom_minimum_size = Vector2(78, 78)
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var frame_sb := _make_tavern_panel_sb(Color(0.04, 0.032, 0.026, 0.90), Color(ch_accent.r, ch_accent.g, ch_accent.b, 0.55), 1, 8, 2)
 	frame.add_theme_stylebox_override("panel", frame_sb)
@@ -849,13 +1386,13 @@ func _build_char_bust_portrait(ch: Dictionary, back_tex: Texture2D, idx: int) ->
 		var bust := _load_char_bust_glb(str(ch.get("glb", "")))
 		if bust != null:
 			var svpc := SubViewportContainer.new()
-			svpc.custom_minimum_size = Vector2(84, 84)
+			svpc.custom_minimum_size = Vector2(74, 74)
 			svpc.stretch = true
 			svpc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			frame.add_child(svpc)
 
 			var svp := SubViewport.new()
-			svp.size = Vector2i(84, 84)
+			svp.size = Vector2i(74, 74)
 			svp.own_world_3d = true
 			svp.transparent_bg = true
 			svp.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
@@ -893,14 +1430,13 @@ func _build_char_bust_portrait(ch: Dictionary, back_tex: Texture2D, idx: int) ->
 			_char_portrait_pivots.append({"node": pivot, "phase": float(idx) * 1.35})
 			return cc
 
-	# Crisp styled emblem fallback (headless mode or missing GLB)
 	var fb_center := CenterContainer.new()
-	fb_center.custom_minimum_size = Vector2(84, 84)
+	fb_center.custom_minimum_size = Vector2(74, 74)
 	fb_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	frame.add_child(fb_center)
 	if back_tex != null:
 		var tr := TextureRect.new()
-		tr.custom_minimum_size = Vector2(68, 68)
+		tr.custom_minimum_size = Vector2(60, 60)
 		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		tr.texture = back_tex
@@ -914,137 +1450,17 @@ func _build_char_bust_portrait(ch: Dictionary, back_tex: Texture2D, idx: int) ->
 		glyph_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		glyph_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		_apply_font(glyph_lbl, true)
-		glyph_lbl.add_theme_font_size_override("font_size", 32)
+		glyph_lbl.add_theme_font_size_override("font_size", 28)
 		glyph_lbl.add_theme_color_override("font_color", ch_accent)
 		glyph_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		fb_center.add_child(glyph_lbl)
 	return cc
 
 
-func _build_duelist_deck_tab(parent_vb: VBoxContainer) -> void:
-	var c_title := Label.new()
-	c_title.text = "CHOOSE YOUR 3D CHARACTER & CARD BACK"
-	_apply_font(c_title, true)
-	c_title.add_theme_font_size_override("font_size", 15)
-	c_title.add_theme_color_override("font_color", Color(0.95, 0.84, 0.54))
-	parent_vb.add_child(c_title)
-
-	var char_back_map := {
-		"CHAR_GUILLOTINE": "res://assets/table/deck_back_obsidian.png",
-		"CHAR_MONARCH": "res://assets/table/deck_back_stredovek.png",
-		"CHAR_JESTER": "res://assets/table/deck_back_prohibicia.png",
-		"CHAR_MISTBLADE": "res://assets/table/deck_back_astral.png",
-	}
-
-	var char_hb := HBoxContainer.new()
-	char_hb.add_theme_constant_override("separation", 8)
-	parent_vb.add_child(char_hb)
-	_char_portrait_pivots.clear()
-	for ch_idx in range(Config.CHARACTERS.size()):
-		var ch: Dictionary = Config.CHARACTERS[ch_idx]
-		var cid := str(ch["id"])
-		var ch_accent: Color = ch.get("col", Color(0.95, 0.78, 0.30))
-		var cb := Button.new()
-		cb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		cb.custom_minimum_size = Vector2(0, 126)
-		cb.text = ""
-		cb.tooltip_text = str(ch["desc"])
-		cb.toggle_mode = true
-		var btex := Toon.tex(str(char_back_map.get(cid, "res://assets/table/card_back.png")))
-		var card_vb := VBoxContainer.new()
-		card_vb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		card_vb.offset_left = 6; card_vb.offset_right = -6
-		card_vb.offset_top = 6; card_vb.offset_bottom = -6
-		card_vb.alignment = BoxContainer.ALIGNMENT_CENTER
-		card_vb.add_theme_constant_override("separation", 4)
-		card_vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		cb.add_child(card_vb)
-		var portrait_ctrl := _build_char_bust_portrait(ch, btex, ch_idx)
-		card_vb.add_child(portrait_ctrl)
-		var cname_lbl := Label.new()
-		cname_lbl.text = str(ch.get("name_cs" if _lang == "cs" else "name", ch["name"]))
-		cname_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		cname_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		_apply_font(cname_lbl, true)
-		cname_lbl.add_theme_font_size_override("font_size", 12)
-		cname_lbl.add_theme_color_override("font_color", Color(0.98, 0.92, 0.78))
-		cname_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		card_vb.add_child(cname_lbl)
-		cb.pressed.connect(func():
-			play_click_sfx.emit()
-			_select_character(cid)
-		)
-		_apply_choice_btn_style(cb, cid == selected_char_id, ch_accent)
-		_attach_hover_anim(cb)
-		char_buttons[cid] = cb
-		char_hb.add_child(cb)
-
-	var d_title := Label.new()
-	d_title.text = "YOUR PERSONAL DECK ARCHETYPE"
-	_apply_font(d_title, true)
-	d_title.add_theme_font_size_override("font_size", 15)
-	d_title.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42))
-	parent_vb.add_child(d_title)
-
-	for arch in Config.DECK_ARCHETYPES:
-		var aid := str(arch["id"])
-		var ab := Button.new()
-		ab.custom_minimum_size = Vector2(0, 42)
-		ab.text = "%s — %s" % [arch["name"], arch["desc"]]
-		ab.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		ab.toggle_mode = true
-		ab.pressed.connect(func():
-			play_click_sfx.emit()
-			_select_archetype(aid)
-		)
-		_apply_choice_btn_style(ab, aid == selected_arch_id, arch.get("col", Color(0.95, 0.78, 0.30)))
-		_attach_hover_anim(ab)
-		arch_buttons[aid] = ab
-		parent_vb.add_child(ab)
-
-	var aces_hb := HBoxContainer.new()
-	aces_hb.add_theme_constant_override("separation", 10)
-	parent_vb.add_child(aces_hb)
-	aces_lbl = Label.new()
-	_apply_font(aces_lbl, false)
-	aces_lbl.add_theme_color_override("font_color", Color(0.94, 0.86, 0.68))
-	aces_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	aces_hb.add_child(aces_lbl)
-	_ace_pips_lbl = Label.new()
-	_apply_font(_ace_pips_lbl, true)
-	_ace_pips_lbl.add_theme_font_size_override("font_size", 16)
-	_ace_pips_lbl.add_theme_color_override("font_color", Color(1.0, 0.82, 0.30))
-	aces_hb.add_child(_ace_pips_lbl)
-	var minus_e := Button.new(); minus_e.text = " - "; minus_e.custom_minimum_size = Vector2(40, 34)
-	_style_tavern_btn(minus_e, Color(0.18, 0.13, 0.09, 0.94), Color(0.66, 0.52, 0.28, 0.82), true, 8)
-	minus_e.pressed.connect(func():
-		play_click_sfx.emit()
-		extra_aces_val = maxi(0, extra_aces_val - 1)
-		_push_deck_update()
-	)
-	aces_hb.add_child(minus_e)
-	var plus_e := Button.new(); plus_e.text = " + "; plus_e.custom_minimum_size = Vector2(40, 34)
-	_style_tavern_btn(plus_e, Color(0.18, 0.13, 0.09, 0.94), Color(0.66, 0.52, 0.28, 0.82), true, 8)
-	plus_e.pressed.connect(func():
-		play_click_sfx.emit()
-		extra_aces_val = mini(6, extra_aces_val + 1)
-		_push_deck_update()
-	)
-	aces_hb.add_child(plus_e)
-
-	var sum_pan := PanelContainer.new()
-	sum_pan.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.06, 0.05, 0.038, 0.88), Color(0.56, 0.42, 0.20, 0.68), 1, 9, 10))
-	parent_vb.add_child(sum_pan)
-	deck_desc_lbl = Label.new()
-	deck_desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_apply_font(deck_desc_lbl, false)
-	deck_desc_lbl.add_theme_font_size_override("font_size", 13)
-	deck_desc_lbl.add_theme_color_override("font_color", Color(0.86, 0.80, 0.68))
-	sum_pan.add_child(deck_desc_lbl)
-
-
 func _switch_tab(idx: int) -> void:
 	_active_tab = idx
+	if idx == 1:
+		_refresh_leaderboard()
 	for i in range(_tab_btns.size()):
 		var is_sel := (i == idx)
 		_tab_btns[i].set_pressed_no_signal(is_sel)
@@ -1065,6 +1481,9 @@ func _play_entrance_anim() -> void:
 	var tw := create_tween().set_parallel(true)
 	tw.tween_property(_main_panel, "modulate:a", 1.0, 0.24).set_ease(Tween.EASE_OUT)
 	tw.tween_property(_main_panel, "position:y", _main_panel.position.y - 18.0, 0.24).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	if is_instance_valid(_hdr_bar):
+		_hdr_bar.modulate.a = 0.0
+		tw.tween_property(_hdr_bar, "modulate:a", 1.0, 0.34).set_delay(0.06)
 
 
 func _show_toast(msg: String, is_err: bool = false) -> void:
@@ -1106,16 +1525,19 @@ func _apply_saved_prefs() -> void:
 	var saved_port := int(_prefs.get("last_port", Config.DEFAULT_PORT))
 	if saved_port >= 1024 and is_instance_valid(port_edit):
 		port_edit.text = str(saved_port)
-	var saved_arch := str(_prefs.get("last_archetype_id", "GUILLOTINE_ACES"))
-	if not arch_buttons.has(saved_arch):
-		saved_arch = "GUILLOTINE_ACES"
-	_select_archetype(saved_arch)
+	var saved_mode := str(_prefs.get("last_mode", Config.MODE_UNRANKED))
+	if not _mode_cards.has(saved_mode):
+		saved_mode = Config.MODE_UNRANKED
+	_select_match_mode(saved_mode)
+	_active_saved_deck_id = str(_prefs.get("last_saved_deck_id", ""))
+	var saved_arch := str(_prefs.get("last_archetype_id", str(_profile.get("selected_build_id", "GUILLOTINE_ACES"))))
+	selected_arch_id = saved_arch
 	var saved_char := str(_prefs.get("last_character_id", ""))
 	if not saved_char.is_empty() and char_buttons.has(saved_char):
 		_select_character(saved_char)
-	extra_aces_val = clampi(int(_prefs.get("last_extra_aces", extra_aces_val)), 0, 6)
 	_selected_vista_era = str(_prefs.get("last_vista_era", "stredovek"))
 	_update_vista_btn_label()
+	_rebuild_saved_deck_selector()
 	_push_deck_update()
 
 
@@ -1126,8 +1548,9 @@ func _persist_ui_prefs() -> void:
 		"last_port": maxi(1024, port_edit.text.to_int()) if is_instance_valid(port_edit) else Config.DEFAULT_PORT,
 		"last_character_id": selected_char_id,
 		"last_archetype_id": selected_arch_id,
-		"last_extra_aces": extra_aces_val,
 		"last_vista_era": _selected_vista_era,
+		"last_mode": _selected_match_mode,
+		"last_saved_deck_id": _active_saved_deck_id,
 	})
 
 
@@ -1154,116 +1577,212 @@ func _update_vista_btn_label() -> void:
 	for ve in Config.VISTA_ERAS:
 		if str(ve["id"]) == _selected_vista_era:
 			vista_btn.text = str(ve.get("name_cs" if _lang == "cs" else "name", _selected_vista_era))
+			Icons.apply_button_icon(vista_btn, str(ve.get("icon", "tavern")), 15)
 			return
 
 
-func _refresh_recent_list() -> void:
-	if not is_instance_valid(recent_list_vb):
+func _refresh_leaderboard() -> void:
+	if not is_instance_valid(_leaderboard_vb):
 		return
-	for c in recent_list_vb.get_children():
+	for c in _leaderboard_vb.get_children():
 		c.queue_free()
-	var recents := History.get_recent_players()
-	if is_instance_valid(_recent_tab_btn):
-		_recent_tab_btn.text = "📜 Recent (%d)" % recents.size() if not recents.is_empty() else "📜 Recent & Rematch"
-	if recents.is_empty():
-		var emp := PanelContainer.new()
-		emp.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.07, 0.055, 0.04, 0.85), Color(0.45, 0.36, 0.22, 0.50), 1, 10, 16))
-		recent_list_vb.add_child(emp)
-		var elbl := Label.new()
-		elbl.text = "No recent matches yet.\nFinish a match against a friend and they'll appear here for 1-click Quick Rematch!"
-		elbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		elbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_apply_font(elbl, false)
-		elbl.add_theme_color_override("font_color", Color(0.76, 0.70, 0.60))
-		emp.add_child(elbl)
-		return
 
-	for raw_r in recents:
-		if not (raw_r is Dictionary):
+	var stats := History.get_player_stats()
+	var elo := int(stats.get("elo", 1000))
+	var tier := History.get_rank_tier(elo)
+	var tier_col: Color = tier.get("col", Color(0.95, 0.78, 0.30))
+	var entries := History.get_leaderboard_entries()
+
+	if is_instance_valid(_leaderboard_tab_btn):
+		var rival_cnt := maxi(0, entries.size() - 1)
+		_leaderboard_tab_btn.text = ("Leaderboard (%d)" % rival_cnt) if rival_cnt > 0 else "Leaderboard & Rivals"
+
+	# 1. Local Player Summary Card
+	var hero_pan := PanelContainer.new()
+	hero_pan.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.12, 0.085, 0.055, 0.96), Color(tier_col.r, tier_col.g, tier_col.b, 0.90), 2, 11, 12))
+	_leaderboard_vb.add_child(hero_pan)
+
+	var hero_hb := HBoxContainer.new()
+	hero_hb.add_theme_constant_override("separation", 12)
+	hero_pan.add_child(hero_hb)
+	hero_hb.add_child(Icons.make_icon_rect(str(tier.get("icon", "trophy")), 32, tier_col))
+
+	var hero_txt := VBoxContainer.new()
+	hero_txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hero_txt.add_theme_constant_override("separation", 2)
+	hero_hb.add_child(hero_txt)
+
+	var p_name := name_edit.text.strip_edges() if is_instance_valid(name_edit) and not name_edit.text.strip_edges().is_empty() else str(stats.get("player_name", "Duelist"))
+	if p_name.is_empty():
+		p_name = "Duelist"
+	var h_title := Label.new()
+	h_title.text = "%s  •  %s (%d ELO)" % [p_name, str(tier.get("name", "Silver")), elo]
+	_apply_font(h_title, true)
+	h_title.add_theme_font_size_override("font_size", 15)
+	h_title.add_theme_color_override("font_color", tier_col)
+	hero_txt.add_child(h_title)
+
+	var h_sub := Label.new()
+	h_sub.text = "Record: %dW - %dL (%d%% WR)  •  Best Slam: %d  •  Streak: %d" % [
+		int(stats.get("wins", 0)),
+		int(stats.get("losses", 0)),
+		int(stats.get("winrate", 0)),
+		int(stats.get("best_slam", 0)),
+		int(stats.get("streak", 0)),
+	]
+	_apply_font(h_sub, false)
+	h_sub.add_theme_font_size_override("font_size", 12)
+	h_sub.add_theme_color_override("font_color", Color(0.86, 0.80, 0.68))
+	hero_txt.add_child(h_sub)
+
+	# 2. Leaderboard Table Header
+	var tbl_hdr := HBoxContainer.new()
+	tbl_hdr.add_theme_constant_override("separation", 8)
+	_leaderboard_vb.add_child(tbl_hdr)
+	var lb_lbl := Icons.make_icon_label_row("trophy", "LOCAL & RIVAL STANDINGS", 15, 13, Color(1.0, 0.86, 0.44))
+	lb_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for child in lb_lbl.get_children():
+		if child is Label:
+			_apply_font(child, true)
+	tbl_hdr.add_child(lb_lbl)
+
+	# 3. Leaderboard Rows
+	var rank_idx := 0
+	for raw_e in entries:
+		if not (raw_e is Dictionary):
 			continue
-		var r := raw_r as Dictionary
-		var r_name := str(r.get("name", "Player"))
-		var r_ip := str(r.get("ip", "")).strip_edges()
-		var r_port := int(r.get("port", Config.DEFAULT_PORT))
-		var r_w := int(r.get("wins", 0))
-		var r_l := int(r.get("losses", 0))
-		var r_date := str(r.get("last_played_str", ""))
-		var r_char := str(r.get("last_character", "CHAR_GUILLOTINE"))
-		var card := PanelContainer.new()
-		card.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.11, 0.08, 0.055, 0.94), Color(0.74, 0.56, 0.24, 0.82), 2, 10, 10))
-		recent_list_vb.add_child(card)
-		var hb := HBoxContainer.new()
-		hb.add_theme_constant_override("separation", 10)
-		card.add_child(hb)
+		rank_idx += 1
+		var e := raw_e as Dictionary
+		var is_local := bool(e.get("is_local", false))
+		var e_elo := int(e.get("elo", 1000))
+		var e_tier := History.get_rank_tier(e_elo)
+		var e_col: Color = e_tier.get("col", Color(0.90, 0.82, 0.68))
+		var e_name := p_name if is_local else str(e.get("name", "Rival"))
+
+		var row_pan := PanelContainer.new()
+		var bg := Color(0.14, 0.11, 0.065, 0.96) if is_local else Color(0.09, 0.07, 0.05, 0.92)
+		var bd := Color(0.98, 0.80, 0.30, 0.92) if is_local else Color(0.56, 0.42, 0.24, 0.68)
+		row_pan.add_theme_stylebox_override("panel", _make_tavern_panel_sb(bg, bd, 2 if is_local else 1, 9, 9))
+		_leaderboard_vb.add_child(row_pan)
+
+		var row_hb := HBoxContainer.new()
+		row_hb.add_theme_constant_override("separation", 10)
+		row_pan.add_child(row_hb)
+
+		var r_num := Label.new()
+		r_num.text = "#%d" % rank_idx
+		r_num.custom_minimum_size = Vector2(28, 0)
+		_apply_font(r_num, true)
+		r_num.add_theme_font_size_override("font_size", 14)
+		r_num.add_theme_color_override("font_color", Color(1.0, 0.88, 0.44) if rank_idx == 1 else Color(0.76, 0.70, 0.60))
+		row_hb.add_child(r_num)
+
+		row_hb.add_child(Icons.make_icon_rect(str(e_tier.get("icon", "shield")), 18, e_col))
 
 		var info_vb := VBoxContainer.new()
 		info_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		hb.add_child(info_vb)
+		info_vb.add_theme_constant_override("separation", 2)
+		row_hb.add_child(info_vb)
+
 		var top_l := Label.new()
-		var char_name := str(Config.get_character(r_char).get("name", "Duelist"))
-		top_l.text = "%s  •  🏆 %dW – %dL  •  %s" % [r_name, r_w, r_l, char_name]
+		var tag := " (YOU)" if is_local else ""
+		top_l.text = "%s%s  •  %d ELO  •  %dW-%dL (%d%%)" % [
+			e_name,
+			tag,
+			e_elo,
+			int(e.get("wins", 0)),
+			int(e.get("losses", 0)),
+			int(e.get("winrate", 0)),
+		]
 		_apply_font(top_l, true)
-		top_l.add_theme_font_size_override("font_size", 14)
-		top_l.add_theme_color_override("font_color", Color(1.0, 0.88, 0.52))
+		top_l.add_theme_font_size_override("font_size", 13)
+		top_l.add_theme_color_override("font_color", Color(1.0, 0.92, 0.62) if is_local else Color(0.95, 0.88, 0.74))
 		info_vb.add_child(top_l)
 
 		var sub_l := Label.new()
-		var addr_txt := ("%s:%d" % [r_ip, r_port]) if not r_ip.is_empty() else "Joined your table"
-		sub_l.text = "%s  •  Last played: %s" % [addr_txt, r_date]
+		var char_name := str(Config.get_character(str(e.get("character_id", "CHAR_GUILLOTINE"))).get("name", "Duelist"))
+		var slam_v := int(e.get("best_slam", 0))
+		if is_local:
+			sub_l.text = "Best Slam: %d  •  Duelist: %s" % [slam_v, char_name]
+		else:
+			var r_ip := str(e.get("ip", "")).strip_edges()
+			var r_port := int(e.get("port", Config.DEFAULT_PORT))
+			var addr_txt := ("%s:%d" % [r_ip, r_port]) if not r_ip.is_empty() else "Joined your table"
+			sub_l.text = "Best Slam: %d  •  %s  •  %s" % [slam_v, char_name, addr_txt]
 		_apply_font(sub_l, false)
-		sub_l.add_theme_font_size_override("font_size", 12)
-		sub_l.add_theme_color_override("font_color", Color(0.78, 0.74, 0.64))
+		sub_l.add_theme_font_size_override("font_size", 11)
+		sub_l.add_theme_color_override("font_color", Color(0.74, 0.70, 0.62))
 		info_vb.add_child(sub_l)
 
-		var rem_btn := Button.new()
-		rem_btn.text = "⚔ Quick Rematch" if not r_ip.is_empty() else "🔥 Host Rematch"
-		rem_btn.custom_minimum_size = Vector2(142, 34)
-		_style_tavern_btn(rem_btn, Color(0.20, 0.28, 0.14, 0.96), Color(0.62, 0.92, 0.46, 0.92), true, 8)
-		rem_btn.pressed.connect(func():
-			play_click_sfx.emit()
-			if not r_ip.is_empty():
-				ip_edit.text = r_ip
-				port_edit.text = str(r_port)
-				_on_join_pressed()
-			else:
-				_on_host_pressed()
-				var copy_ip := _vpn_copy_str if not _vpn_copy_str.is_empty() else _lan_copy_str
-				if not copy_ip.is_empty():
-					DisplayServer.clipboard_set(copy_ip)
-					_show_toast("Table hosted! Share IP copied for rematch with %s!" % r_name, false)
-		)
-		hb.add_child(rem_btn)
-
-		if not r_ip.is_empty():
-			var cbtn := Button.new()
-			cbtn.text = "📋"
-			cbtn.tooltip_text = "Copy %s:%d" % [r_ip, r_port]
-			cbtn.custom_minimum_size = Vector2(36, 34)
-			_style_tavern_btn(cbtn, Color(0.14, 0.18, 0.16, 0.94), Color(0.52, 0.76, 0.62, 0.85), false, 8)
-			cbtn.pressed.connect(func():
+		if not is_local:
+			var r_ip := str(e.get("ip", "")).strip_edges()
+			var r_port := int(e.get("port", Config.DEFAULT_PORT))
+			var rem_btn := Button.new()
+			rem_btn.text = "Rematch" if not r_ip.is_empty() else "Host"
+			Icons.apply_button_icon(rem_btn, "sword" if not r_ip.is_empty() else "fire", 13)
+			rem_btn.custom_minimum_size = Vector2(104, 30)
+			_style_tavern_btn(rem_btn, Color(0.20, 0.28, 0.14, 0.96), Color(0.62, 0.92, 0.46, 0.92), true, 7)
+			rem_btn.pressed.connect(func():
 				play_click_sfx.emit()
-				_copy_and_toast("%s:%d" % [r_ip, r_port], r_name)
+				if not r_ip.is_empty():
+					ip_edit.text = r_ip
+					port_edit.text = str(r_port)
+					_on_join_pressed()
+				else:
+					_on_host_pressed()
+					var copy_ip := _vpn_copy_str if not _vpn_copy_str.is_empty() else _lan_copy_str
+					if not copy_ip.is_empty():
+						DisplayServer.clipboard_set(copy_ip)
+						_show_toast("Table hosted! Share IP copied for rematch with %s!" % e_name, false)
 			)
-			hb.add_child(cbtn)
+			row_hb.add_child(rem_btn)
 
-		var del_btn := Button.new()
-		del_btn.text = "✕"
-		del_btn.tooltip_text = "Remove from recent"
-		del_btn.custom_minimum_size = Vector2(34, 34)
-		_style_tavern_btn(del_btn, Color(0.22, 0.10, 0.09, 0.92), Color(0.72, 0.34, 0.28, 0.80), false, 8)
-		del_btn.pressed.connect(func():
-			play_click_sfx.emit()
-			History.remove_opponent(r_name, r_ip)
-			_refresh_recent_list()
-		)
-		hb.add_child(del_btn)
+			if not r_ip.is_empty():
+				var cbtn := Button.new()
+				cbtn.text = ""
+				Icons.apply_button_icon(cbtn, "scroll", 13)
+				cbtn.tooltip_text = "Copy %s:%d" % [r_ip, r_port]
+				cbtn.custom_minimum_size = Vector2(32, 30)
+				_style_tavern_btn(cbtn, Color(0.14, 0.18, 0.16, 0.94), Color(0.52, 0.76, 0.62, 0.85), false, 7)
+				cbtn.pressed.connect(func():
+					play_click_sfx.emit()
+					_copy_and_toast("%s:%d" % [r_ip, r_port], e_name)
+				)
+				row_hb.add_child(cbtn)
+
+			var del_btn := Button.new()
+			del_btn.text = ""
+			Icons.apply_button_icon(del_btn, "cross", 12)
+			del_btn.tooltip_text = "Remove from rivals"
+			del_btn.custom_minimum_size = Vector2(30, 30)
+			_style_tavern_btn(del_btn, Color(0.22, 0.10, 0.09, 0.92), Color(0.72, 0.34, 0.28, 0.80), false, 7)
+			del_btn.pressed.connect(func():
+				play_click_sfx.emit()
+				History.remove_opponent(e_name, r_ip)
+				_refresh_leaderboard()
+			)
+			row_hb.add_child(del_btn)
+
+	if entries.size() <= 1:
+		var emp := PanelContainer.new()
+		emp.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.07, 0.055, 0.04, 0.85), Color(0.45, 0.36, 0.22, 0.50), 1, 10, 14))
+		_leaderboard_vb.add_child(emp)
+		var elbl := Label.new()
+		elbl.text = "No rivals recorded yet.\nFinish a multiplayer match to climb the ELO rankings and log rivals for 1-click Quick Rematch."
+		elbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		elbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_apply_font(elbl, false)
+		elbl.add_theme_font_size_override("font_size", 12)
+		elbl.add_theme_color_override("font_color", Color(0.76, 0.70, 0.60))
+		emp.add_child(elbl)
 
 
 func _build_local_deck_cfg(arch_id: String) -> Dictionary:
 	var b_combo: Array = _profile.get("bankai_combo", Catalog.get_deck_build(arch_id).get("default_bankai", ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"]))
+	var arch := Config.get_archetype(arch_id)
 	return {
 		"archetype_id": arch_id,
-		"extra_aces": extra_aces_val,
+		"extra_aces": int(arch.get("extra_aces", 2)),
 		"character_id": selected_char_id,
 		"power_cards": selected_power_cards.duplicate(),
 		"table_relics": selected_table_relics.duplicate(),
@@ -1276,6 +1795,7 @@ func _build_local_deck_cfg(arch_id: String) -> Dictionary:
 func _load_vault_from_profile() -> void:
 	_lang = str(Catalog.load_options().get("language", "en"))
 	_profile = Catalog.load_profile()
+	selected_arch_id = str(_profile.get("selected_build_id", selected_arch_id))
 	equipped_sword_id = str(_profile.get("equipped_sword", "SWORD_IRON"))
 	var loadout: Dictionary = _profile.get("mp_loadout", {})
 	selected_power_cards.clear()
@@ -1333,269 +1853,6 @@ func _save_vault_to_profile() -> void:
 	Catalog.save_profile(_profile)
 
 
-func _style_vault_locked_btn(btn: Button) -> void:
-	_apply_font(btn, false)
-	var sb_d := _make_tavern_panel_sb(Color(0.06, 0.05, 0.045, 0.55), Color(0.28, 0.24, 0.18, 0.35), 1, 8, 8)
-	sb_d.shadow_size = 2
-	btn.add_theme_stylebox_override("normal", sb_d)
-	btn.add_theme_stylebox_override("hover", sb_d)
-	btn.add_theme_stylebox_override("pressed", sb_d)
-	btn.add_theme_stylebox_override("disabled", sb_d)
-	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	btn.add_theme_color_override("font_disabled_color", Color(0.46, 0.42, 0.36, 0.65))
-
-
-func _build_vault_section(parent_vb: VBoxContainer) -> void:
-	var vault_panel := PanelContainer.new()
-	vault_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.07, 0.055, 0.04, 0.90), Color(0.62, 0.46, 0.22, 0.72), 2, 10, 12))
-	parent_vb.add_child(vault_panel)
-
-	vault_box = VBoxContainer.new()
-	vault_box.add_theme_constant_override("separation", 8)
-	vault_panel.add_child(vault_box)
-
-	var hdr_hb := HBoxContainer.new()
-	vault_box.add_child(hdr_hb)
-	var v_title := Label.new()
-	v_title.text = "CAMPAIGN VAULT LOADOUT"
-	v_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_apply_font(v_title, true)
-	v_title.add_theme_font_size_override("font_size", 15)
-	v_title.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42))
-	hdr_hb.add_child(v_title)
-
-	var sw_icon := Toon.tex("res://assets/ui/blender/ui_wager_sword_3d.png")
-	if sw_icon != null:
-		var sw_tr := TextureRect.new()
-		sw_tr.texture = sw_icon
-		sw_tr.custom_minimum_size = Vector2(22, 22)
-		sw_tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		sw_tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		hdr_hb.add_child(sw_tr)
-
-	var sw_info := Catalog.get_sword_skin_loc(equipped_sword_id, _lang)
-	vault_sword_lbl = Label.new()
-	vault_sword_lbl.text = "Sword: %s" % str(sw_info.get("name", equipped_sword_id))
-	_apply_font(vault_sword_lbl, false)
-	vault_sword_lbl.add_theme_font_size_override("font_size", 13)
-	vault_sword_lbl.add_theme_color_override("font_color", Color(0.76, 0.92, 1.0))
-	hdr_hb.add_child(vault_sword_lbl)
-
-	vault_power_hdr = Label.new()
-	_apply_font(vault_power_hdr, false)
-	vault_power_hdr.add_theme_font_size_override("font_size", 13)
-	vault_power_hdr.add_theme_color_override("font_color", Color(0.95, 0.84, 0.56))
-	vault_box.add_child(vault_power_hdr)
-
-	var p_grid := GridContainer.new()
-	p_grid.columns = 3
-	p_grid.add_theme_constant_override("h_separation", 6)
-	p_grid.add_theme_constant_override("v_separation", 6)
-	vault_box.add_child(p_grid)
-	vault_power_btns.clear()
-	for pc in Catalog.POWER_CARDS:
-		var pid := str(pc.get("id", ""))
-		if pid == "" or (pid in Catalog.ARCHIVED_CARD_IDS):
-			continue
-		var pc_loc := Catalog.get_power_card_loc(pid, _lang)
-		var unlocked := Catalog.is_power_card_unlocked(_profile, pid)
-		var is_mythic := str(pc.get("rarity", "")) == "Mythic"
-		var btn := Button.new()
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.custom_minimum_size = Vector2(0, 36)
-		btn.clip_text = true
-		btn.add_theme_font_size_override("font_size", 12)
-		var ctex := Toon.tex("res://assets/cards/%s.png" % pid)
-		if ctex != null:
-			btn.icon = ctex
-			btn.expand_icon = true
-		var tag := " ★M" if is_mythic else ""
-		if unlocked:
-			btn.text = "%s%s" % [str(pc_loc.get("short", pc_loc.get("name", pid))), tag]
-			btn.tooltip_text = "%s (%s)\n%s" % [str(pc_loc.get("name", pid)), str(pc_loc.get("rarity", "")), str(pc_loc.get("desc", ""))]
-			btn.toggle_mode = true
-			btn.set_pressed_no_signal(pid in selected_power_cards)
-			btn.pressed.connect(func(): _toggle_vault_power(pid))
-			_apply_choice_btn_style(btn, pid in selected_power_cards, pc.get("accent", Color(0.95, 0.78, 0.30)))
-			_attach_hover_anim(btn)
-		else:
-			btn.text = "🔒 %s%s" % [str(pc_loc.get("short", pc_loc.get("name", pid))), tag]
-			btn.tooltip_text = "Locked — %s\n%s" % [Catalog.get_unlock_source_label(pid, _lang), str(pc_loc.get("desc", ""))]
-			btn.disabled = true
-			_style_vault_locked_btn(btn)
-		vault_power_btns[pid] = btn
-		p_grid.add_child(btn)
-
-	vault_trel_hdr = Label.new()
-	_apply_font(vault_trel_hdr, false)
-	vault_trel_hdr.add_theme_font_size_override("font_size", 13)
-	vault_trel_hdr.add_theme_color_override("font_color", Color(0.95, 0.84, 0.56))
-	vault_box.add_child(vault_trel_hdr)
-
-	var t_grid := GridContainer.new()
-	t_grid.columns = 3
-	t_grid.add_theme_constant_override("h_separation", 6)
-	t_grid.add_theme_constant_override("v_separation", 6)
-	vault_box.add_child(t_grid)
-	vault_trel_btns.clear()
-	for tr_item in Catalog.TABLE_RELICS:
-		var tid := str(tr_item.get("id", ""))
-		if tid == "":
-			continue
-		var tr_loc := Catalog.get_table_relic_loc(tid, _lang)
-		var unlocked := Catalog.is_table_relic_unlocked(_profile, tid)
-		var btn := Button.new()
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.custom_minimum_size = Vector2(0, 34)
-		btn.clip_text = true
-		btn.add_theme_font_size_override("font_size", 12)
-		if unlocked:
-			btn.text = str(tr_loc.get("name", tid))
-			btn.tooltip_text = "%s\n%s" % [str(tr_loc.get("name", tid)), str(tr_loc.get("desc", ""))]
-			btn.toggle_mode = true
-			btn.set_pressed_no_signal(tid in selected_table_relics)
-			btn.pressed.connect(func(): _toggle_vault_table_relic(tid))
-			_apply_choice_btn_style(btn, tid in selected_table_relics, tr_item.get("col", Color(0.96, 0.78, 0.34)))
-			_attach_hover_anim(btn)
-		else:
-			btn.text = "🔒 %s" % str(tr_loc.get("name", tid))
-			btn.tooltip_text = "Locked — %s\n%s" % [Catalog.get_unlock_source_label(tid, _lang), str(tr_loc.get("desc", ""))]
-			btn.disabled = true
-			_style_vault_locked_btn(btn)
-		vault_trel_btns[tid] = btn
-		t_grid.add_child(btn)
-
-	vault_prel_hdr = Label.new()
-	_apply_font(vault_prel_hdr, false)
-	vault_prel_hdr.add_theme_font_size_override("font_size", 13)
-	vault_prel_hdr.add_theme_color_override("font_color", Color(0.95, 0.84, 0.56))
-	vault_box.add_child(vault_prel_hdr)
-
-	var r_grid := GridContainer.new()
-	r_grid.columns = 3
-	r_grid.add_theme_constant_override("h_separation", 6)
-	r_grid.add_theme_constant_override("v_separation", 6)
-	vault_box.add_child(r_grid)
-	vault_prel_btns.clear()
-	for rel in Catalog.get_visible_relics():
-		var rid := str(rel.get("id", ""))
-		if rid == "" or (rid in Catalog.ARCHIVED_RELIC_IDS):
-			continue
-		var rel_loc := Catalog.get_relic_loc(rid, _lang)
-		var unlocked := Catalog.is_relic_unlocked(_profile, rid)
-		var btn := Button.new()
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.custom_minimum_size = Vector2(0, 34)
-		btn.clip_text = true
-		btn.add_theme_font_size_override("font_size", 12)
-		if unlocked:
-			btn.text = str(rel_loc.get("name", rid))
-			btn.tooltip_text = "%s\n%s" % [str(rel_loc.get("name", rid)), str(rel_loc.get("desc", ""))]
-			btn.toggle_mode = true
-			btn.set_pressed_no_signal(rid in selected_passive_relics)
-			btn.pressed.connect(func(): _toggle_vault_passive_relic(rid))
-			_apply_choice_btn_style(btn, rid in selected_passive_relics, rel.get("col", Color(0.54, 0.86, 0.96)))
-			_attach_hover_anim(btn)
-		else:
-			btn.text = "🔒 %s" % str(rel_loc.get("name", rid))
-			btn.tooltip_text = "Locked — %s\n%s" % [Catalog.get_unlock_source_label(rid, _lang), str(rel_loc.get("desc", ""))]
-			btn.disabled = true
-			_style_vault_locked_btn(btn)
-		vault_prel_btns[rid] = btn
-		r_grid.add_child(btn)
-
-	_refresh_vault_buttons()
-
-
-func _toggle_vault_power(pid: String) -> void:
-	play_click_sfx.emit()
-	if pid in selected_power_cards:
-		selected_power_cards.erase(pid)
-	else:
-		if selected_power_cards.size() >= Config.MP_MAX_POWER_CARDS:
-			_on_status_changed("Max %d Power Cards allowed in Vault Loadout!" % Config.MP_MAX_POWER_CARDS, true)
-			_refresh_vault_buttons()
-			return
-		var pdata := Catalog.get_power_card(pid)
-		if str(pdata.get("rarity", "")) == "Mythic":
-			var m_cnt := 0
-			for sp in selected_power_cards:
-				if str(Catalog.get_power_card(sp).get("rarity", "")) == "Mythic":
-					m_cnt += 1
-			if m_cnt >= Config.MP_MAX_MYTHIC_POWER_CARDS:
-				_on_status_changed("Max %d Mythic Power Card allowed in Vault Loadout!" % Config.MP_MAX_MYTHIC_POWER_CARDS, true)
-				_refresh_vault_buttons()
-				return
-		selected_power_cards.append(pid)
-	_save_vault_to_profile()
-	_refresh_vault_buttons()
-	_push_deck_update()
-
-
-func _toggle_vault_table_relic(tid: String) -> void:
-	play_click_sfx.emit()
-	if tid in selected_table_relics:
-		selected_table_relics.erase(tid)
-	else:
-		if selected_table_relics.size() >= Config.MP_MAX_TABLE_RELICS:
-			_on_status_changed("Max %d Tabletop Relics allowed in Vault Loadout!" % Config.MP_MAX_TABLE_RELICS, true)
-			_refresh_vault_buttons()
-			return
-		selected_table_relics.append(tid)
-	_save_vault_to_profile()
-	_refresh_vault_buttons()
-	_push_deck_update()
-
-
-func _toggle_vault_passive_relic(rid: String) -> void:
-	play_click_sfx.emit()
-	if rid in selected_passive_relics:
-		selected_passive_relics.erase(rid)
-	else:
-		if selected_passive_relics.size() >= Config.MP_MAX_PASSIVE_RELICS:
-			_on_status_changed("Max %d Passive Relics allowed in Vault Loadout!" % Config.MP_MAX_PASSIVE_RELICS, true)
-			_refresh_vault_buttons()
-			return
-		selected_passive_relics.append(rid)
-	_save_vault_to_profile()
-	_refresh_vault_buttons()
-	_push_deck_update()
-
-
-func _refresh_vault_buttons() -> void:
-	var m_cnt := 0
-	for sp in selected_power_cards:
-		if str(Catalog.get_power_card(sp).get("rarity", "")) == "Mythic":
-			m_cnt += 1
-	if vault_power_hdr != null:
-		vault_power_hdr.text = "⚡ Power Cards (%d/%d, Mythic %d/%d):" % [selected_power_cards.size(), Config.MP_MAX_POWER_CARDS, m_cnt, Config.MP_MAX_MYTHIC_POWER_CARDS]
-	if vault_trel_hdr != null:
-		vault_trel_hdr.text = "🏺 Tabletop Relics (%d/%d):" % [selected_table_relics.size(), Config.MP_MAX_TABLE_RELICS]
-	if vault_prel_hdr != null:
-		vault_prel_hdr.text = "🧿 Passive Relics (%d/%d):" % [selected_passive_relics.size(), Config.MP_MAX_PASSIVE_RELICS]
-
-	for pid in vault_power_btns.keys():
-		var btn: Button = vault_power_btns[pid]
-		if not btn.disabled:
-			var is_sel := str(pid) in selected_power_cards
-			btn.set_pressed_no_signal(is_sel)
-			_apply_choice_btn_style(btn, is_sel, Catalog.get_power_card(str(pid)).get("accent", Color(0.95, 0.78, 0.30)))
-
-	for tid in vault_trel_btns.keys():
-		var btn: Button = vault_trel_btns[tid]
-		if not btn.disabled:
-			var is_sel := str(tid) in selected_table_relics
-			btn.set_pressed_no_signal(is_sel)
-			_apply_choice_btn_style(btn, is_sel, Catalog.get_table_relic(str(tid)).get("col", Color(0.96, 0.78, 0.34)))
-
-	for rid in vault_prel_btns.keys():
-		var btn: Button = vault_prel_btns[rid]
-		if not btn.disabled:
-			var is_sel := str(rid) in selected_passive_relics
-			btn.set_pressed_no_signal(is_sel)
-			_apply_choice_btn_style(btn, is_sel, Catalog.get_relic(str(rid)).get("col", Color(0.54, 0.86, 0.96)))
-
-
 func _select_character(char_id: String) -> void:
 	selected_char_id = char_id
 	for k in char_buttons.keys():
@@ -1607,30 +1864,6 @@ func _select_character(char_id: String) -> void:
 	_push_deck_update()
 
 
-func _select_archetype(arch_id: String) -> void:
-	selected_arch_id = arch_id
-	for k in arch_buttons.keys():
-		var aid_k := str(k)
-		var is_sel := (aid_k == arch_id)
-		arch_buttons[k].set_pressed_no_signal(is_sel)
-		var a_info := Config.get_archetype(aid_k)
-		_apply_choice_btn_style(arch_buttons[k], is_sel, a_info.get("col", Color(0.95, 0.78, 0.30)))
-	var arch := Config.get_archetype(arch_id)
-	var def_char := Config.get_character_for_archetype(arch_id)
-	selected_char_id = str(def_char.get("id", "CHAR_GUILLOTINE"))
-	for k in char_buttons.keys():
-		var cid_k := str(k)
-		var is_csel := (cid_k == selected_char_id)
-		char_buttons[k].set_pressed_no_signal(is_csel)
-		var ch_info := Config.get_character(cid_k)
-		_apply_choice_btn_style(char_buttons[k], is_csel, ch_info.get("col", Color(0.95, 0.78, 0.30)))
-	extra_aces_val = int(arch.get("extra_aces", 2))
-	if mp_net != null:
-		mp_net.local_deck_cfg = _build_local_deck_cfg(arch_id)
-		mp_net.update_local_deck(mp_net.local_deck_cfg)
-	_update_deck_summary(arch)
-
-
 func _push_deck_update() -> void:
 	if mp_net != null:
 		mp_net.local_deck_cfg = _build_local_deck_cfg(selected_arch_id)
@@ -1638,15 +1871,20 @@ func _push_deck_update() -> void:
 	_update_deck_summary(Config.get_archetype(selected_arch_id))
 
 
-func _update_deck_summary(_arch: Dictionary) -> void:
-	var total_aces := 4 + extra_aces_val
-	aces_lbl.text = "Extra Aces (3× Aces = Instant Kill!): +%d (%d Total)" % [extra_aces_val, total_aces]
-	if is_instance_valid(_ace_pips_lbl):
-		var pips := ["♠", "♥", "♣", "●"]
-		var s := ""
-		for i in range(total_aces):
-			s += pips[i % 4] + " "
-		_ace_pips_lbl.text = s.strip_edges()
+func _update_deck_summary(arch: Dictionary) -> void:
+	if not is_instance_valid(_build_summary_title):
+		return
+	var b_loc := Catalog.get_deck_build_loc(selected_arch_id, _lang)
+	var b_name := str(b_loc.get("name", arch.get("name", selected_arch_id)))
+	var sw_name := str(Catalog.get_sword_skin_loc(equipped_sword_id, _lang).get("name", equipped_sword_id))
+	_build_summary_title.text = "Active Build: %s  •  Sword: %s" % [b_name, sw_name]
+
+	var seal_title := "Velká Pečeť" if _lang == "cs" else "Grand Seal"
+	var combo_arr: Array = _profile.get("bankai_combo", Catalog.get_deck_build(selected_arch_id).get("default_bankai", ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"]))
+	var combo_str := ", ".join(combo_arr) if not combo_arr.is_empty() else "Default"
+	if is_instance_valid(_grand_seal_lbl):
+		_grand_seal_lbl.text = "%s: %s" % [seal_title, combo_str]
+
 	var pnames_arr: PackedStringArray = []
 	for pid in selected_power_cards:
 		pnames_arr.append(str(Catalog.get_power_card_loc(pid, _lang).get("short", pid)))
@@ -1659,7 +1897,8 @@ func _update_deck_summary(_arch: Dictionary) -> void:
 	var pnames := ", ".join(pnames_arr) if not pnames_arr.is_empty() else "None"
 	var tnames := ", ".join(tnames_arr) if not tnames_arr.is_empty() else "None"
 	var rnames := ", ".join(rnames_arr) if not rnames_arr.is_empty() else "None"
-	deck_desc_lbl.text = "Powers: %s  |  Table Relics: %s  |  Passives: %s" % [pnames, tnames, rnames]
+	if is_instance_valid(_build_summary_lbl):
+		_build_summary_lbl.text = "Powers: %s  |  Table Relics: %s  |  Passives: %s" % [pnames, tnames, rnames]
 
 
 func _on_host_pressed() -> void:
@@ -1669,6 +1908,16 @@ func _on_host_pressed() -> void:
 		return
 	var port := maxi(1024, int(port_edit.text.to_int()))
 	mp_net.room_settings["vista_era"] = _selected_vista_era
+	mp_net.room_settings["match_mode"] = _selected_match_mode
+	if _selected_match_mode == Config.MODE_RANKED:
+		mp_net.room_settings["rule_mode"] = Config.RULE_BALANCED_ARENA
+	elif _selected_match_mode == Config.MODE_PRIVATE:
+		var rc := room_code_edit.text.strip_edges().to_upper() if is_instance_valid(room_code_edit) else ""
+		if rc.is_empty():
+			rc = mp_net.generate_room_code() if mp_net.has_method("generate_room_code") else "TAVERN"
+			if is_instance_valid(room_code_edit):
+				room_code_edit.text = rc
+		mp_net.room_settings["room_code"] = rc
 	mp_net.host_room(port, name_edit.text, mp_net.local_deck_cfg)
 	_local_ready = true
 	_refresh_controls()
@@ -1704,7 +1953,7 @@ func _format_seat_loadout_summary(dcfg: Dictionary) -> String:
 	var p_str := ", ".join(p_arr) if not p_arr.is_empty() else "None"
 	var t_str := ", ".join(t_arr) if not t_arr.is_empty() else "None"
 	var r_str := ", ".join(r_arr) if not r_arr.is_empty() else "None"
-	return "⚔ %s  |  ⚡ %s  |  🏺 %s  |  🧿 %s" % [sw_name, p_str, t_str, r_str]
+	return "Sword: %s  |  Powers: %s  |  Table: %s  |  Passives: %s" % [sw_name, p_str, t_str, r_str]
 
 
 func _on_lobby_updated(seats: Array, settings: Dictionary) -> void:
@@ -1712,13 +1961,19 @@ func _on_lobby_updated(seats: Array, settings: Dictionary) -> void:
 	if settings.has("vista_era"):
 		_selected_vista_era = str(settings["vista_era"])
 		_update_vista_btn_label()
+	if settings.has("match_mode"):
+		var mm := str(settings["match_mode"])
+		if mm != _selected_match_mode and _mode_cards.has(mm):
+			_selected_match_mode = mm
+			for k in _mode_cards.keys():
+				_mode_cards[k].set_pressed_no_signal(str(k) == mm)
 	var rm := str(settings.get("rule_mode", Config.RULE_CAMPAIGN_VAULT))
 	if rm == Config.RULE_BALANCED_ARENA:
-		rule_btn.text = "Ruleset: ⚖ Balanced Arena (Fair Preset)"
+		rule_btn.text = "Ruleset: Balanced Arena (Fair Preset)"
+		Icons.apply_button_icon(rule_btn, "trophy", 15)
 	else:
-		rule_btn.text = "Ruleset: 🏛 Campaign Vault (Unlocked)"
-	if vault_box != null:
-		vault_box.modulate = Color(0.62, 0.60, 0.56, 0.85) if rm == Config.RULE_BALANCED_ARENA else Color(1, 1, 1, 1)
+		rule_btn.text = "Ruleset: Campaign Vault (Unlocked)"
+		Icons.apply_button_icon(rule_btn, "shield", 15)
 	_refresh_controls()
 
 
@@ -1750,9 +2005,10 @@ func _render_4_seats(seats: Array, settings: Dictionary) -> void:
 			var eff_dcfg := Config.sanitize_deck_cfg(raw_dcfg, rm)
 			var arch := Config.get_archetype(str(eff_dcfg.get("archetype_id", "GUILLOTINE_ACES")))
 			var aces := 4 + int(eff_dcfg.get("extra_aces", 0))
+			row.add_child(Icons.make_icon_rect("check" if is_rdy else "hourglass", 16, Color(0.46, 0.94, 0.56) if is_rdy else Color(0.95, 0.78, 0.34)))
 			var lbl := Label.new()
 			var kind := "HOST" if si == 0 else ("BOT" if bool(s["is_bot"]) else "PLAYER")
-			var rdy := "✅ READY" if is_rdy else "⏳ WAIT"
+			var rdy := "READY" if is_rdy else "WAIT"
 			lbl.text = "Seat %d [%s]: %s  •  %s (%d Aces)  •  %s" % [si + 1, kind, str(s["name"]), str(arch["name"]), aces, rdy]
 			_apply_font(lbl, false)
 			lbl.add_theme_font_size_override("font_size", 13)
@@ -1762,6 +2018,7 @@ func _render_4_seats(seats: Array, settings: Dictionary) -> void:
 
 			if mp_net != null and mp_net.is_host and si > 0:
 				var kick := Button.new(); kick.text = "Kick"
+				Icons.apply_button_icon(kick, "cross", 12)
 				_style_tavern_btn(kick, Color(0.26, 0.11, 0.10, 0.94), Color(0.76, 0.36, 0.28, 0.85), false, 6, false)
 				kick.pressed.connect(func(): mp_net.remove_seat(si))
 				row.add_child(kick)
@@ -1781,12 +2038,11 @@ func _render_4_seats(seats: Array, settings: Dictionary) -> void:
 		else:
 			var empty_slot := PanelContainer.new()
 			empty_slot.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.06, 0.048, 0.036, 0.58), Color(0.38, 0.30, 0.20, 0.38), 1, 9, 8))
-			var el := Label.new()
-			el.text = "Seat %d — 🪑 Empty Chair (Invite a friend or +Add Bot)" % (slot_i + 1)
-			_apply_font(el, false)
-			el.add_theme_font_size_override("font_size", 12)
-			el.add_theme_color_override("font_color", Color(0.56, 0.52, 0.44, 0.78))
-			empty_slot.add_child(el)
+			var emp_row := Icons.make_icon_label_row("tavern", "Seat %d — Empty Chair (Invite a friend or +Add Bot)" % (slot_i + 1), 15, 12, Color(0.56, 0.52, 0.44, 0.78))
+			for child in emp_row.get_children():
+				if child is Label:
+					_apply_font(child, false)
+			empty_slot.add_child(emp_row)
 			seats_box.add_child(empty_slot)
 
 
@@ -1833,9 +2089,20 @@ func _update_share_bar(info: Dictionary) -> void:
 	var upnp_ok := bool(info.get("upnp_ok", false))
 	var upnp_pending := bool(info.get("upnp_pending", false))
 
+	var rc := str(mp_net.room_settings.get("room_code", "")) if mp_net != null else ""
+	if not rc.is_empty():
+		_room_code_str = rc
+		share_code_lbl.text = "Code: %s" % rc
+		share_code_lbl.visible = true
+		copy_code_btn.visible = true
+	else:
+		_room_code_str = ""
+		share_code_lbl.visible = false
+		copy_code_btn.visible = false
+
 	if not vpn_ip.is_empty():
 		_vpn_copy_str = "%s:%d" % [vpn_ip, port]
-		share_vpn_lbl.text = "🟢 VPN: %s" % _vpn_copy_str
+		share_vpn_lbl.text = "VPN: %s" % _vpn_copy_str
 		share_vpn_lbl.visible = true
 		copy_vpn_btn.visible = true
 	else:
@@ -1844,19 +2111,19 @@ func _update_share_bar(info: Dictionary) -> void:
 		copy_vpn_btn.visible = false
 
 	_lan_copy_str = "%s:%d" % [lan_ip, port]
-	share_lan_lbl.text = "🏠 LAN: %s" % _lan_copy_str
+	share_lan_lbl.text = "LAN: %s" % _lan_copy_str
 
 	if upnp_ok and not pub_ip.is_empty():
 		_pub_copy_str = "%s:%d" % [pub_ip, port]
-		share_pub_lbl.text = "🌐 Public: %s" % _pub_copy_str
+		share_pub_lbl.text = "Public: %s" % _pub_copy_str
 		copy_pub_btn.visible = true
 	elif upnp_pending:
 		_pub_copy_str = ""
-		share_pub_lbl.text = "🌐 UPnP: Checking..."
+		share_pub_lbl.text = "UPnP: Checking..."
 		copy_pub_btn.visible = false
 	else:
 		_pub_copy_str = ""
-		share_pub_lbl.text = "🌐 UPnP off (Use Radmin/Tailscale)" if not vpn_ip.is_empty() else ("🌐 No UPnP (Forward UDP %d or Radmin/Tailscale)" % port)
+		share_pub_lbl.text = "UPnP off (Use Radmin/Tailscale)" if not vpn_ip.is_empty() else ("No UPnP (Forward UDP %d or Radmin/Tailscale)" % port)
 		copy_pub_btn.visible = false
 
 
@@ -1865,14 +2132,20 @@ func _refresh_controls() -> void:
 	var is_h: bool = (mp_net != null and bool(mp_net.get("is_host")))
 	if is_instance_valid(_conn_dot_lbl):
 		if not in_s:
-			_conn_dot_lbl.text = "● Offline"
+			_conn_dot_lbl.text = "Offline"
 			_conn_dot_lbl.add_theme_color_override("font_color", Color(0.74, 0.70, 0.64))
+			if is_instance_valid(_conn_dot_icon):
+				_conn_dot_icon.modulate = Color(0.74, 0.70, 0.64)
 		elif is_h:
-			_conn_dot_lbl.text = "● Hosting Table"
+			_conn_dot_lbl.text = "Hosting Table"
 			_conn_dot_lbl.add_theme_color_override("font_color", Color(0.45, 0.96, 0.62))
+			if is_instance_valid(_conn_dot_icon):
+				_conn_dot_icon.modulate = Color(0.45, 0.96, 0.62)
 		else:
-			_conn_dot_lbl.text = "● Connected"
+			_conn_dot_lbl.text = "Connected"
 			_conn_dot_lbl.add_theme_color_override("font_color", Color(0.48, 0.88, 1.0))
+			if is_instance_valid(_conn_dot_icon):
+				_conn_dot_icon.modulate = Color(0.48, 0.88, 1.0)
 
 	host_btn.disabled = in_s
 	join_btn.disabled = in_s
@@ -1889,7 +2162,8 @@ func _refresh_controls() -> void:
 	add_bot_btn.visible = in_s and is_h
 	add_bot_btn.disabled = (mp_net.lobby_seats.size() >= Config.MAX_PLAYERS) if in_s else true
 	ready_btn.visible = in_s and not is_h
-	ready_btn.text = "Cancel Ready" if _local_ready else "✓ READY UP"
+	ready_btn.text = "Cancel Ready" if _local_ready else "READY UP"
+	Icons.apply_button_icon(ready_btn, "cross" if _local_ready else "check", 16)
 	start_btn.visible = in_s and is_h
 	if in_s and is_h:
 		var chk: Dictionary = mp_net.can_start_match()

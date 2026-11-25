@@ -32,7 +32,12 @@ var local_name: String = "Duelist"
 var local_deck_cfg: Dictionary = {"archetype_id": "GUILLOTINE_ACES", "extra_aces": 4}
 
 var lobby_seats: Array = []
-var room_settings: Dictionary = {"rule_mode": Config.RULE_CAMPAIGN_VAULT, "vista_era": "stredovek"}
+var room_settings: Dictionary = {
+	"rule_mode": Config.RULE_CAMPAIGN_VAULT,
+	"vista_era": "stredovek",
+	"match_mode": Config.MODE_UNRANKED,
+	"room_code": "",
+}
 var authority: AuthorityScript = null
 var _bot_seq: int = 1
 var last_public_state: Dictionary = {}
@@ -320,6 +325,26 @@ func set_vista_era(era_id: String) -> void:
 		return
 	room_settings["vista_era"] = era_id
 	_broadcast_lobby()
+
+
+func set_match_mode(mode_id: String) -> void:
+	room_settings["match_mode"] = mode_id
+	if mode_id == Config.MODE_RANKED:
+		room_settings["rule_mode"] = Config.RULE_BALANCED_ARENA
+	if mode_id == Config.MODE_PRIVATE and str(room_settings.get("room_code", "")).is_empty():
+		room_settings["room_code"] = generate_room_code()
+	elif mode_id != Config.MODE_PRIVATE:
+		room_settings["room_code"] = ""
+	if is_host and in_session:
+		_broadcast_lobby()
+
+
+static func generate_room_code() -> String:
+	var chars := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	var code := ""
+	for _i in range(6):
+		code += chars[randi() % chars.length()]
+	return code
 
 
 func send_rematch_vote(want_rematch: bool) -> void:
@@ -735,6 +760,13 @@ func _rpc_end_match(winner_seat: int, summary: Dictionary) -> void:
 	in_match = false
 	var seats_arr: Array = summary.get("seats", [])
 	var local_won := 1 if winner_seat == my_seat_idx else -1
+	var my_best_slam := int(summary.get("best_slam", 0))
+	for s in seats_arr:
+		if s is Dictionary and int((s as Dictionary).get("seat_idx", -1)) == my_seat_idx:
+			my_best_slam = maxi(my_best_slam, int((s as Dictionary).get("best_slam", 0)))
+			break
+	var is_ranked := str(room_settings.get("match_mode", "")) == Config.MODE_RANKED
+	History.record_match_result(local_won, my_best_slam, is_ranked)
 	for s in seats_arr:
 		if not (s is Dictionary):
 			continue

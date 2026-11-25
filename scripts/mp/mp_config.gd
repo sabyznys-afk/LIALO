@@ -12,10 +12,10 @@ const REQUIRE_NON_RELEASE_BUILD := false
 const MP_PROTOCOL_VERSION := "0.9.1-mp2"
 
 const VISTA_ERAS := [
-	{"id": "stredovek", "name": "🌕 Full Moon Tavern", "name_cs": "🌕 Krčma za úplňku"},
-	{"id": "antika", "name": "☀ Alpine Sun Vista", "name_cs": "☀ Slunečné Alpy"},
-	{"id": "rim", "name": "✨ Starry Night", "name_cs": "✨ Hvězdná noc"},
-	{"id": "prohibicia", "name": "⛈ Storm & Lightning", "name_cs": "⛈ Bouřka a blesky"},
+	{"id": "stredovek", "name": "Full Moon Tavern", "name_cs": "Krčma za úplňku", "icon": "tavern"},
+	{"id": "antika", "name": "Alpine Sun Vista", "name_cs": "Slunečné Alpy", "icon": "star"},
+	{"id": "rim", "name": "Starry Night", "name_cs": "Hvězdná noc", "icon": "dice"},
+	{"id": "prohibicia", "name": "Storm & Lightning", "name_cs": "Bouřka a blesky", "icon": "bolt"},
 ]
 
 const MIN_PLAYERS := 2
@@ -38,6 +38,10 @@ const MP_MAX_PASSIVE_RELICS := 2
 const MP_PASSIVE_MULT_CAP := 2.5
 const RULE_CAMPAIGN_VAULT := "CAMPAIGN_VAULT"
 const RULE_BALANCED_ARENA := "BALANCED_ARENA"
+const MODE_PUBLIC := "PUBLIC"
+const MODE_PRIVATE := "PRIVATE"
+const MODE_RANKED := "RANKED"
+const MODE_UNRANKED := "UNRANKED"
 
 const SUITS := [
 	{"id": "CERVEN", "name": "Srdce", "sym": "♥", "col": Color(0.90, 0.24, 0.28)},
@@ -60,8 +64,9 @@ const RANKS := [
 const CHARACTERS := [
 	{
 		"id": "CHAR_GUILLOTINE",
-		"name": "⚔ Executioner",
-		"name_cs": "⚔ Kat",
+		"name": "Executioner",
+		"name_cs": "Kat",
+		"icon": "sword",
 		"desc": "Hooded iron duelist with cyan visor & heavy steel pauldrons.",
 		"glb": "res://assets/models/mp/mp_char_guillotine.glb",
 		"default_arch": "GUILLOTINE_ACES",
@@ -69,8 +74,9 @@ const CHARACTERS := [
 	},
 	{
 		"id": "CHAR_MONARCH",
-		"name": "👑 Parry Monarch",
-		"name_cs": "👑 Panovník",
+		"name": "Parry Monarch",
+		"name_cs": "Panovník",
+		"icon": "crown",
 		"desc": "Crowned gilded noble wearing a Venetian porcelain half-mask.",
 		"glb": "res://assets/models/mp/mp_char_monarch.glb",
 		"default_arch": "MIRROR_MONARCH",
@@ -78,8 +84,9 @@ const CHARACTERS := [
 	},
 	{
 		"id": "CHAR_JESTER",
-		"name": "🃏 Chaos Jester",
-		"name_cs": "🃏 Šašek chaosu",
+		"name": "Chaos Jester",
+		"name_cs": "Šašek chaosu",
+		"icon": "cards",
 		"desc": "Horned harlequin trickster with brass bells & grinning mask.",
 		"glb": "res://assets/models/mp/mp_char_jester.glb",
 		"default_arch": "CHAOS_JESTER",
@@ -87,8 +94,9 @@ const CHARACTERS := [
 	},
 	{
 		"id": "CHAR_MISTBLADE",
-		"name": "🌫 Mistblade Shadow",
-		"name_cs": "🌫 Rytíř mlhy",
+		"name": "Mistblade Shadow",
+		"name_cs": "Rytíř mlhy",
+		"icon": "mist",
 		"desc": "High-collared dark shadow-forged war-cloak & cracked silver visor.",
 		"glb": "res://assets/models/mp/mp_char_mistblade.glb",
 		"default_arch": "MISTBLADE_DUELIST",
@@ -99,7 +107,8 @@ const CHARACTERS := [
 const DECK_ARCHETYPES := [
 	{
 		"id": "GUILLOTINE_ACES",
-		"name": "⚔ 4-Ace Guillotine",
+		"name": "4-Ace Guillotine",
+		"icon": "sword",
 		"desc": "+4 extra Aces & Mistblade Knights for instant Sword Execution.",
 		"extra_aces": 4,
 		"knight_slots": 4,
@@ -112,7 +121,8 @@ const DECK_ARCHETYPES := [
 	},
 	{
 		"id": "MIRROR_MONARCH",
-		"name": "🪞 Parry Monarch",
+		"name": "Parry Monarch",
+		"icon": "shield",
 		"desc": "2× Twin Mirrors, Blood Sevens & Royal Kings to deflect executions.",
 		"extra_aces": 2,
 		"knight_slots": 2,
@@ -125,7 +135,8 @@ const DECK_ARCHETYPES := [
 	},
 	{
 		"id": "CHAOS_JESTER",
-		"name": "🃏 Tavern Chaos",
+		"name": "Tavern Chaos",
+		"icon": "cards",
 		"desc": "Card theft, Jester Roulette, Hex Reverse & extra Suit Queens.",
 		"extra_aces": 2,
 		"knight_slots": 1,
@@ -138,7 +149,8 @@ const DECK_ARCHETYPES := [
 	},
 	{
 		"id": "MISTBLADE_DUELIST",
-		"name": "🌫 Mistblade Shadow",
+		"name": "Mistblade Shadow",
+		"icon": "mist",
 		"desc": "6× Mistblade Knights, Raven Glass & lethal Assassin slashes.",
 		"extra_aces": 3,
 		"knight_slots": 6,
