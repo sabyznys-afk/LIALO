@@ -17,6 +17,8 @@ const Config = preload("res://scripts/mp/mp_config.gd")
 const TavernBuilder = preload("res://scripts/battle/tavern_scene_builder.gd")
 const BankaiFxScript = preload("res://scripts/battle/bankai_fx.gd")
 const History = preload("res://scripts/mp/mp_history.gd")
+const Icons = preload("res://scripts/ui/lialo_icons.gd")
+const RELIC_INSPECT_PATH := "res://scripts/ui/relic_inspect_3d.gd"
 
 const CARD_FX_SHADER := preload("res://shaders/card_fx.gdshader")
 const TABLE_INLAY_SHADER := preload("res://shaders/table_cloth.gdshader")
@@ -59,8 +61,17 @@ var hud_layer: CanvasLayer
 var hud_root: Control
 
 var discard_pile_root: Node3D
+var discard_suit_ring: MeshInstance3D
+var discard_suit_ring_mat: StandardMaterial3D
 var suit_beacon_lbl: Label3D
+var calligraphic_banner_grp: Control
+var calligraphic_ornament_ctrl: Control
 var center_banner_lbl: Label
+var center_banner_sub_lbl: Label
+var _calligraphic_banner_tween: Tween = null
+var _calligraphic_tier: int = 1
+var _calligraphic_accent: Color = Color(0.96, 0.84, 0.44)
+var _last_banner_text: String = ""
 var turn_strip_box: HBoxContainer
 var status_info_lbl: Label
 var target_bar: HBoxContainer
@@ -69,7 +80,9 @@ var items_bar: HBoxContainer
 var action_bar: HBoxContainer
 var suit_pick_bar: HBoxContainer
 var slam_btn: Button
+var cancel_btn: Button
 var draw_btn: Button
+var relic_inspect_3d: Control = null
 var parry_panel: PanelContainer
 var parry_title_lbl: Label
 var parry_timer_lbl: Label
@@ -220,7 +233,7 @@ func _process(delta: float) -> void:
 	var my_pub := _get_pub_seat(my_seat)
 	var i_am_alive := bool(my_pub.get("alive", true))
 	var match_over := bool(public_state.get("match_over", false))
-	var modal_open := (is_instance_valid(parry_panel) and parry_panel.visible) or (is_instance_valid(victory_panel) and victory_panel.visible) or (is_instance_valid(suit_pick_modal) and suit_pick_modal.visible)
+	var modal_open := (is_instance_valid(parry_panel) and parry_panel.visible) or (is_instance_valid(victory_panel) and victory_panel.visible) or (is_instance_valid(suit_pick_modal) and suit_pick_modal.visible) or (is_instance_valid(relic_inspect_3d) and relic_inspect_3d.visible)
 
 	# Free camera look-around when >2 players & NOT your turn; smoothly return to static view on your turn!
 	var allow_free_look := _freelook_enabled and (seats_arr.size() > 2) and (active_turn_seat != my_seat) and not modal_open and not match_over
@@ -238,7 +251,7 @@ func _process(delta: float) -> void:
 		freelook_badge_panel.visible = allow_free_look
 		if allow_free_look and is_instance_valid(freelook_badge_lbl):
 			var is_cs := str(Catalog.load_options().get("language", "en")) == "cs" or TranslationServer.get_locale().begins_with("cs")
-			freelook_badge_lbl.text = "👁 Volný rozhled (Myš) [F]" if is_cs else "👁 Free-Look (Mouse) [F]"
+			freelook_badge_lbl.text = "Volný rozhled (Myš) [F]" if is_cs else "Free-Look (Mouse) [F]"
 	var cam_rot_speed := 8.5 if allow_free_look else 14.0
 	look_yaw = lerpf(look_yaw, tgt_yaw, clampf(delta * cam_rot_speed, 0.0, 1.0))
 	look_pitch = lerpf(look_pitch, tgt_pitch, clampf(delta * cam_rot_speed, 0.0, 1.0))
@@ -308,12 +321,14 @@ func _process(delta: float) -> void:
 	if local_parry_left > 0.0:
 		local_parry_left = maxf(0.0, local_parry_left - delta)
 		if is_instance_valid(parry_timer_lbl):
-			parry_timer_lbl.text = "⏳ %.1fs TO REACT!" % local_parry_left
+			parry_timer_lbl.text = "%.1fs TO REACT!" % local_parry_left
 
 	if _toast_timer > 0.0:
 		_toast_timer -= delta
-		if _toast_timer <= 0.0 and is_instance_valid(center_banner_lbl):
-			center_banner_lbl.text = str(public_state.get("banner", ""))
+		if _toast_timer <= 0.0:
+			var pub_b := str(public_state.get("banner", ""))
+			if not pub_b.is_empty():
+				_show_calligraphic_banner(pub_b, "", 1, 2.2)
 
 	# Smooth local countdown for the 30-45s Turn Timer HUD pill
 	if is_instance_valid(turn_timer_panel):
@@ -325,7 +340,7 @@ func _process(delta: float) -> void:
 			var sec_ceil := int(ceil(_mp_turn_timer_left))
 			var is_my_t := (int(public_state.get("turn_seat", -1)) == my_seat)
 			if is_instance_valid(turn_timer_lbl):
-				turn_timer_lbl.text = ("⏳ YOUR TURN: %ds" % sec_ceil) if is_my_t else ("⏳ TURN: %ds" % sec_ceil)
+				turn_timer_lbl.text = ("YOUR TURN: %ds" % sec_ceil) if is_my_t else ("TURN: %ds" % sec_ceil)
 			var bar_col := Color(0.96, 0.78, 0.26, 0.96)
 			if _mp_turn_timer_left <= 10.0:
 				var p := 0.55 + 0.45 * absf(sin(_mp_anim_t * 7.5))
@@ -388,6 +403,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey:
 		var k := event as InputEventKey
 		if k.pressed and not k.echo and k.keycode == KEY_ESCAPE:
+			if is_instance_valid(relic_inspect_3d) and relic_inspect_3d.visible:
+				relic_inspect_3d.call("close_inspect")
+				var vp_ri := get_viewport()
+				if vp_ri != null:
+					vp_ri.set_input_as_handled()
+				return
 			if is_instance_valid(suit_pick_modal) and suit_pick_modal.visible:
 				suit_pick_modal.visible = false
 				_pending_wild_play_indices.clear()
@@ -407,11 +428,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if not mb.pressed:
 			return
-		var modal_open := (is_instance_valid(parry_panel) and parry_panel.visible) or (is_instance_valid(victory_panel) and victory_panel.visible) or (is_instance_valid(suit_pick_modal) and suit_pick_modal.visible)
+		var modal_open := (is_instance_valid(parry_panel) and parry_panel.visible) or (is_instance_valid(victory_panel) and victory_panel.visible) or (is_instance_valid(suit_pick_modal) and suit_pick_modal.visible) or (is_instance_valid(relic_inspect_3d) and relic_inspect_3d.visible)
 		if modal_open:
 			return
 		var my_turn: bool = (int(public_state.get("turn_seat", -1)) == my_seat) and public_state.get("pending_parry", {}).is_empty() and bool(_get_pub_seat(my_seat).get("alive", true))
 		if mb.button_index == MOUSE_BUTTON_RIGHT:
+			if hovered_item_id != "" or hovered_item_uid != "":
+				_inspect_mp_table_relic(hovered_item_id, hovered_item_uid)
+				var vp_ri2 := get_viewport()
+				if vp_ri2 != null:
+					vp_ri2.set_input_as_handled()
+				return
 			if my_turn and not top_down_manual and hovered_card_idx >= 0 and hovered_card_idx < my_hand.size():
 				_toggle_mp_stage_card(hovered_card_idx)
 				var vp_r := get_viewport()
@@ -421,14 +448,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_LEFT and is_instance_valid(cam):
 			_mp_cursor_pos = mb.position
 			if hovered_item_id != "" or hovered_item_uid != "":
-				if my_turn and mp_net != null:
+				if top_down_manual or not my_turn:
+					_inspect_mp_table_relic(hovered_item_id, hovered_item_uid)
+				elif my_turn and mp_net != null:
 					play_sfx_requested.emit("prop_coins")
 					mp_net.send_use_item(hovered_item_uid if hovered_item_uid != "" else hovered_item_id, selected_target)
-				elif not my_turn:
-					_toast_msg = "Wait for your turn to activate tabletop items!"
-					_toast_timer = 1.6
-					if is_instance_valid(center_banner_lbl):
-						center_banner_lbl.text = _toast_msg
 				return
 			if hovered_draw_deck:
 				if my_turn and mp_net != null:
@@ -485,6 +509,24 @@ func _build_3d_tavern() -> void:
 	discard_pile_root.position = Vector3(0.0, 0.820, 0.0)
 	discard_pile_root.scale = Vector3(1.32, 1.32, 1.32)
 	add_child(discard_pile_root)
+
+	# Suit-reactive center discard ring on table felt
+	discard_suit_ring = MeshInstance3D.new()
+	var dtor := TorusMesh.new()
+	dtor.inner_radius = 0.22
+	dtor.outer_radius = 0.252
+	dtor.rings = 32
+	dtor.ring_segments = 10
+	discard_suit_ring.mesh = dtor
+	discard_suit_ring.position = Vector3(0.0, 0.824, 0.0)
+	discard_suit_ring_mat = StandardMaterial3D.new()
+	discard_suit_ring_mat.albedo_color = Color(0.92, 0.24, 0.26, 0.72)
+	discard_suit_ring_mat.emission_enabled = true
+	discard_suit_ring_mat.emission = Color(0.92, 0.24, 0.26)
+	discard_suit_ring_mat.emission_energy_multiplier = 1.2
+	discard_suit_ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	discard_suit_ring.material_override = discard_suit_ring_mat
+	add_child(discard_suit_ring)
 
 	suit_beacon_lbl = Label3D.new()
 	suit_beacon_lbl.position = Vector3(0.0, 0.84, -0.44)
@@ -810,7 +852,7 @@ func _build_hud() -> void:
 	top_panel.add_child(top_hb)
 
 	status_info_lbl = Label.new()
-	status_info_lbl.text = "♥ Srdce  •  R1"
+	status_info_lbl.text = "Srdce  •  R1"
 	_apply_font(status_info_lbl, true)
 	status_info_lbl.add_theme_color_override("font_color", Color(0.98, 0.90, 0.68))
 	status_info_lbl.add_theme_font_size_override("font_size", 15)
@@ -820,20 +862,52 @@ func _build_hud() -> void:
 	turn_strip_box.add_theme_constant_override("separation", 8)
 	top_hb.add_child(turn_strip_box)
 
-	# Center Action Banner directly under compact status pill
+	# Open Calligraphic / Ink Animated Score & Combo Banner (frameless, no static black box)
+	calligraphic_banner_grp = Control.new()
+	calligraphic_banner_grp.anchor_left = 0.5; calligraphic_banner_grp.anchor_right = 0.5
+	calligraphic_banner_grp.anchor_top = 0.0; calligraphic_banner_grp.anchor_bottom = 0.0
+	calligraphic_banner_grp.offset_left = -340; calligraphic_banner_grp.offset_right = 340
+	calligraphic_banner_grp.offset_top = 58; calligraphic_banner_grp.offset_bottom = 132
+	calligraphic_banner_grp.pivot_offset = Vector2(340, 37)
+	calligraphic_banner_grp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	calligraphic_banner_grp.visible = false
+	calligraphic_banner_grp.modulate.a = 0.0
+	hud_root.add_child(calligraphic_banner_grp)
+
+	calligraphic_ornament_ctrl = Control.new()
+	calligraphic_ornament_ctrl.set_anchors_preset(Control.PRESET_FULL_RECT)
+	calligraphic_ornament_ctrl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	calligraphic_ornament_ctrl.draw.connect(_draw_calligraphic_banner_ornament)
+	calligraphic_banner_grp.add_child(calligraphic_ornament_ctrl)
+
 	center_banner_lbl = Label.new()
-	center_banner_lbl.anchor_left = 0.20; center_banner_lbl.anchor_right = 0.80
-	center_banner_lbl.offset_top = 60; center_banner_lbl.offset_bottom = 94
+	center_banner_lbl.position = Vector2(16, 4)
+	center_banner_lbl.size = Vector2(648, 38)
 	center_banner_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	center_banner_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_apply_font(center_banner_lbl, true)
-	center_banner_lbl.add_theme_font_size_override("font_size", 16)
+	center_banner_lbl.add_theme_font_size_override("font_size", 24)
 	center_banner_lbl.add_theme_color_override("font_color", Color(1.0, 0.92, 0.64))
-	center_banner_lbl.add_theme_color_override("font_outline_color", Color(0.04, 0.03, 0.03, 0.95))
-	center_banner_lbl.add_theme_constant_override("outline_size", 5)
-	center_banner_lbl.add_theme_stylebox_override("normal", _make_tavern_panel_sb(Color(0.07, 0.05, 0.04, 0.72), Color(0.66, 0.50, 0.24, 0.45), 1, 9, 8))
+	center_banner_lbl.add_theme_color_override("font_outline_color", Color(0.02, 0.01, 0.02, 0.98))
+	center_banner_lbl.add_theme_constant_override("outline_size", 10)
+	center_banner_lbl.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.90))
+	center_banner_lbl.add_theme_constant_override("shadow_offset_x", 2)
+	center_banner_lbl.add_theme_constant_override("shadow_offset_y", 4)
 	center_banner_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hud_root.add_child(center_banner_lbl)
+	calligraphic_banner_grp.add_child(center_banner_lbl)
+
+	center_banner_sub_lbl = Label.new()
+	center_banner_sub_lbl.position = Vector2(16, 42)
+	center_banner_sub_lbl.size = Vector2(648, 22)
+	center_banner_sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	center_banner_sub_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_apply_font(center_banner_sub_lbl, false)
+	center_banner_sub_lbl.add_theme_font_size_override("font_size", 13)
+	center_banner_sub_lbl.add_theme_color_override("font_color", Color(0.95, 0.88, 0.72))
+	center_banner_sub_lbl.add_theme_color_override("font_outline_color", Color(0.02, 0.01, 0.02, 0.95))
+	center_banner_sub_lbl.add_theme_constant_override("outline_size", 6)
+	center_banner_sub_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	calligraphic_banner_grp.add_child(center_banner_sub_lbl)
 
 	# Top-Right: Clickable Rival Duelist Plaques (Pick target cleanly!)
 	target_plaques_box = VBoxContainer.new()
@@ -854,7 +928,7 @@ func _build_hud() -> void:
 	hud_root.add_child(turn_banner_grp)
 
 	turn_banner_lbl = Label.new()
-	turn_banner_lbl.text = "⚔ YOUR TURN"
+	turn_banner_lbl.text = "YOUR TURN"
 	turn_banner_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	turn_banner_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_apply_font(turn_banner_lbl, true)
@@ -876,13 +950,19 @@ func _build_hud() -> void:
 	tt_vb.add_theme_constant_override("separation", 3)
 	turn_timer_panel.add_child(tt_vb)
 
+	var tt_hb := HBoxContainer.new()
+	tt_hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	tt_hb.add_theme_constant_override("separation", 6)
+	tt_vb.add_child(tt_hb)
+	tt_hb.add_child(Icons.make_icon_rect("hourglass", 14, Color(1.0, 0.90, 0.48)))
+
 	turn_timer_lbl = Label.new()
-	turn_timer_lbl.text = "⏳ 35s"
+	turn_timer_lbl.text = "35s"
 	turn_timer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_apply_font(turn_timer_lbl, true)
 	turn_timer_lbl.add_theme_font_size_override("font_size", 14)
 	turn_timer_lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.48))
-	tt_vb.add_child(turn_timer_lbl)
+	tt_hb.add_child(turn_timer_lbl)
 
 	var tt_bar_bg := ColorRect.new()
 	tt_bar_bg.custom_minimum_size = Vector2(204, 6)
@@ -895,22 +975,15 @@ func _build_hud() -> void:
 	turn_timer_bar.color = Color(0.96, 0.78, 0.26, 0.96)
 	tt_bar_bg.add_child(turn_timer_bar)
 
-	# 4-Card Bankai Awakening Seal Pill directly above MP Turn Timer
+	# 4-Card Grand Seal Awakening FX (hidden from bottom-left HUD to keep HUD clean)
 	bankai_seal_panel = PanelContainer.new()
-	bankai_seal_panel.anchor_left = 0.0; bankai_seal_panel.anchor_top = 1.0
-	bankai_seal_panel.anchor_right = 0.0; bankai_seal_panel.anchor_bottom = 1.0
-	bankai_seal_panel.offset_left = 18; bankai_seal_panel.offset_top = -232
-	bankai_seal_panel.offset_right = 248; bankai_seal_panel.offset_bottom = -198
-	bankai_seal_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.06, 0.05, 0.08, 0.92), Color(0.32, 0.88, 1.0, 0.86), 2, 8, 4))
+	bankai_seal_panel.visible = false
 	bankai_seal_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud_root.add_child(bankai_seal_panel)
 
 	bankai_seal_lbl = Label.new()
-	bankai_seal_lbl.text = "⚡ BANKAI SEAL: 0 / 4"
-	bankai_seal_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_apply_font(bankai_seal_lbl, true)
-	bankai_seal_lbl.add_theme_font_size_override("font_size", 13)
-	bankai_seal_lbl.add_theme_color_override("font_color", Color(0.55, 0.94, 1.0))
+	bankai_seal_lbl.text = "GRAND SEAL: 0 / 4"
+	bankai_seal_lbl.visible = false
 	bankai_seal_panel.add_child(bankai_seal_lbl)
 
 	if not is_instance_valid(bankai_fx):
@@ -926,14 +999,20 @@ func _build_hud() -> void:
 	bottom_left_status_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud_root.add_child(bottom_left_status_pill)
 
+	var bl_hb := HBoxContainer.new()
+	bl_hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	bl_hb.add_theme_constant_override("separation", 6)
+	bottom_left_status_pill.add_child(bl_hb)
+	bl_hb.add_child(Icons.make_icon_rect("coin", 14, Color(0.98, 0.84, 0.36)))
+
 	status_cards_coins_lbl = Label.new()
-	status_cards_coins_lbl.text = "Cards: 0  ·  💰 25g"
+	status_cards_coins_lbl.text = "Cards: 0  ·  25g"
 	status_cards_coins_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	status_cards_coins_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_apply_font(status_cards_coins_lbl, true)
 	status_cards_coins_lbl.add_theme_font_size_override("font_size", 14)
 	status_cards_coins_lbl.add_theme_color_override("font_color", Color(0.96, 0.88, 0.68))
-	bottom_left_status_pill.add_child(status_cards_coins_lbl)
+	bl_hb.add_child(status_cards_coins_lbl)
 
 	var exit_btn := Button.new()
 	exit_btn.name = "MpLeaveBtn"
@@ -948,7 +1027,8 @@ func _build_hud() -> void:
 
 	draw_btn = Button.new()
 	draw_btn.name = "MpDrawBtn"
-	draw_btn.text = "🃏 DRAW"
+	draw_btn.text = "DRAW"
+	Icons.apply_button_icon(draw_btn, "cards", 15)
 	draw_btn.anchor_left = 0.0; draw_btn.anchor_top = 1.0
 	draw_btn.anchor_right = 0.0; draw_btn.anchor_bottom = 1.0
 	draw_btn.offset_left = 126; draw_btn.offset_top = -48
@@ -962,18 +1042,38 @@ func _build_hud() -> void:
 	)
 	hud_root.add_child(draw_btn)
 
-	# Bottom-Center Compact Staged Combo SLAM Pill (only shown when cards are right-click staged!)
+	# Bottom-Center Compact Staged Combo SLAM Pill + Contextual Cancel (only shown when cards are right-click staged!)
 	slam_btn = Button.new()
 	slam_btn.anchor_left = 0.5; slam_btn.anchor_right = 0.5
 	slam_btn.anchor_top = 1.0; slam_btn.anchor_bottom = 1.0
-	slam_btn.offset_left = -125; slam_btn.offset_right = 125
+	slam_btn.offset_left = -165; slam_btn.offset_right = 55
 	slam_btn.offset_top = -56; slam_btn.offset_bottom = -14
-	slam_btn.text = "⚔ SLAM (0)"
+	slam_btn.text = "SLAM (0)"
+	Icons.apply_button_icon(slam_btn, "sword", 15)
 	slam_btn.visible = false
 	slam_btn.add_theme_font_size_override("font_size", 15)
 	_style_tavern_btn(slam_btn, Color(0.32, 0.14, 0.08, 0.96), Color(0.94, 0.72, 0.24, 0.94), true, 10)
 	slam_btn.pressed.connect(_on_slam_pressed)
 	hud_root.add_child(slam_btn)
+
+	cancel_btn = Button.new()
+	cancel_btn.name = "MpCancelSelectionBtn"
+	cancel_btn.anchor_left = 0.5; cancel_btn.anchor_right = 0.5
+	cancel_btn.anchor_top = 1.0; cancel_btn.anchor_bottom = 1.0
+	cancel_btn.offset_left = 65; cancel_btn.offset_right = 175
+	cancel_btn.offset_top = -56; cancel_btn.offset_bottom = -14
+	cancel_btn.text = "Cancel"
+	Icons.apply_button_icon(cancel_btn, "cross", 14)
+	cancel_btn.visible = false
+	cancel_btn.add_theme_font_size_override("font_size", 14)
+	_style_tavern_btn(cancel_btn, Color(0.20, 0.10, 0.09, 0.95), Color(0.76, 0.38, 0.30, 0.88), false, 10)
+	cancel_btn.pressed.connect(func():
+		selected_indices.clear()
+		play_sfx_requested.emit("ui_click")
+		_rebuild_local_hand_ui()
+		_refresh_target_and_actions()
+	)
+	hud_root.add_child(cancel_btn)
 
 	# Bottom-Right Hover Inspect Panel (Campaign parity!)
 	hover_inspect_panel = PanelContainer.new()
@@ -1020,7 +1120,7 @@ func _build_hud() -> void:
 	sp_vb.add_theme_constant_override("separation", 10)
 	suit_pick_modal.add_child(sp_vb)
 	var sp_lbl := Label.new()
-	sp_lbl.text = "✦ CHOOSE ACTIVE SUIT ✦"
+	sp_lbl.text = "CHOOSE ACTIVE SUIT"
 	sp_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_apply_font(sp_lbl, true)
 	sp_lbl.add_theme_font_size_override("font_size", 18)
@@ -1034,7 +1134,7 @@ func _build_hud() -> void:
 	for s in Config.SUITS:
 		var sid := str(s["id"])
 		var sb := Button.new()
-		sb.text = "%s %s" % [s["sym"], s["name"]]
+		sb.text = str(s["name"])
 		sb.icon = Toon.tex("res://assets/ui/suits/suit_%s.png" % sid.to_lower())
 		sb.expand_icon = true
 		sb.custom_minimum_size = Vector2(186, 48)
@@ -1049,6 +1149,18 @@ func _build_hud() -> void:
 				mp_net.send_play_cards(to_play, selected_target, chosen_wild_suit)
 		)
 		sp_grid.add_child(sb)
+	var sp_cancel := Button.new()
+	sp_cancel.text = "Cancel [ESC]"
+	Icons.apply_button_icon(sp_cancel, "cross", 14)
+	sp_cancel.custom_minimum_size = Vector2(160, 34)
+	sp_cancel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_style_tavern_btn(sp_cancel, Color(0.18, 0.09, 0.08, 0.95), Color(0.78, 0.40, 0.32, 0.88), false, 8)
+	sp_cancel.pressed.connect(func():
+		suit_pick_modal.visible = false
+		_pending_wild_play_indices.clear()
+		play_sfx_requested.emit("ui_click")
+	)
+	sp_vb.add_child(sp_cancel)
 
 	# Parry / Interrupt Modal (Only pops on the victim when Execution lands!)
 	parry_panel = PanelContainer.new()
@@ -1090,13 +1202,14 @@ func _build_hud() -> void:
 	ghb.add_theme_constant_override("separation", 12)
 	ghost_panel.add_child(ghb)
 	ghost_cd_lbl = Label.new()
-	ghost_cd_lbl.text = "👻 TAVERN GHOST — Ready!"
+	ghost_cd_lbl.text = "TAVERN GHOST — Ready!"
 	_apply_font(ghost_cd_lbl, true)
 	ghost_cd_lbl.add_theme_color_override("font_color", Color(0.68, 0.92, 1.0))
 	ghb.add_child(ghost_cd_lbl)
-	for ga in [["GHOST_HEX", "💀 Curse Target (-8 HP)"], ["GHOST_BLESS", "✨ Shield Target (+10)"], ["GHOST_SUIT", "🌬 Shift Suit"]]:
+	for ga in [["GHOST_HEX", "Curse Target (-8 HP)", "dagger"], ["GHOST_BLESS", "Shield Target (+10)", "shield"], ["GHOST_SUIT", "Shift Suit", "mist"]]:
 		var gb := Button.new()
 		gb.text = ga[1]
+		Icons.apply_button_icon(gb, ga[2], 14)
 		_style_tavern_btn(gb, Color(0.10, 0.14, 0.18, 0.95), Color(0.46, 0.78, 0.88, 0.85), false, 8)
 		var gid: String = ga[0]
 		gb.pressed.connect(func():
@@ -1142,7 +1255,8 @@ func _build_hud() -> void:
 	v_btn_hb.add_theme_constant_override("separation", 12)
 	vvb.add_child(v_btn_hb)
 	rematch_btn = Button.new()
-	rematch_btn.text = "⚔ SEND REMATCH"
+	rematch_btn.text = "SEND REMATCH"
+	Icons.apply_button_icon(rematch_btn, "sword", 15)
 	rematch_btn.custom_minimum_size = Vector2(180, 46)
 	_style_tavern_btn(rematch_btn, Color(0.16, 0.28, 0.16, 0.98), Color(0.56, 0.92, 0.48, 0.96), true, 10)
 	rematch_btn.pressed.connect(func():
@@ -1153,7 +1267,8 @@ func _build_hud() -> void:
 	)
 	v_btn_hb.add_child(rematch_btn)
 	lobby_keep_btn = Button.new()
-	lobby_keep_btn.text = "🏛 Return to Lobby"
+	lobby_keep_btn.text = "Return to Lobby"
+	Icons.apply_button_icon(lobby_keep_btn, "tavern", 15)
 	lobby_keep_btn.custom_minimum_size = Vector2(175, 46)
 	_style_tavern_btn(lobby_keep_btn, Color(0.24, 0.16, 0.08, 0.96), Color(0.88, 0.68, 0.26, 0.92), true, 10)
 	lobby_keep_btn.pressed.connect(func():
@@ -1163,7 +1278,8 @@ func _build_hud() -> void:
 	)
 	v_btn_hb.add_child(lobby_keep_btn)
 	var vbtn := Button.new()
-	vbtn.text = "✕ Leave Table"
+	vbtn.text = "Leave Table"
+	Icons.apply_button_icon(vbtn, "cross", 14)
 	vbtn.custom_minimum_size = Vector2(140, 46)
 	_style_tavern_btn(vbtn, Color(0.24, 0.10, 0.09, 0.95), Color(0.76, 0.36, 0.28, 0.88), false, 10)
 	vbtn.pressed.connect(func(): exit_mp_requested.emit())
@@ -1233,7 +1349,7 @@ func _build_hud() -> void:
 	hud_root.add_child(freelook_badge_panel)
 
 	freelook_badge_lbl = Label.new()
-	freelook_badge_lbl.text = "👁 Free-Look (Mouse) [F]"
+	freelook_badge_lbl.text = "Free-Look (Mouse) [F]"
 	freelook_badge_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	freelook_badge_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_apply_font(freelook_badge_lbl, false)
@@ -1244,7 +1360,8 @@ func _build_hud() -> void:
 	# Q7: Toggleable MP Combat Log Drawer [L]
 	combat_log_toggle_btn = Button.new()
 	combat_log_toggle_btn.name = "MpCombatLogBtn"
-	combat_log_toggle_btn.text = "📜 Log [L]"
+	combat_log_toggle_btn.text = "Log [L]"
+	Icons.apply_button_icon(combat_log_toggle_btn, "scroll", 14)
 	combat_log_toggle_btn.anchor_left = 0.0; combat_log_toggle_btn.anchor_right = 0.0
 	combat_log_toggle_btn.offset_left = 18; combat_log_toggle_btn.offset_right = 114
 	combat_log_toggle_btn.offset_top = 124; combat_log_toggle_btn.offset_bottom = 154
@@ -1270,7 +1387,7 @@ func _build_hud() -> void:
 	combat_log_panel.add_child(cl_vb)
 
 	var cl_hdr := Label.new()
-	cl_hdr.text = "📜 COMBAT LOG  [L]"
+	cl_hdr.text = "COMBAT LOG  [L]"
 	_apply_font(cl_hdr, true)
 	cl_hdr.add_theme_font_size_override("font_size", 13)
 	cl_hdr.add_theme_color_override("font_color", Color(1.0, 0.88, 0.48))
@@ -1284,6 +1401,13 @@ func _build_hud() -> void:
 	combat_log_rtl.add_theme_font_size_override("normal_font_size", 12)
 	combat_log_rtl.add_theme_color_override("default_color", Color(0.92, 0.88, 0.78))
 	cl_vb.add_child(combat_log_rtl)
+
+	if not is_instance_valid(relic_inspect_3d) and ResourceLoader.exists(RELIC_INSPECT_PATH):
+		var ri_scr := ResourceLoader.load(RELIC_INSPECT_PATH) as GDScript
+		if ri_scr != null and ri_scr.can_instantiate():
+			relic_inspect_3d = ri_scr.new() as Control
+			if relic_inspect_3d != null:
+				hud_root.add_child(relic_inspect_3d)
 
 	add_child(hud_layer)
 
@@ -1303,34 +1427,33 @@ func _on_public_state(state: Dictionary) -> void:
 		suit_beacon_lbl.text = str(s_obj["sym"])
 		suit_beacon_lbl.modulate = s_obj["col"]
 
-	var stack_txt := ("  •  🩸 TAX +%d" % int(state.get("pending_draw_stack", 0))) if int(state.get("pending_draw_stack", 0)) > 0 else ""
+	var stack_txt := ("  •  TAX +%d" % int(state.get("pending_draw_stack", 0))) if int(state.get("pending_draw_stack", 0)) > 0 else ""
 	var r_now := int(state.get("round_num", 1))
 	if is_instance_valid(status_info_lbl):
-		status_info_lbl.text = "%s %s  •  Round %d%s" % [s_obj["sym"], s_obj["name"], r_now, stack_txt]
+		status_info_lbl.text = "%s  •  Round %d%s" % [s_obj["name"], r_now, stack_txt]
 	if _last_mp_round_num < 0:
 		_last_mp_round_num = r_now
 	elif r_now > _last_mp_round_num:
 		var prev_r := _last_mp_round_num
 		_last_mp_round_num = r_now
 		_play_mp_round_transition_anim(prev_r, r_now)
-	if is_instance_valid(center_banner_lbl) and _toast_timer <= 0.0:
-		center_banner_lbl.text = str(state.get("banner", ""))
+	var pub_banner := str(state.get("banner", ""))
+	if _toast_timer <= 0.0 and pub_banner != _last_banner_text:
+		_last_banner_text = pub_banner
+		if not pub_banner.is_empty():
+			_show_calligraphic_banner(pub_banner, "", 1, 2.3)
 	if state.has("turn_timer"):
 		_mp_turn_timer_left = maxf(0.0, float(state.get("turn_timer", Config.TURN_TIMEOUT_SEC)))
 	if state.has("turn_timeout_sec"):
 		_mp_turn_timer_max = clampf(float(state.get("turn_timeout_sec", Config.TURN_TIMEOUT_SEC)), 10.0, 60.0)
 	if _mp_turn_timer_left > 6.0:
 		_mp_last_tick_sec = -1
-	if is_instance_valid(bankai_seal_lbl):
-		var my_pub := _get_pub_seat(my_seat)
-		if not my_pub.is_empty():
-			var b_act := bool(my_pub.get("bankai_active", false))
-			var b_prog := int(my_pub.get("bankai_progress", 0))
-			var b_id := str(my_pub.get("bankai_build_id", "GUILLOTINE_ACES"))
-			var b_def := Catalog.get_deck_build(b_id)
-			var b_col: Color = b_def.get("col", Color(0.32, 0.88, 1.0))
-			bankai_seal_lbl.text = ("⚡ %s" % str(b_def.get("bankai_name", "BANKAI ACTIVE"))) if b_act else ("⚡ BANKAI SEAL: %d / 4" % b_prog)
-			bankai_seal_lbl.add_theme_color_override("font_color", Color(1.0, 0.94, 0.56) if b_act else b_col.lightened(0.22))
+	if is_instance_valid(bankai_seal_panel):
+		bankai_seal_panel.visible = false
+	if is_instance_valid(discard_suit_ring_mat):
+		var sc: Color = s_obj.get("col", Color(0.92, 0.24, 0.26))
+		discard_suit_ring_mat.albedo_color = Color(sc.r, sc.g, sc.b, 0.78)
+		discard_suit_ring_mat.emission = sc
 
 	# Update top center discard card visual if discard count grew
 	var top_c: Dictionary = state.get("top_card", {})
@@ -1350,7 +1473,7 @@ func _on_public_state(state: Dictionary) -> void:
 		var is_turn := (si == t_seat and is_alive)
 		if is_instance_valid(turn_strip_box):
 			var pill := Label.new()
-			var mark := "▶ " if is_turn else ("" if is_alive else "👻 ")
+			var mark := "> " if is_turn else ("" if is_alive else "[GHOST] ")
 			pill.text = "%s%s" % [mark, str(s["name"])]
 			_apply_font(pill, false)
 			pill.add_theme_font_size_override("font_size", 12)
@@ -1360,7 +1483,7 @@ func _on_public_state(state: Dictionary) -> void:
 		if seat_nodes.has(si):
 			var sn: Dictionary = seat_nodes[si]
 			sn["turn_ring"].visible = is_turn and (si != my_seat)
-			sn["lbl"].text = "%s\n♥ %d   🛡 %d   🃏 %s" % [
+			sn["lbl"].text = "%s\nHP %d   SH %d   Cards %s" % [
 				str(s["name"]),
 				int(s["hp"]),
 				int(s["shields"]),
@@ -1393,12 +1516,12 @@ func _on_public_state(state: Dictionary) -> void:
 			player_hp_heart.call("trigger_damage_pulse", _last_local_hp - my_hp)
 	_last_local_hp = my_hp
 	if is_instance_valid(status_cards_coins_lbl):
-		status_cards_coins_lbl.text = "Cards: %d  ·  💰 %dg" % [my_hand.size(), int(my_pub.get("gold", 25))]
+		status_cards_coins_lbl.text = "Cards: %d  ·  %dg" % [my_hand.size(), int(my_pub.get("gold", 25))]
 
 	ghost_panel.visible = not i_am_alive and not bool(state.get("match_over", false))
 	if not i_am_alive and is_instance_valid(ghost_cd_lbl):
 		var gcd := float(my_pub.get("ghost_cd", 0.0))
-		ghost_cd_lbl.text = "👻 TAVERN GHOST — Ready!" if gcd <= 0.1 else ("👻 Recharging (%.1fs)..." % gcd)
+		ghost_cd_lbl.text = "TAVERN GHOST — Ready!" if gcd <= 0.1 else ("Recharging (%.1fs)..." % gcd)
 
 	_update_parry_ui(state.get("pending_parry", {}))
 	_rebuild_local_hand_ui()
@@ -1450,8 +1573,7 @@ func _on_private_hand(s_idx: int, hand: Array, items: Array, meta: Dictionary) -
 	if meta.has("toast_err"):
 		_toast_msg = str(meta["toast_err"])
 		_toast_timer = 2.2
-		if is_instance_valid(center_banner_lbl):
-			center_banner_lbl.text = "⚠ " + _toast_msg
+		_show_calligraphic_banner(_toast_msg, "", 3, 2.2)
 	_rebuild_local_hand_ui()
 	_rebuild_local_items_ui()
 	_refresh_target_and_actions()
@@ -1475,7 +1597,9 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			var b_caster := str(evt.get("caster", "Duelist"))
 			var b_combo: Array = evt.get("combo", [])
 			var b_def := Catalog.get_deck_build(b_id)
-			_append_combat_log("[color=#55f0ff]⚡ %s UNLEASHED %s![/color]" % [b_caster, str(b_def.get("bankai_name", "BANKAI"))])
+			var gs_name := str(b_def.get("bankai_name", "GRAND SEAL"))
+			_append_combat_log("[color=#55f0ff]%s UNLEASHED %s![/color]" % [b_caster, gs_name])
+			_show_calligraphic_banner(gs_name, "%s — 4-CARD GRAND SEAL" % b_caster.to_upper(), 4, 3.2)
 			cam_kick_shake = maxf(cam_kick_shake, 0.72)
 			if is_instance_valid(bankai_fx):
 				bankai_fx.trigger_bankai(b_id, b_caster, b_combo, "en", b_seat == my_seat)
@@ -1487,7 +1611,12 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			var cards_arr: Array = evt.get("cards", [])
 			var fn := str(_get_pub_seat(fs).get("name", "P%d" % (fs + 1)))
 			var tn := str(_get_pub_seat(ts).get("name", "P%d" % (ts + 1)))
-			_append_combat_log("[color=#ffd966]⚔ %s[/color] played %d card(s) ([color=#9be2ff]%s[/color]) → [color=#ff8a7a]%s[/color] (%d DMG)" % [fn, cards_arr.size(), str(evt.get("combo_label", "Slam")), tn, int(evt.get("dmg", 0))])
+			var dmg_v := int(evt.get("dmg", 0))
+			var combo_lbl := str(evt.get("combo_label", "Slam"))
+			_append_combat_log("[color=#ffd966]%s[/color] played %d card(s) ([color=#9be2ff]%s[/color]) -> [color=#ff8a7a]%s[/color] (%d DMG)" % [fn, cards_arr.size(), combo_lbl, tn, dmg_v])
+			var c_tier := clampi(cards_arr.size(), 1, 4)
+			var b_hold := 2.1 + float(c_tier - 1) * 0.32
+			_show_calligraphic_banner(combo_lbl.to_upper(), "%s -> %s (%d DMG)" % [fn, tn, dmg_v], c_tier, b_hold)
 			play_sfx_requested.emit("card_slam")
 			if cards_arr.size() >= 2:
 				play_sfx_requested.emit("anim_combo_slam")
@@ -1506,6 +1635,13 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			_top_down_auto_timer = maxf(_top_down_auto_timer, 1.35)
 			cam_kick_shake = maxf(cam_kick_shake, 0.32)
 			var lead_c: Dictionary = cards_arr[0] if not cards_arr.is_empty() and typeof(cards_arr[0]) == TYPE_DICTIONARY else {}
+			var play_suit_id := str(lead_c.get("suit", public_state.get("active_suit", "CERVEN")))
+			var play_suit_col: Color = Config.get_suit(play_suit_id).get("col", Color(0.92, 0.24, 0.26))
+			if is_instance_valid(discard_suit_ring_mat):
+				discard_suit_ring_mat.albedo_color = Color(play_suit_col.r, play_suit_col.g, play_suit_col.b, 0.88)
+				discard_suit_ring_mat.emission = play_suit_col
+				discard_suit_ring_mat.emission_energy_multiplier = 2.6
+			Fx.ring(self, Vector3(0.0, 0.845, 0.0), play_suit_col, 0.52, 0.42, 0.04, 1.8, 5.0)
 			SwordCardAnim.play_ancient_circle_sigil(self, lead_c, center)
 			if tavern_env != null:
 				tavern_env.trigger_suit_pulse(1.3)
@@ -1541,11 +1677,11 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			var fn_i := str(_get_pub_seat(fs_i).get("name", "P%d" % (fs_i + 1)))
 			var shat := bool(evt.get("shattered", false))
 			var u_left := int(evt.get("uses_left", 2))
-			_append_combat_log("[color=#e4c1ff]✦ %s[/color] used [b]%s[/b] (%s)" % [fn_i, str(item_info.get("name", it_id)), "SHATTERED!" if shat else ("%d/3" % u_left)])
+			_append_combat_log("[color=#e4c1ff]%s[/color] used [b]%s[/b] (%s)" % [fn_i, str(item_info.get("name", it_id)), "SHATTERED!" if shat else ("%d/3" % u_left)])
 			play_sfx_requested.emit("prop_coins")
 			Fx.play_complex_table_item_anim(self, item_n, origin_i, target_i, it_id, icol)
 			if shat:
-				Fx.float_number(self, origin_i + Vector3(0.0, 0.24, 0.0), "💥 SHATTERED! (0/3)", Color(1.0, 0.36, 0.24), 48, 0.20, 0.85, 1.40)
+				Fx.float_number(self, origin_i + Vector3(0.0, 0.24, 0.0), "SHATTERED! (0/3)", Color(1.0, 0.36, 0.24), 48, 0.20, 0.85, 1.40)
 				get_tree().create_timer(0.48).timeout.connect(func():
 					if is_instance_valid(self):
 						Fx.shatter_table_item(self, item_n, origin_i, icol)
@@ -1563,7 +1699,7 @@ func _on_vfx_event(evt: Dictionary) -> void:
 		"PARRY_DEFLECT":
 			var fn2 := str(_get_pub_seat(int(evt.get("from_seat", 0))).get("name", "Defender"))
 			var tn2 := str(_get_pub_seat(int(evt.get("to_seat", 1))).get("name", "Attacker"))
-			_append_combat_log("[color=#d896ff]🪞 %s DEFLECTED[/color] execution back at %s (%d DMG)!" % [fn2, tn2, int(evt.get("dmg", 0))])
+			_append_combat_log("[color=#d896ff]%s DEFLECTED[/color] execution back at %s (%d DMG)!" % [fn2, tn2, int(evt.get("dmg", 0))])
 			play_sfx_requested.emit("anim_parry_clang")
 			var fs2 := int(evt.get("from_seat", 0))
 			var ts2 := int(evt.get("to_seat", 1))
@@ -1578,11 +1714,11 @@ func _on_vfx_event(evt: Dictionary) -> void:
 				false
 			)
 			cam_kick_shake = 0.95
-			Fx.float_number(self, center + Vector3(0.0, 0.38, 0.0), "🪞 MIRROR PARRY!", Color(1.0, 0.84, 0.28), 64, 0.26, 1.1, 1.7)
+			Fx.float_number(self, center + Vector3(0.0, 0.38, 0.0), "MIRROR PARRY!", Color(1.0, 0.84, 0.28), 64, 0.26, 1.1, 1.7)
 		"EXECUTION_KILL":
 			var fn3 := str(_get_pub_seat(int(evt.get("from_seat", 0))).get("name", "Attacker"))
 			var tn3 := str(_get_pub_seat(int(evt.get("to_seat", 1))).get("name", "Victim"))
-			_append_combat_log("[color=#ff5252]💀 %s EXECUTED %s[/color] (%s)!" % [fn3, tn3, str(evt.get("kind", "EXECUTION"))])
+			_append_combat_log("[color=#ff5252]%s EXECUTED %s[/color] (%s)!" % [fn3, tn3, str(evt.get("kind", "EXECUTION"))])
 			play_sfx_requested.emit("card_ace_strike")
 			var fs3 := int(evt.get("from_seat", 0))
 			var ts3 := int(evt.get("to_seat", 1))
@@ -1604,14 +1740,14 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			cam_spring.trigger_score_recoil(300, 4.0, 1.1)
 		"SHED_OVERDRIVE":
 			var fn_s := str(_get_pub_seat(int(evt.get("seat", 0))).get("name", "Player"))
-			_append_combat_log("[color=#7dff9e]★ %s[/color] triggered PRŠÍ OVERDRIVE (-42 AoE)!" % fn_s)
+			_append_combat_log("[color=#7dff9e]%s[/color] triggered PRŠÍ OVERDRIVE (-42 AoE)!" % fn_s)
 			Fx.ring(self, center + Vector3(0.0, 0.03, 0.0), Color(0.45, 1.0, 0.65), 1.5, 0.7, 0.10, 2.2, 14.0)
 		"BLOOD_DRAW":
 			var fn_b := str(_get_pub_seat(int(evt.get("seat", 0))).get("name", "Player"))
-			_append_combat_log("[color=#ff7575]🩸 %s[/color] drew %d Blood-Tax cards (-%d DMG)!" % [fn_b, int(evt.get("count", 0)), int(evt.get("dmg", 0))])
+			_append_combat_log("[color=#ff7575]%s[/color] drew %d Blood-Tax cards (-%d DMG)!" % [fn_b, int(evt.get("count", 0)), int(evt.get("dmg", 0))])
 		"GHOST_ACT":
 			var fn_g := str(_get_pub_seat(int(evt.get("from_seat", 0))).get("name", "Ghost"))
-			_append_combat_log("[color=#8be9fd]👻 %s[/color] used %s" % [fn_g, str(evt.get("action", "GHOST"))])
+			_append_combat_log("[color=#8be9fd]%s[/color] used %s" % [fn_g, str(evt.get("action", "GHOST"))])
 
 
 func _on_match_ended(winner_seat: int, summary: Dictionary) -> void:
@@ -1622,7 +1758,7 @@ func _on_match_ended(winner_seat: int, summary: Dictionary) -> void:
 	var wname := str(summary.get("winner_name", "Champion"))
 	var you_won := (winner_seat == my_seat)
 	victory_lbl.text = "%s\nChampion: %s (%d Turns)" % [
-		"👑 VICTORY! LAST DUELIST STANDING!" if you_won else "💀 DEFEATED AT THE TAVERN TABLE",
+		"VICTORY! LAST DUELIST STANDING!" if you_won else "DEFEATED AT THE TAVERN TABLE",
 		wname,
 		int(summary.get("rounds", 1)),
 	]
@@ -1631,15 +1767,15 @@ func _on_match_ended(winner_seat: int, summary: Dictionary) -> void:
 		for s_raw in summary.get("seats", []):
 			if s_raw is Dictionary:
 				var sd := s_raw as Dictionary
-				var tag := "👑 " if int(sd.get("seat_idx", -1)) == winner_seat else "• "
-				stat_lines.append("%s%s  —  ♥%d HP  |  ⚔ %d Kills" % [tag, str(sd.get("name", "Player")), int(sd.get("hp", 0)), int(sd.get("kills", 0))])
+				var tag := "[WINNER] " if int(sd.get("seat_idx", -1)) == winner_seat else "• "
+				stat_lines.append("%s%s  —  %d HP  |  %d Kills" % [tag, str(sd.get("name", "Player")), int(sd.get("hp", 0)), int(sd.get("kills", 0))])
 		victory_stats_lbl.text = "\n".join(stat_lines)
 	if is_instance_valid(lobby_keep_btn):
 		var is_h := (mp_net != null and bool(mp_net.get("is_host")))
 		lobby_keep_btn.disabled = not is_h
 		lobby_keep_btn.tooltip_text = "Keep everyone connected and return to Tavern Lobby" if is_h else "Only Host can return table to Lobby"
 	if is_instance_valid(rematch_btn):
-		rematch_btn.text = "⚔ SEND REMATCH"
+		rematch_btn.text = "SEND REMATCH"
 		rematch_btn.scale = Vector2.ONE
 	if is_instance_valid(rematch_status_lbl):
 		rematch_status_lbl.text = ""
@@ -1675,7 +1811,7 @@ func _on_rematch_state_updated(state: Dictionary) -> void:
 		if is_instance_valid(rematch_status_lbl):
 			rematch_status_lbl.text = ""
 		if is_instance_valid(rematch_btn):
-			rematch_btn.text = "⚔ SEND REMATCH"
+			rematch_btn.text = "SEND REMATCH"
 			rematch_btn.scale = Vector2.ONE
 		return
 	var r_cnt := int(state.get("ready_count", 0))
@@ -1686,17 +1822,17 @@ func _on_rematch_state_updated(state: Dictionary) -> void:
 	_rematch_voted = (my_pid in voted_peers)
 	_rematch_other_waiting = (r_cnt > 0 and not _rematch_voted)
 	if is_instance_valid(rematch_btn):
-		rematch_btn.text = "✓ REMATCH READY (%d/%d)" % [r_cnt, tot] if _rematch_voted else ("🔥 ACCEPT REMATCH (%d/%d)!" % [r_cnt, tot] if _rematch_other_waiting else "⚔ SEND REMATCH")
+		rematch_btn.text = "REMATCH READY (%d/%d)" % [r_cnt, tot] if _rematch_voted else ("ACCEPT REMATCH (%d/%d)!" % [r_cnt, tot] if _rematch_other_waiting else "SEND REMATCH")
 		if not _rematch_other_waiting:
 			rematch_btn.scale = Vector2.ONE
 	if is_instance_valid(rematch_status_lbl):
 		if r_cnt <= 0:
 			rematch_status_lbl.text = ""
 		elif _rematch_voted:
-			rematch_status_lbl.text = "⏳ Waiting for opponent to accept rematch (%d/%d)..." % [r_cnt, tot]
+			rematch_status_lbl.text = "Waiting for opponent to accept rematch (%d/%d)..." % [r_cnt, tot]
 		else:
 			var who := req if not req.is_empty() else "Opponent"
-			rematch_status_lbl.text = "⚔ %s wants a REMATCH! (%d/%d ready)" % [who, r_cnt, tot]
+			rematch_status_lbl.text = "%s wants a REMATCH! (%d/%d ready)" % [who, r_cnt, tot]
 
 
 # ---------------------------------------------------------------------------
@@ -1943,7 +2079,7 @@ func _rebuild_local_hand_ui() -> void:
 
 		if is_staged:
 			var badge_lbl := Label3D.new()
-			badge_lbl.text = "⚡"
+			badge_lbl.text = "+"
 			badge_lbl.font = _font_display
 			badge_lbl.modulate = Color(1.0, 0.90, 0.22)
 			badge_lbl.font_size = 34
@@ -1976,13 +2112,11 @@ func _rebuild_local_items_ui() -> void:
 		return
 
 	var item_slots: Array[Vector3] = [
-		Vector3(0.28, 0.0, 0.54),
-		Vector3(0.47, 0.0, 0.44),
-		Vector3(0.65, 0.0, 0.34),
-		Vector3(0.38, 0.0, 0.68),
-		Vector3(0.58, 0.0, 0.60),
+		Vector3(0.32, 0.0, 0.52),
+		Vector3(0.52, 0.0, 0.40),
 	]
-	for idx_i in range(my_items.size()):
+	var max_relics := mini(my_items.size(), Catalog.MAX_ACTIVE_RELICS)
+	for idx_i in range(max_relics):
 		var it_entry = my_items[idx_i]
 		var it_id := Config.get_item_id(it_entry)
 		var it_uid := Config.get_item_uid(it_entry, idx_i)
@@ -2070,22 +2204,22 @@ func _trigger_mp_tavern_prop(prop_id: String) -> void:
 		"mug":
 			node = tavern_env.tavern_mug_root
 			play_sfx_requested.emit("prop_tankard")
-			_toast_msg = "🍻 Cheers to a bloody duel!"
+			_toast_msg = "Cheers to a bloody duel!"
 		"coins":
 			node = tavern_env.tavern_coins_root
 			play_sfx_requested.emit("prop_coins")
-			_toast_msg = "💰 Florin Pouch jingles!"
+			_toast_msg = "Florin Pouch jingles!"
 		"dice":
 			node = tavern_env.tavern_dice_root
 			play_sfx_requested.emit("prop_dice")
-			_toast_msg = "🎲 Rolled %d & %d!" % [(randi() % 6) + 1, (randi() % 6) + 1]
+			_toast_msg = "Rolled %d & %d!" % [(randi() % 6) + 1, (randi() % 6) + 1]
 		"bell":
 			node = tavern_env.tavern_bell_root
 			play_sfx_requested.emit("ui_click")
-			_toast_msg = "🔔 Tavern Bell rings!"
+			_toast_msg = "Tavern Bell rings!"
 	_toast_timer = 1.6
-	if is_instance_valid(center_banner_lbl) and _toast_msg != "":
-		center_banner_lbl.text = _toast_msg
+	if _toast_msg != "":
+		_show_calligraphic_banner(_toast_msg, "", 1, 2.0)
 	if is_instance_valid(node) and is_inside_tree():
 		var bp: Vector3 = node.get_meta("base_pos", node.position)
 		var tw := node.create_tween()
@@ -2172,18 +2306,18 @@ func _update_mp_hover_and_cursor(delta: float, blocked: bool) -> void:
 		elif hovered_item_id != "":
 			var ii: Dictionary = Config.get_mp_item_info(hovered_item_id)
 			var rem_i := maxi(0, MAX_MP_ITEM_USES - int(mp_item_uses.get(hovered_item_uid, 0)))
-			hover_inspect_title.text = "✦ %s [%d/%d]" % [str(ii.get("name", hovered_item_id)), rem_i, MAX_MP_ITEM_USES]
-			hover_inspect_sub.text = str(ii.get("short", "Table Artifact"))
-			hover_inspect_desc.text = str(ii.get("desc", "Click to activate on table (1 per turn, breaks after 3 uses!)."))
+			hover_inspect_title.text = "%s [%d/%d]" % [str(ii.get("name", hovered_item_id)), rem_i, MAX_MP_ITEM_USES]
+			hover_inspect_sub.text = str(ii.get("short", "Table Relic"))
+			hover_inspect_desc.text = str(ii.get("desc", "LMB: Activate on table  |  RMB: Inspect 3D"))
 			hover_inspect_panel.visible = true
 		elif hovered_draw_deck:
 			var tx := int(public_state.get("pending_draw_stack", 0))
-			hover_inspect_title.text = "🃏 Draw Deck"
+			hover_inspect_title.text = "Draw Deck"
 			hover_inspect_sub.text = ("Blood Tax +%d cards" % tx) if tx > 0 else "Draw 1 card & end turn"
 			hover_inspect_desc.text = "Click 3D deck on the table to draw."
 			hover_inspect_panel.visible = true
 		elif hovered_tavern_prop != "":
-			hover_inspect_title.text = "🍺 Tavern Prop"
+			hover_inspect_title.text = "Tavern Prop"
 			hover_inspect_sub.text = hovered_tavern_prop.capitalize()
 			hover_inspect_desc.text = "Click to interact on the table."
 			hover_inspect_panel.visible = true
@@ -2240,8 +2374,9 @@ func _refresh_target_and_actions() -> void:
 			var is_sel := (si == selected_target)
 			var is_t := (si == active_ts and is_alive)
 			var tb := Button.new()
-			var mark := "🎯 " if is_sel else ("▶ " if is_t else ("" if is_alive else "👻 "))
-			tb.text = "%s%s  ♥%d  🛡%d  🃏%d" % [mark, str(s["name"]), int(s["hp"]), int(s["shields"]), int(s["hand_count"])]
+			var mark := "[TARGET] " if is_sel else ("> " if is_t else ("" if is_alive else "[GHOST] "))
+			tb.text = "%s%s  %d HP  %d SH  %dC" % [mark, str(s["name"]), int(s["hp"]), int(s["shields"]), int(s["hand_count"])]
+			Icons.apply_button_icon(tb, "sword" if is_sel else ("hourglass" if is_t else "players"), 14)
 			tb.disabled = not is_alive
 			tb.custom_minimum_size = Vector2(296, 38)
 			_style_tavern_btn(
@@ -2270,34 +2405,37 @@ func _refresh_target_and_actions() -> void:
 
 	if is_instance_valid(turn_banner_lbl) and is_instance_valid(turn_banner_grp):
 		if my_turn:
-			turn_banner_lbl.text = "⚔ YOUR TURN"
+			turn_banner_lbl.text = "YOUR TURN"
 			turn_banner_lbl.add_theme_color_override("font_color", Color(1.0, 0.92, 0.44))
 			(turn_banner_grp as PanelContainer).add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.10, 0.08, 0.04, 0.95), Color(0.95, 0.78, 0.28, 0.96), 2, 10, 8))
 		else:
 			var t_s := _get_pub_seat(active_turn_s)
 			var t_name := str(t_s.get("name", "Rival"))
-			turn_banner_lbl.text = ("⏳ %s's Turn (Free Look)" % t_name) if seats_cnt > 2 else ("⏳ %s's Turn" % t_name)
+			turn_banner_lbl.text = ("%s's Turn (Free Look)" % t_name) if seats_cnt > 2 else ("%s's Turn" % t_name)
 			turn_banner_lbl.add_theme_color_override("font_color", Color(0.80, 0.84, 0.90))
 			(turn_banner_grp as PanelContainer).add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.08, 0.07, 0.08, 0.90), Color(0.50, 0.44, 0.36, 0.76), 2, 10, 8))
 
 	if is_instance_valid(status_cards_coins_lbl):
-		status_cards_coins_lbl.text = "Cards: %d  ·  💰 %dg" % [my_hand.size(), int(my_pub.get("gold", 25))]
+		status_cards_coins_lbl.text = "Cards: %d  ·  %dg" % [my_hand.size(), int(my_pub.get("gold", 25))]
 
 	if is_instance_valid(slam_btn):
 		slam_btn.visible = my_turn and (not selected_indices.is_empty())
 		slam_btn.disabled = (not my_turn) or selected_indices.is_empty()
 		if ace_sel >= 4:
-			slam_btn.text = "💀 4× ESO INSTANT KILL!"
+			slam_btn.text = "4× ACE EXECUTION!"
 		elif ace_sel == 3:
-			slam_btn.text = "💀 3× ESO INSTANT KILL!"
+			slam_btn.text = "3× ACE EXECUTION!"
 		else:
-			slam_btn.text = "⚔ SLAM (%d)" % selected_indices.size() if not selected_indices.is_empty() else "⚔ SLAM CARDS"
+			slam_btn.text = "SLAM (%d)" % selected_indices.size() if not selected_indices.is_empty() else "SLAM CARDS"
+	if is_instance_valid(cancel_btn):
+		cancel_btn.visible = my_turn and (not selected_indices.is_empty())
 
 	if is_instance_valid(draw_btn):
 		draw_btn.visible = i_am_alive
 		draw_btn.disabled = not my_turn
 		var tax := int(public_state.get("pending_draw_stack", 0))
-		draw_btn.text = ("🩸 TAX +%d" % tax) if tax > 0 else "🃏 DRAW"
+		draw_btn.text = ("TAX +%d" % tax) if tax > 0 else "DRAW"
+		Icons.apply_button_icon(draw_btn, "blood" if tax > 0 else "cards", 15)
 
 
 func _update_parry_ui(parry_pub: Dictionary) -> void:
@@ -2313,7 +2451,7 @@ func _update_parry_ui(parry_pub: Dictionary) -> void:
 	parry_panel.visible = true
 	local_parry_left = float(parry_pub.get("timer", Config.PARRY_WINDOW_SEC))
 	var att_s := _get_pub_seat(int(parry_pub.get("attacker", 0)))
-	parry_title_lbl.text = "⚔ INCOMING %s FROM %s!" % [str(parry_pub.get("kind", "EXECUTION")), str(att_s.get("name", "RIVAL"))]
+	parry_title_lbl.text = "INCOMING %s FROM %s!" % [str(parry_pub.get("kind", "EXECUTION")), str(att_s.get("name", "RIVAL"))]
 
 	for c in parry_btns_box.get_children():
 		c.queue_free()
@@ -2332,7 +2470,8 @@ func _update_parry_ui(parry_pub: Dictionary) -> void:
 
 	if has_mirror:
 		var mb := Button.new()
-		mb.text = "🪞 DEFLECT WITH MIRROR! (KILL ATTACKER)"
+		mb.text = "DEFLECT WITH MIRROR! (KILL ATTACKER)"
+		Icons.apply_button_icon(mb, "shield", 15)
 		mb.custom_minimum_size = Vector2(260, 46)
 		_style_tavern_btn(mb, Color(0.24, 0.14, 0.34, 0.96), Color(0.86, 0.62, 1.0, 0.95), true, 10)
 		mb.pressed.connect(func():
@@ -2341,7 +2480,8 @@ func _update_parry_ui(parry_pub: Dictionary) -> void:
 		parry_btns_box.add_child(mb)
 	if has_chronos:
 		var cb := Button.new()
-		cb.text = "⏳ TIME REWIND (CHRONOS +25 HP)"
+		cb.text = "TIME REWIND (CHRONOS +25 HP)"
+		Icons.apply_button_icon(cb, "hourglass", 15)
 		cb.custom_minimum_size = Vector2(240, 46)
 		_style_tavern_btn(cb, Color(0.12, 0.22, 0.30, 0.96), Color(0.45, 0.88, 1.0, 0.95), true, 10)
 		cb.pressed.connect(func():
@@ -2350,7 +2490,8 @@ func _update_parry_ui(parry_pub: Dictionary) -> void:
 		parry_btns_box.add_child(cb)
 
 	var brace_btn := Button.new()
-	brace_btn.text = "💀 Brace / No Counter"
+	brace_btn.text = "Brace / No Counter"
+	Icons.apply_button_icon(brace_btn, "cross", 14)
 	brace_btn.custom_minimum_size = Vector2(160, 46)
 	_style_tavern_btn(brace_btn, Color(0.24, 0.10, 0.09, 0.95), Color(0.72, 0.34, 0.28, 0.88), false, 10)
 	brace_btn.pressed.connect(func():
@@ -2455,6 +2596,11 @@ func _spawn_center_discard_mesh(card: Dictionary) -> void:
 	mat.set_shader_parameter("accent_color", card.get("accent", ed_info.get("col", Color(1.0, 0.84, 0.32))))
 	card_m.material_override = mat
 	discard_pile_root.add_child(card_m)
+	if is_instance_valid(discard_suit_ring_mat):
+		var s_col: Color = Config.get_suit(str(card.get("suit", public_state.get("active_suit", "CERVEN")))).get("col", Color(0.92, 0.24, 0.26))
+		discard_suit_ring_mat.albedo_color = Color(s_col.r, s_col.g, s_col.b, 0.82)
+		discard_suit_ring_mat.emission = s_col
+		discard_suit_ring_mat.emission_energy_multiplier = 2.0
 
 
 func _load_mp_character_glb(char_id: String, fallback_col: Color) -> Node3D:
@@ -2579,3 +2725,106 @@ func _first_alive_opponent() -> int:
 		if si != my_seat and bool(s["alive"]):
 			return si
 	return 0
+
+
+func _draw_calligraphic_banner_ornament() -> void:
+	if not is_instance_valid(calligraphic_ornament_ctrl):
+		return
+	var sz := calligraphic_ornament_ctrl.size
+	var cx := sz.x * 0.5
+	var y_line := 41.0
+	var half_w := clampf(150.0 + float(_calligraphic_tier) * 42.0, 160.0, sz.x * 0.46)
+	var col := _calligraphic_accent.lightened(0.22)
+	# Soft dark ink wash under-stroke (open, no box)
+	calligraphic_ornament_ctrl.draw_line(
+		Vector2(cx - half_w * 0.92, y_line),
+		Vector2(cx + half_w * 0.92, y_line),
+		Color(0.02, 0.015, 0.02, 0.52),
+		12.0,
+		true
+	)
+	# Calligraphic tier-colored brush flourish line + end dots
+	calligraphic_ornament_ctrl.draw_line(
+		Vector2(cx - half_w, y_line),
+		Vector2(cx + half_w, y_line),
+		Color(col.r, col.g, col.b, 0.88),
+		2.4 + float(_calligraphic_tier - 1) * 0.4,
+		true
+	)
+	calligraphic_ornament_ctrl.draw_circle(Vector2(cx - half_w, y_line), 3.4, col)
+	calligraphic_ornament_ctrl.draw_circle(Vector2(cx + half_w, y_line), 3.4, col)
+	if _calligraphic_tier >= 3:
+		calligraphic_ornament_ctrl.draw_line(
+			Vector2(cx - half_w * 0.65, y_line + 4.0),
+			Vector2(cx + half_w * 0.65, y_line + 4.0),
+			Color(col.r, col.g, col.b, 0.55),
+			1.4,
+			true
+		)
+
+
+func _show_calligraphic_banner(title_txt: String, sub_txt: String = "", tier: int = 1, hold_sec: float = 2.4) -> void:
+	if not is_instance_valid(calligraphic_banner_grp) or not is_instance_valid(center_banner_lbl):
+		return
+	if title_txt.strip_edges().is_empty():
+		return
+	_calligraphic_tier = clampi(tier, 1, 4)
+	match _calligraphic_tier:
+		1:
+			_calligraphic_accent = Color(0.96, 0.86, 0.56)
+		2:
+			_calligraphic_accent = Color(1.0, 0.72, 0.24)
+		3:
+			_calligraphic_accent = Color(1.0, 0.36, 0.26)
+		4:
+			_calligraphic_accent = Color(0.42, 0.94, 1.0)
+	center_banner_lbl.text = title_txt
+	center_banner_lbl.add_theme_color_override("font_color", _calligraphic_accent.lightened(0.25))
+	center_banner_lbl.add_theme_font_size_override("font_size", 22 + _calligraphic_tier * 2)
+	if is_instance_valid(center_banner_sub_lbl):
+		center_banner_sub_lbl.text = sub_txt
+		center_banner_sub_lbl.visible = not sub_txt.strip_edges().is_empty()
+	if is_instance_valid(calligraphic_ornament_ctrl):
+		calligraphic_ornament_ctrl.queue_redraw()
+	if is_instance_valid(_calligraphic_banner_tween) and _calligraphic_banner_tween.is_valid():
+		_calligraphic_banner_tween.kill()
+	calligraphic_banner_grp.visible = true
+	calligraphic_banner_grp.scale = Vector2(0.82, 0.82)
+	calligraphic_banner_grp.modulate.a = 0.0
+	if not is_inside_tree():
+		calligraphic_banner_grp.scale = Vector2.ONE
+		calligraphic_banner_grp.modulate.a = 1.0
+		return
+	var clamped_hold := clampf(hold_sec, 2.0, 3.2)
+	_calligraphic_banner_tween = create_tween()
+	_calligraphic_banner_tween.tween_property(calligraphic_banner_grp, "modulate:a", 1.0, 0.16)
+	_calligraphic_banner_tween.parallel().tween_property(calligraphic_banner_grp, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_calligraphic_banner_tween.tween_interval(clamped_hold)
+	_calligraphic_banner_tween.tween_property(calligraphic_banner_grp, "modulate:a", 0.0, 0.35)
+	_calligraphic_banner_tween.tween_callback(func():
+		if is_instance_valid(calligraphic_banner_grp):
+			calligraphic_banner_grp.visible = false
+	)
+
+
+func _inspect_mp_table_relic(item_id: String, item_uid: String = "") -> void:
+	if not is_instance_valid(relic_inspect_3d) or item_id.is_empty():
+		return
+	var is_catalog := not Catalog.get_relic(item_id).is_empty() or not Catalog.get_table_relic(item_id).is_empty()
+	var mesh_id := item_id if is_catalog else str(MP_ITEM_MESH_MAP.get(item_id, "TRELIC_BLOOD_SEAL"))
+	var rem_uses := maxi(0, MAX_MP_ITEM_USES - int(mp_item_uses.get(item_uid, 0)))
+	var src_txt := "Multiplayer Tabletop (%d/%d uses left)" % [rem_uses, MAX_MP_ITEM_USES]
+	relic_inspect_3d.call("inspect_relic", mesh_id, "en", true, true, src_txt)
+	if not is_catalog:
+		var ii: Dictionary = Config.get_mp_item_info(item_id)
+		if not ii.is_empty():
+			var t_lbl = relic_inspect_3d.get("_title_lbl")
+			if is_instance_valid(t_lbl):
+				t_lbl.text = str(ii.get("name", item_id))
+			var c_lbl = relic_inspect_3d.get("_cat_lbl")
+			if is_instance_valid(c_lbl):
+				c_lbl.text = "MP TABLETOP RELIC"
+			var d_lbl = relic_inspect_3d.get("_desc_lbl")
+			if is_instance_valid(d_lbl):
+				d_lbl.text = str(ii.get("desc", ii.get("short", "")))
+	play_sfx_requested.emit("ui_click")

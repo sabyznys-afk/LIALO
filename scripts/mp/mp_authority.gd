@@ -67,6 +67,8 @@ func setup_match(lobby_seats: Array, settings: Dictionary) -> void:
 		var item_list: Array = []
 		var raw_trels: Array = clean_cfg.get("table_relics", arch.get("items", ["MYS_RUNE_WHETSTONE", "MYS_IRON_GAUNTLET"]))
 		for tid in raw_trels:
+			if item_list.size() >= Catalog.MAX_ACTIVE_RELICS:
+				break
 			next_uid += 1
 			item_list.append(Config.make_mp_item_instance(str(tid), next_uid))
 		var passive_list: Array = clean_cfg.get("passive_relics", []).duplicate()
@@ -177,7 +179,7 @@ func tick(delta: float) -> void:
 	# Priority 3: Human Turn Timeout Safeguard (30-45s -> auto-draw card)
 	turn_timer -= delta
 	if turn_timer <= 0.0:
-		banner_text = "⏱ %s ran out of time — auto-drew a card!" % str(cur["name"])
+		banner_text = "%s ran out of time — auto-drew a card!" % str(cur["name"])
 		handle_draw_card(int(cur["peer_id"]), turn_seat)
 
 
@@ -251,7 +253,7 @@ func handle_play_cards(peer_id: int, seat_idx_hint: int, card_indices: Array, ta
 			cinematic_pause_timer = 2.1
 			var b_id := str(s.get("bankai_build_id", "GUILLOTINE_ACES"))
 			var b_loc := Catalog.get_deck_build(b_id)
-			banner_text = "⚡ %s UNLEASHED %s!" % [str(s["name"]), str(b_loc.get("bankai_name", "BANKAI"))]
+			banner_text = "%s UNLEASHED %s!" % [str(s["name"]), str(b_loc.get("bankai_name", "GRAND SEAL"))]
 			broadcast_vfx_event.emit({
 				"type": "BANKAI_AWAKENING",
 				"seat": turn_seat,
@@ -339,17 +341,17 @@ func handle_play_cards(peer_id: int, seat_idx_hint: int, card_indices: Array, ta
 		var stolen: Dictionary = tgt_s["hand"][steal_idx]
 		tgt_s["hand"].remove_at(steal_idx)
 		s["hand"].append(stolen)
-		banner_text = "🗡 %s stole a card from %s!" % [s["name"], tgt_s["name"]]
+		banner_text = "%s stole a card from %s!" % [s["name"], tgt_s["name"]]
 
 	# 7s Hot-Potato Blood Tax
 	if seven_cnt > 0:
 		pending_draw_stack += 2 * seven_cnt + (2 if rule_mode == "OP_CHAOS" and seven_cnt >= 2 else 0)
-		banner_text = "🩸 %s stacked +%d BLOOD DRAW (%d total)!" % [s["name"], 2 * seven_cnt, pending_draw_stack]
+		banner_text = "%s stacked +%d BLOOD DRAW (%d total)!" % [s["name"], 2 * seven_cnt, pending_draw_stack]
 
 	# H (Queens) Chaos Suit Storm — 2+ Queens pass cards clockwise!
 	if queen_cnt >= 2:
 		_rotate_hands_clockwise(1 if queen_cnt == 2 else 2)
-		banner_text = "🌪 SUIT STORM (%d× H)! Everyone passes cards clockwise!" % queen_cnt
+		banner_text = "SUIT STORM (%d× H)! Everyone passes cards clockwise!" % queen_cnt
 
 	# Power Card Specials
 	for pid in power_ids:
@@ -383,7 +385,7 @@ func handle_play_cards(peer_id: int, seat_idx_hint: int, card_indices: Array, ta
 			return
 		else:
 			_apply_damage(s, tgt_s, exec_dmg)
-			banner_text = "⚔ %s hits %s for %d DMG & shatters all Shields!" % [kind_lbl, str(tgt_s.get("name", "")), exec_dmg]
+			banner_text = "%s hits %s for %d DMG & shatters all Shields!" % [kind_lbl, str(tgt_s.get("name", "")), exec_dmg]
 	else:
 		# Normal HP / Shield damage check — lethal hits also give Parry window if victim holds Mirror/Chronos!
 		if not tgt_s.is_empty():
@@ -395,7 +397,7 @@ func handle_play_cards(peer_id: int, seat_idx_hint: int, card_indices: Array, ta
 				return
 			_apply_damage(s, tgt_s, base_dmg)
 			if seven_cnt == 0 and queen_cnt < 2 and power_ids.is_empty() and thief_cnt == 0:
-				banner_text = "⚔ %s strikes %s for %d DMG!" % [s["name"], tgt_s["name"], base_dmg]
+				banner_text = "%s strikes %s for %d DMG!" % [s["name"], tgt_s["name"], base_dmg]
 
 	_check_shedding_refill(s)
 	if _check_match_winner():
@@ -430,7 +432,7 @@ func handle_draw_card(peer_id: int, seat_idx_hint: int) -> void:
 		for _i in range(n_draw):
 			_draw_one_for_seat(s)
 		_apply_damage({}, s, blood_dmg)
-		banner_text = "🩸 %s drew %d cards & took %d Blood-Tax DMG!" % [s["name"], n_draw, blood_dmg]
+		banner_text = "%s drew %d cards & took %d Blood-Tax DMG!" % [s["name"], n_draw, blood_dmg]
 		broadcast_vfx_event.emit({"type": "BLOOD_DRAW", "seat": turn_seat, "count": n_draw, "dmg": blood_dmg})
 	else:
 		_draw_one_for_seat(s)
@@ -482,10 +484,10 @@ func handle_use_item(peer_id: int, seat_idx_hint: int, item_key: String, target_
 		"MYS_IRON_GAUNTLET":
 			s["shields"] = int(s["shields"]) + 25
 			_apply_damage(s, tgt_s, 18)
-			banner_text = "🛡 %s used Templar Gauntlet (+25 Shield, -18 HP on %s)!" % [s["name"], str(tgt_s.get("name", ""))]
+			banner_text = "%s used Templar Gauntlet (+25 Shield, -18 HP on %s)!" % [s["name"], str(tgt_s.get("name", ""))]
 		"MYS_WITCH_MIRROR":
 			s["aegis_reflect"] = true
-			banner_text = "🪞 %s raised Witch-Glass Reflect Shield!" % s["name"]
+			banner_text = "%s raised Witch-Glass Reflect Shield!" % s["name"]
 		"MYS_BELL_TOLL":
 			for os in seats:
 				if int(os["seat_idx"]) != turn_seat and bool(os["alive"]):
@@ -493,26 +495,26 @@ func handle_use_item(peer_id: int, seat_idx_hint: int, item_key: String, target_
 			var next_s := _get_seat(_next_alive_seat(turn_seat, 1))
 			if not next_s.is_empty() and not ("REL_HEX_DOLL" in next_s.get("passive_relics", [])):
 				next_s["stunned"] = true
-			banner_text = "🔔 PLAGUE BELL! All rivals take 22 DMG!"
+			banner_text = "PLAGUE BELL! All rivals take 22 DMG!"
 		"MYS_RUNE_WHETSTONE":
 			s["whetstone_stacks"] = int(s["whetstone_stacks"]) + 1
-			banner_text = "⚔ %s sharpened Blade! (+25%% DMG, 2× Ace Guillotine unlocked at 2 stacks!)" % s["name"]
+			banner_text = "%s sharpened Blade! (+25%% DMG, 2× Ace Guillotine unlocked at 2 stacks!)" % s["name"]
 		"MYS_RAVENS_EYE":
 			_draw_one_for_seat(s)
 			if not tgt_s.is_empty():
 				tgt_s["revealed_turns"] = 2
-			banner_text = "👁 %s pierced %s's secrets (+1 Card & Revealed)!" % [s["name"], str(tgt_s.get("name", ""))]
+			banner_text = "%s pierced %s's secrets (+1 Card & Revealed)!" % [s["name"], str(tgt_s.get("name", ""))]
 		"MYS_ALCHEMIST_PHIAL":
 			pending_draw_stack = 0
 			_draw_one_for_seat(s)
 			_draw_one_for_seat(s)
 			s["gold"] = int(s["gold"]) + 20
-			banner_text = "⚗ %s downed Quicksilver (+2 Cards, cleared Blood Stack, +20g)!" % s["name"]
+			banner_text = "%s downed Quicksilver (+2 Cards, cleared Blood Stack, +20g)!" % s["name"]
 		"MYS_LANTERN_ASH":
 			s["shields"] = int(s["shields"]) + 18
 			if not s["hand"].is_empty():
 				s["hand"][0]["edition"] = "KNIGHT"
-			banner_text = "🏮 %s infused leftmost card with Mistblade Knight & +18 Shield!" % s["name"]
+			banner_text = "%s infused leftmost card with Mistblade Knight & +18 Shield!" % s["name"]
 		"MYS_CROWBAR_KEY":
 			if not tgt_s.is_empty():
 				if not tgt_s["items"].is_empty():
@@ -520,6 +522,8 @@ func handle_use_item(peer_id: int, seat_idx_hint: int, item_key: String, target_
 					var stolen_uid := Config.get_item_uid(stolen_entry, tgt_s["items"].size())
 					var stolen_uses := int(tgt_s.get("item_uses", {}).get(stolen_uid, 0))
 					tgt_s.get("item_uses", {}).erase(stolen_uid)
+					while s["items"].size() >= Catalog.MAX_ACTIVE_RELICS:
+						s["items"].pop_front()
 					if stolen_entry is Dictionary:
 						s["items"].append(stolen_entry)
 						s["item_uses"][stolen_uid] = stolen_uses
@@ -529,33 +533,33 @@ func handle_use_item(peer_id: int, seat_idx_hint: int, item_key: String, target_
 						inst["uses"] = stolen_uses
 						s["items"].append(inst)
 						s["item_uses"][str(inst["uid"])] = stolen_uses
-					banner_text = "🗝 %s unlocked & stole %s's Relic!" % [s["name"], tgt_s["name"]]
+					banner_text = "%s unlocked & stole %s's Relic!" % [s["name"], tgt_s["name"]]
 				elif not tgt_s["hand"].is_empty():
 					var sc: Dictionary = tgt_s["hand"].pop_back()
 					s["hand"].append(sc)
-					banner_text = "🗝 %s pickpocketed a card from %s!" % [s["name"], tgt_s["name"]]
+					banner_text = "%s pickpocketed a card from %s!" % [s["name"], tgt_s["name"]]
 		"TRELIC_SOUL_BELL":
 			if not tgt_s.is_empty():
 				tgt_s["shields"] = 0
 				_apply_damage(s, tgt_s, 20)
-				banner_text = "🔔 %s rang Soul-Severing Bell! Shattered %s's shields (-20 HP)!" % [s["name"], tgt_s["name"]]
+				banner_text = "%s rang Soul-Severing Bell! Shattered %s's shields (-20 HP)!" % [s["name"], tgt_s["name"]]
 		"TRELIC_BLOOD_SEAL":
 			s["blood_seal_active"] = true
 			if not tgt_s.is_empty():
 				_apply_damage(s, tgt_s, 12)
-			banner_text = "🩸 %s stamped Blood-Ink Seal! Next play ×2.0 & -12 HP!" % s["name"]
+			banner_text = "%s stamped Blood-Ink Seal! Next play ×2.0 & -12 HP!" % s["name"]
 		"TRELIC_STAR_BOW":
 			if not tgt_s.is_empty():
 				tgt_s["revealed_turns"] = 2
 				_apply_damage(s, tgt_s, 18, true)
-				banner_text = "🏹 %s fired Astral Astrolabe! Revealed %s & pierced 18 DMG!" % [s["name"], tgt_s["name"]]
+				banner_text = "%s fired Astral Astrolabe! Revealed %s & pierced 18 DMG!" % [s["name"], tgt_s["name"]]
 		"TRELIC_ASH_GLASS":
 			_draw_one_for_seat(s)
 			_draw_one_for_seat(s)
 			for c in s["hand"]:
 				if Catalog.normalize_card_class(str(c.get("edition", "NORMAL"))) == "MAGE":
 					c["mage_charge"] = 2
-			banner_text = "⏳ %s flipped Ashen Hourglass! (+2 Cards & Mage 2/2 charged!)" % s["name"]
+			banner_text = "%s flipped Ashen Hourglass! (+2 Cards & Mage 2/2 charged!)" % s["name"]
 		"TRELIC_WAR_HORN":
 			s["shields"] = int(s["shields"]) + 22
 			var best_ci := -1
@@ -568,11 +572,11 @@ func handle_use_item(peer_id: int, seat_idx_hint: int, item_key: String, target_
 						best_ci = ci
 			if best_ci != -1:
 				s["hand"][best_ci]["edition"] = "KNIGHT"
-			banner_text = "📯 %s blew Templar War-Horn! (+22 Shield & Knight forged!)" % s["name"]
+			banner_text = "%s blew Templar War-Horn! (+22 Shield & Knight forged!)" % s["name"]
 		"TRELIC_HOLLOW_MASK":
 			s["hp"] = maxi(1, int(s["hp"]) - 12)
 			s["hollow_mask_active"] = true
-			banner_text = "🎭 %s donned Phantom Mask! (-12 HP → Next play ×2.0 Wild!)" % s["name"]
+			banner_text = "%s donned Phantom Mask! (-12 HP → Next play ×2.0 Wild!)" % s["name"]
 		"TRELIC_CENSER":
 			for c in s["hand"]:
 				if Catalog.normalize_card_class(str(c.get("edition", "NORMAL"))) != "MAGE":
@@ -580,23 +584,23 @@ func handle_use_item(peer_id: int, seat_idx_hint: int, item_key: String, target_
 					c["mage_charge"] = 2
 					break
 			s["surge_mult"] = float(s.get("surge_mult", 0.0)) + 1.0
-			banner_text = "🌿 %s swung Alchemist's Censer! (Mage 2/2 & +Surge!)" % s["name"]
+			banner_text = "%s swung Alchemist's Censer! (Mage 2/2 & +Surge!)" % s["name"]
 		"TRELIC_GOLD_SCALES":
 			s["gold"] = int(s["gold"]) + 22
 			_draw_one_for_seat(s)
-			banner_text = "⚖ %s weighed Gilded Scales! (+22g & +1 Card!)" % s["name"]
+			banner_text = "%s weighed Gilded Scales! (+22g & +1 Card!)" % s["name"]
 		"TRELIC_IRON_CHAIN":
 			if not tgt_s.is_empty():
 				if not ("REL_HEX_DOLL" in tgt_s.get("passive_relics", [])):
 					tgt_s["stunned"] = true
 				_apply_damage(s, tgt_s, 16)
-				banner_text = "⛓ %s bound %s in Executioner's Chain! (Stun & -16 DMG)" % [s["name"], tgt_s["name"]]
+				banner_text = "%s bound %s in Executioner's Chain! (Stun & -16 DMG)" % [s["name"], tgt_s["name"]]
 		"TRELIC_PHOENIX_BOX":
 			s["hp"] = mini(int(s["max_hp"]), int(s["hp"]) + 24)
 			s["shields"] = int(s["shields"]) + 10
 			s["stunned"] = false
 			pending_draw_stack = 0
-			banner_text = "🔥 %s opened Phoenix Reliquary! (+24 HP, +10 Shield & Purged!)" % s["name"]
+			banner_text = "%s opened Phoenix Reliquary! (+24 HP, +10 Shield & Purged!)" % s["name"]
 
 	broadcast_vfx_event.emit({
 		"type": "ITEM_CAST",
@@ -618,7 +622,7 @@ func reclaim_seat(seat_idx: int, new_peer_id: int) -> void:
 		return
 	s["peer_id"] = new_peer_id
 	s["is_bot"] = false
-	banner_text = "🔌 %s reconnected to the table!" % str(s.get("name", "Player"))
+	banner_text = "%s reconnected to the table!" % str(s.get("name", "Player"))
 	_sync_all()
 	_send_private_only(s, {"reconnected": true})
 
@@ -663,7 +667,7 @@ func handle_parry_response(peer_id: int, seat_idx_hint: int, choice: String) -> 
 		if used:
 			var dmg := int(pending_parry.get("dmg", 999))
 			pending_parry.clear()
-			banner_text = "🪞 PARRY DEFLECT! %s bounced the Execution back at %s!" % [tgt_s["name"], str(att_s.get("name", ""))]
+			banner_text = "PARRY DEFLECT! %s bounced the Execution back at %s!" % [tgt_s["name"], str(att_s.get("name", ""))]
 			broadcast_vfx_event.emit({
 				"type": "PARRY_DEFLECT",
 				"from_seat": tgt_idx,
@@ -689,7 +693,7 @@ func handle_parry_response(peer_id: int, seat_idx_hint: int, choice: String) -> 
 				tgt_s["shields"] = int(tgt_s["shields"]) + 15
 				tgt_s["item_used_this_turn"] = false
 				extra_turn_seat = tgt_idx
-				banner_text = "⏳ TIME REWIND! %s negated the execution & took the turn!" % tgt_s["name"]
+				banner_text = "TIME REWIND! %s negated the execution & took the turn!" % tgt_s["name"]
 				broadcast_vfx_event.emit({"type": "CHRONOS_SAVE", "seat": tgt_idx})
 				turn_seat = tgt_idx
 				turn_timer = turn_timeout_sec
@@ -716,14 +720,14 @@ func handle_ghost_action(peer_id: int, seat_idx_hint: int, action_id: String, ta
 	if action_id == "GHOST_HEX":
 		var hex_dmg := 4 if ("REL_HEX_DOLL" in tgt_s.get("passive_relics", [])) else 8
 		_apply_damage(gs, tgt_s, hex_dmg)
-		banner_text = "👻 %s (Ghost) cursed %s (-%d HP)!" % [gs["name"], tgt_s["name"], hex_dmg]
+		banner_text = "%s (Ghost) cursed %s (-%d HP)!" % [gs["name"], tgt_s["name"], hex_dmg]
 	elif action_id == "GHOST_BLESS":
 		tgt_s["shields"] = int(tgt_s["shields"]) + 10
-		banner_text = "👻 %s (Ghost) blessed %s (+10 Shield)!" % [gs["name"], tgt_s["name"]]
+		banner_text = "%s (Ghost) blessed %s (+10 Shield)!" % [gs["name"], tgt_s["name"]]
 	elif action_id == "GHOST_SUIT":
 		var suits := ["CERVEN", "ZELEN", "ZALUD", "GULA"]
 		active_suit = suits[rng.randi() % 4]
-		banner_text = "👻 %s (Ghost) shifted winds to %s!" % [gs["name"], Config.get_suit(active_suit)["sym"]]
+		banner_text = "%s (Ghost) shifted winds to %s!" % [gs["name"], Config.get_suit(active_suit)["name"]]
 
 	broadcast_vfx_event.emit({"type": "GHOST_ACT", "from_seat": seat_idx_hint, "to_seat": tgt, "action": action_id})
 	_check_match_winner()
@@ -748,7 +752,7 @@ func _open_parry_window(att_idx: int, tgt_idx: int, kind: String, dmg: int, card
 	}
 	if bool(tgt_s.get("is_bot", false)):
 		bot_parry_timer = 0.85
-	banner_text = "⚔ %s! %s has %.1fs to PARRY!" % [kind, str(tgt_s.get("name", "")), Config.PARRY_WINDOW_SEC]
+	banner_text = "%s! %s has %.1fs to PARRY!" % [kind, str(tgt_s.get("name", "")), Config.PARRY_WINDOW_SEC]
 	broadcast_vfx_event.emit({
 		"type": "PARRY_WINDUP",
 		"from_seat": att_idx,
@@ -770,10 +774,10 @@ func _finalize_pending_parry_execution() -> void:
 	var tgt_s := _get_seat(tgt_idx)
 	_apply_damage(att_s, tgt_s, dmg, true)
 	if not bool(tgt_s.get("alive", true)):
-		banner_text = "💀 %s EXECUTED %s with %s!" % [str(att_s.get("name", "")), str(tgt_s.get("name", "")), kind]
+		banner_text = "%s EXECUTED %s with %s!" % [str(att_s.get("name", "")), str(tgt_s.get("name", "")), kind]
 		broadcast_vfx_event.emit({"type": "EXECUTION_KILL", "from_seat": att_idx, "to_seat": tgt_idx, "kind": kind})
 	else:
-		banner_text = "⚔ %s landed %s for %d DMG!" % [str(att_s.get("name", "")), kind, dmg]
+		banner_text = "%s landed %s for %d DMG!" % [str(att_s.get("name", "")), kind, dmg]
 
 	if _check_match_winner():
 		return
@@ -817,7 +821,7 @@ func _apply_damage(att_s: Dictionary, tgt_s: Dictionary, dmg: int, bypass_shield
 
 
 func _grant_bonus_item(s: Dictionary) -> void:
-	if s.is_empty() or s["items"].size() >= 3:
+	if s.is_empty() or s["items"].size() >= Catalog.MAX_ACTIVE_RELICS:
 		return
 	var keys := Config.MP_ITEMS.keys()
 	var picked := str(keys[rng.randi() % keys.size()])
@@ -847,7 +851,7 @@ func _check_shedding_refill(s: Dictionary) -> void:
 	_grant_bonus_item(s)
 	for _i in range(5):
 		_draw_one_for_seat(s)
-	banner_text = "★ PRŠÍ OVERDRIVE! %s emptied hand (-42 AoE DMG to table & +Item)!" % s["name"]
+	banner_text = "PRŠÍ OVERDRIVE! %s emptied hand (-42 AoE DMG to table & +Item)!" % s["name"]
 	broadcast_vfx_event.emit({"type": "SHED_OVERDRIVE", "seat": int(s["seat_idx"])})
 
 
@@ -864,7 +868,7 @@ func _apply_power_card_effect(s: Dictionary, tgt_s: Dictionary, pid: String) -> 
 			extra_turn_seat = int(s["seat_idx"])
 		"SPEC_JESTER":
 			_rotate_hands_clockwise(1)
-			banner_text = "🃏 JESTER ROULETTE! Everyone rotates 1 card clockwise!"
+			banner_text = "JESTER ROULETTE! Everyone rotates 1 card clockwise!"
 		"SPEC_HEX":
 			turn_dir *= -1
 			if not tgt_s.is_empty() and not ("REL_HEX_DOLL" in tgt_s.get("passive_relics", [])) and not tgt_s["hand"].is_empty() and not s["hand"].is_empty():
@@ -884,7 +888,7 @@ func _apply_power_card_effect(s: Dictionary, tgt_s: Dictionary, pid: String) -> 
 		"SPEC_MIRROR":
 			if last_played_power_id != "" and last_played_power_id != "SPEC_MIRROR":
 				_apply_power_card_effect(s, tgt_s, last_played_power_id)
-				banner_text = "🪞 TWIN MIRROR echoed %s!" % last_played_power_id
+				banner_text = "TWIN MIRROR echoed %s!" % last_played_power_id
 			else:
 				s["shields"] = int(s["shields"]) + 15
 		"SPEC_ALCHEMIST":
@@ -901,7 +905,7 @@ func _apply_power_card_effect(s: Dictionary, tgt_s: Dictionary, pid: String) -> 
 			s["gold"] = int(s["gold"]) + 15
 			s["surge_mult"] = float(s.get("surge_mult", 0.0)) + 0.5
 			if upgraded:
-				banner_text = "⚗ GOLD TRANSMUTER upgraded a card in %s's hand (+15g)!" % s["name"]
+				banner_text = "GOLD TRANSMUTER upgraded a card in %s's hand (+15g)!" % s["name"]
 		"SPEC_PHOENIX":
 			pending_draw_stack = 0
 			s["hp"] = mini(int(s["max_hp"]), int(s["hp"]) + 15)
@@ -912,11 +916,11 @@ func _apply_power_card_effect(s: Dictionary, tgt_s: Dictionary, pid: String) -> 
 			phx["uid"] = next_uid
 			s["draw_pile"].append(phx)
 			s["draw_pile"].shuffle()
-			banner_text = "🔥 ASH PHOENIX purged Blood Tax, healed +15 HP & returned to deck!"
+			banner_text = "ASH PHOENIX purged Blood Tax, healed +15 HP & returned to deck!"
 		"SPEC_MIDAS":
 			s["gold"] = int(s["gold"]) + 20
 			s["shields"] = int(s["shields"]) + 10
-			banner_text = "👑 MIDAS TOUCH! %s minted +20g & +10 Shield!" % s["name"]
+			banner_text = "MIDAS TOUCH! %s minted +20g & +10 Shield!" % s["name"]
 		"SPEC_MAGNET":
 			var want_ranks := {}
 			for hc in s["hand"]:
@@ -934,26 +938,26 @@ func _apply_power_card_effect(s: Dictionary, tgt_s: Dictionary, pid: String) -> 
 					dp.remove_at(di)
 					pulled += 1
 			dp.shuffle()
-			banner_text = "🧲 RUNE MAGNET pulled %d matching card(s)!" % pulled
+			banner_text = "RUNE MAGNET pulled %d matching card(s)!" % pulled
 		"SPEC_SHIELD":
 			s["shields"] = int(s["shields"]) + 25
 			s["shield_reflect_charges"] = int(s.get("shield_reflect_charges", 0)) + 2
-			banner_text = "🛡 IRON BASTION! %s gained +25 Shield & 2 Reflect Charges!" % s["name"]
+			banner_text = "IRON BASTION! %s gained +25 Shield & 2 Reflect Charges!" % s["name"]
 		"SPEC_GAMBLER":
 			s["gold"] = int(s["gold"]) + 10
-			banner_text = "🎲 LOADED DICE! %s rolled high-stakes multiplier!" % s["name"]
+			banner_text = "LOADED DICE! %s rolled high-stakes multiplier!" % s["name"]
 		"SPEC_PLAGUE":
 			if not tgt_s.is_empty():
 				_apply_damage(s, tgt_s, 15)
 				if not ("REL_HEX_DOLL" in tgt_s.get("passive_relics", [])):
 					tgt_s["stunned"] = true
-					banner_text = "❄ FROST BLIGHT! %s chilled & stunned %s!" % [s["name"], tgt_s["name"]]
+					banner_text = "FROST BLIGHT! %s chilled & stunned %s!" % [s["name"], tgt_s["name"]]
 				else:
-					banner_text = "❄ FROST BLIGHT hit %s (Voodoo Effigy resisted stun)!" % tgt_s["name"]
+					banner_text = "FROST BLIGHT hit %s (Voodoo Effigy resisted stun)!" % tgt_s["name"]
 		"SPEC_CROWN":
 			s["shields"] = int(s["shields"]) + 12
 			s["gold"] = int(s["gold"]) + 12
-			banner_text = "👑 ROYAL DECREE! %s rallied court (+12 Shield & +12g)!" % s["name"]
+			banner_text = "ROYAL DECREE! %s rallied court (+12 Shield & +12g)!" % s["name"]
 
 
 func _rotate_hands_clockwise(card_count: int) -> void:
