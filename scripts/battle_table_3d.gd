@@ -12828,11 +12828,12 @@ func _play_player_cards_3d(play_indices: Array, chosen_suit: String) -> void:
 
 	var run_special_cine := false
 	var special_cine_id := ""
-	if tutorial_mode and tutorial_step == 6 and tutorial_substep == 0 and is_instance_valid(cinematic_director):
+	if is_instance_valid(cinematic_director) and (not tutorial_mode or (tutorial_step == 6 and tutorial_substep == 0)):
 		for c_chk in chosen_cards:
-			if str(c_chk.get("power_id", "")) == "SPEC_VAMPIRE":
+			var chk_pid := str(c_chk.get("power_id", ""))
+			if chk_pid != "":
 				run_special_cine = true
-				special_cine_id = "SPEC_VAMPIRE"
+				special_cine_id = chk_pid
 				break
 
 	if (not tutorial_mode or tutorial_step >= 3) and (not run_special_cine):
@@ -13918,7 +13919,7 @@ func _execute_ai_turn_body(my_ai_seq: int) -> void:
 	if play_idx != -1:
 		var peek_c: Dictionary = ai_hand[play_idx]
 		var peek_cls := Catalog.normalize_card_class(str(peek_c.get("edition", "NORMAL")))
-		var is_cinematic_play := false
+		var is_cinematic_play := is_instance_valid(cinematic_director) and (str(peek_c.get("power_id", "")) != "")
 		if is_cinematic_play:
 			_run_rival_turn_with_cinematic(my_ai_seq)
 			return

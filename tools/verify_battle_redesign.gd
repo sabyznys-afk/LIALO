@@ -18,6 +18,7 @@ func _assert_true(cond: bool, msg: String) -> void:
 
 
 func _initialize() -> void:
+	create_timer(60.0).timeout.connect(func(): printerr("TIMEOUT: verify_battle_redesign exceeded 60s"); quit(124))
 	call_deferred("_run_verification")
 
 
