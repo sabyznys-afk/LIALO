@@ -34,6 +34,7 @@ const TableRelicMgrScript := preload("res://scripts/battle/table_relic_manager.g
 const CombatLogDrawerScript := preload("res://scripts/battle/combat_log_drawer.gd")
 const LialoIcons := preload("res://scripts/ui/lialo_icons.gd")
 const RelicInspect3D := preload("res://scripts/ui/relic_inspect_3d.gd")
+const PowerCardShowcase := preload("res://scripts/battle/power_card_vfx_showcase.gd")
 const OUTLINE_SHADER := preload("res://shaders/outline.gdshader")
 const CARD_FX_SHADER := preload("res://shaders/card_fx.gdshader")
 const SCREEN_JUICE_SHADER := preload("res://shaders/screen_juice.gdshader")
@@ -3077,6 +3078,12 @@ func _spawn_signature_play_vfx(chosen_cards: Array[Dictionary], impact_pos: Vect
 		"SPEC_STORM":
 			Fx.shard_burst(self, impact_pos, Color(0.45, 0.80, 1.0), 12, 0.5)
 			emit_signal("play_sfx_pitched_requested", "card_ace_strike", 1.12)
+			var storm_vfx := PowerCardShowcase.new()
+			add_child(storm_vfx)
+			storm_vfx.sfx_triggered.connect(func(sfx_key: String, _vol: float, pitch_val: float):
+				emit_signal("play_sfx_pitched_requested", sfx_key, pitch_val)
+			)
+			storm_vfx.setup_battle_fx(impact_pos, rival_pos)
 		"SPEC_SHIELD":
 			Fx.shard_burst(self, impact_pos, lead.get("accent", Color(0.68, 0.78, 0.88)), 8, 0.42)
 			emit_signal("play_sfx_requested", "card_shield_guard")

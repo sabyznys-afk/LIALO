@@ -333,7 +333,19 @@ func _run_all() -> void:
 	var mpl = MpLobbyScript2.new()
 	_assert(mpl.has_signal("open_dev_inspector_requested"), "MpLobbyOverlay exposes open_dev_inspector_requested signal")
 	mpl.free()
-	print("  OK 11: v0.194 13-Point Overhaul DoD checks verified")
+	var StormVfxScript = load("res://scripts/battle/power_card_vfx_showcase.gd")
+	_assert(StormVfxScript != null, "PowerCardVfxShowcase compiles cleanly")
+	if StormVfxScript != null:
+		var svfx = StormVfxScript.new()
+		_assert(svfx != null, "PowerCardVfxShowcase instantiates cleanly")
+		svfx.free()
+	if DevInspScript != null:
+		var dai2 := DevInspScript.new() as Control
+		root.add_child(dai2)
+		var items_arr: Array = dai2.get("_all_items")
+		_assert(not items_arr.is_empty() and str((items_arr[0] as Dictionary).get("kind", "")) == "power_card_fpv" and bool((items_arr[0] as Dictionary).get("pinned", false)), "DevAssetInspector pins SPEC_STORM 1st-person showcase at index 0")
+		dai2.queue_free()
+	print("  OK 11: v0.194 13-Point Overhaul & SPEC_STORM 1st-person showcase DoD checks verified")
 
 	if _failures.is_empty():
 		print("=== VERIFY PROGRESSION & MP: ALL CHECKS PASSED ===")

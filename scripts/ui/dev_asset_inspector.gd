@@ -14,6 +14,7 @@ const FxLib = preload("res://scripts/fx_lib.gd")
 const CinematicProfiles = preload("res://scripts/cinematic_profiles.gd")
 const BankaiFxScript = preload("res://scripts/battle/bankai_fx.gd")
 const SnakeLoadingScript = preload("res://scripts/ui/snake_loading_screen.gd")
+const PowerCardShowcaseScript = preload("res://scripts/battle/power_card_vfx_showcase.gd")
 
 const RELIC_MESH_FACTORY_PATH := "res://scripts/relic_mesh_factory.gd"
 const BLENDER_VFX_PATHS := [
@@ -115,6 +116,13 @@ var _bankai_fx: BankaiFxScript = null
 var _snake_screen: CanvasLayer = null
 var _loop_timer := 0.0
 var _active_anim_player: AnimationPlayer = null
+
+var _stage_fpv_wrap: PanelContainer
+var _fpv_vp_container: SubViewportContainer
+var _fpv_vp: SubViewport
+var _fpv_cam: Camera3D
+var _fpv_overlay: Control
+var _fpv_showcase: PowerCardShowcaseScript = null
 
 
 func _ready() -> void:
@@ -346,6 +354,7 @@ func _build_ui() -> void:
 	_stage_stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	stage_panel.add_child(_stage_stack)
 
+	_build_stage_fpv()
 	_build_stage_3d()
 	_build_stage_2d()
 	_build_stage_anim_2d()
@@ -359,6 +368,8 @@ func _build_ui() -> void:
 	_play_btn = _make_ctrl_btn("Play", "sword", func():
 		_is_playing = not _is_playing
 		_play_btn.text = "Pause" if _is_playing else "Play"
+		if _fpv_showcase != null and is_instance_valid(_fpv_showcase):
+			_fpv_showcase.set_playing(_is_playing)
 		if _active_anim_player != null and is_instance_valid(_active_anim_player):
 			if _is_playing:
 				_active_anim_player.play()
@@ -370,13 +381,19 @@ func _build_ui() -> void:
 	_replay_btn = _make_ctrl_btn("Replay", "dice", func():
 		_is_playing = true
 		_play_btn.text = "Pause"
-		_trigger_selected_preview()
+		if _fpv_showcase != null and is_instance_valid(_fpv_showcase):
+			_fpv_showcase.set_playing(true)
+			_fpv_showcase.restart()
+		else:
+			_trigger_selected_preview()
 	)
 	ctrl_bar.add_child(_replay_btn)
 
 	_loop_btn = _make_ctrl_btn("Loop: ON", "shield", func():
 		_loop_enabled = not _loop_enabled
 		_loop_btn.text = "Loop: ON" if _loop_enabled else "Loop: OFF"
+		if _fpv_showcase != null and is_instance_valid(_fpv_showcase):
+			_fpv_showcase.set_loop(_loop_enabled)
 	)
 	ctrl_bar.add_child(_loop_btn)
 
@@ -384,6 +401,8 @@ func _build_ui() -> void:
 		_speed_idx = (_speed_idx + 1) % SPEED_PRESETS.size()
 		_speed_scale = SPEED_PRESETS[_speed_idx]
 		_speed_btn.text = "Speed: %.2gx" % _speed_scale
+		if _fpv_showcase != null and is_instance_valid(_fpv_showcase):
+			_fpv_showcase.set_speed(_speed_scale)
 		if _active_anim_player != null and is_instance_valid(_active_anim_player):
 			_active_anim_player.speed_scale = _speed_scale
 	)
@@ -544,6 +563,56 @@ func _apply_2d_zoom_mode() -> void:
 		_tex_rect_2d.custom_minimum_size = Vector2(540, 440)
 
 
+func _build_stage_fpv() -> void:
+	_stage_fpv_wrap = PanelContainer.new()
+	_stage_fpv_wrap.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_stage_fpv_wrap.visible = false
+	_stage_stack.add_child(_stage_fpv_wrap)
+
+	_fpv_vp_container = SubViewportContainer.new()
+	_fpv_vp_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_fpv_vp_container.stretch = true
+	_fpv_vp_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_stage_fpv_wrap.add_child(_fpv_vp_container)
+
+	_fpv_vp = SubViewport.new()
+	_fpv_vp.size = Vector2i(960, 540)
+	_fpv_vp.own_world_3d = true
+	_fpv_vp.msaa_3d = Viewport.MSAA_4X
+	_fpv_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED if _is_headless else SubViewport.UPDATE_ALWAYS
+	_fpv_vp_container.add_child(_fpv_vp)
+
+	var env := WorldEnvironment.new()
+	var we := Environment.new()
+	we.background_mode = Environment.BG_COLOR
+	we.background_color = Color(0.025, 0.024, 0.036)
+	we.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	we.ambient_light_color = Color(0.24, 0.22, 0.28)
+	we.ambient_light_energy = 0.72
+	we.glow_enabled = true
+	we.glow_intensity = 0.85
+	we.glow_bloom = 0.35
+	env.environment = we
+	_fpv_vp.add_child(env)
+
+	var dir_l := DirectionalLight3D.new()
+	dir_l.rotation_degrees = Vector3(-48.0, 26.0, 0.0)
+	dir_l.light_color = Color(0.84, 0.86, 1.0)
+	dir_l.light_energy = 0.75
+	_fpv_vp.add_child(dir_l)
+
+	_fpv_cam = Camera3D.new()
+	_fpv_cam.fov = 54.0
+	_fpv_cam.current = true
+	_fpv_cam.look_at_from_position(Vector3(0.0, 1.56, 1.24), Vector3(0.0, 0.94, -0.42), Vector3.UP)
+	_fpv_vp.add_child(_fpv_cam)
+
+	_fpv_overlay = Control.new()
+	_fpv_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_fpv_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_stage_fpv_wrap.add_child(_fpv_overlay)
+
+
 func _build_stage_anim_2d() -> void:
 	_stage_anim_2d = Control.new()
 	_stage_anim_2d.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -695,8 +764,8 @@ func _start_dynamic_bgm_mix() -> void:
 	_bgm_mix_active = true
 	var calm := _load_audio_stream("res://assets/audio/bgm_battle_calm.mp3")
 	var epic := _load_audio_stream("res://assets/audio/bgm_battle_epic.mp3")
-	var climax := _load_audio_stream("res://assets/audio/bgm_battle_climax.mp3")
-	var amb := _load_audio_stream("res://assets/audio/amb_tavern.mp3")
+	var climax := _load_audio_stream("res://assets/audio/bgm_battle_intense.mp3")
+	var amb := _load_audio_stream("res://assets/audio/amb_tavern.wav")
 	if calm:
 		_bgm_calm_player.stream = calm
 		_bgm_calm_player.play(0.0)
@@ -776,7 +845,8 @@ func _scan_dir_items(cat: String, dir_path: String, exts: PackedStringArray, kin
 func _catalog_all_items() -> void:
 	_all_items.clear()
 
-	# 1. Animations & VFX
+	# 1. Animations & VFX (Pinned 1st-Person Power Card Showcase at #0)
+	_add_item(CAT_ANIM, "PINNED [1ST-PERSON] Power Card: SPEC_STORM (Thunder Strike)", "power_card_fpv", "res://scripts/battle/power_card_vfx_showcase.gd", {"card_id": "SPEC_STORM", "pinned": true})
 	for bid in ["GUILLOTINE_ACES", "MIRROR_MONARCH", "CHAOS_JESTER", "MISTBLADE_DUELIST"]:
 		_add_item(CAT_ANIM, "Grand Seal: " + bid, "bankai", "res://scripts/battle/bankai_fx.gd", {"build_id": bid})
 	_add_item(CAT_ANIM, "SwordCardAnimator (3D Slash & Blade)", "sword_anim", SWORD_ANIM_PATH)
@@ -839,12 +909,13 @@ func _apply_filter() -> void:
 	for i in range(_filtered_items.size()):
 		var it := _filtered_items[i]
 		var ok := bool(it["exists"])
+		var is_pinned := bool(it.get("pinned", false))
 		var btn := Button.new()
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.text = "[%s] %s" % ["OK" if ok else "MISSING", str(it["title"])]
+		btn.text = ("[PINNED] %s" % str(it["title"])) if is_pinned else ("[%s] %s" % ["OK" if ok else "MISSING", str(it["title"])])
 		btn.add_theme_font_override("font", _font_body)
 		btn.add_theme_font_size_override("font_size", 12)
-		btn.add_theme_color_override("font_color", Color(0.74, 0.94, 0.72) if ok else Color(0.98, 0.42, 0.38))
+		btn.add_theme_color_override("font_color", Color(0.55, 0.96, 1.0) if is_pinned else (Color(0.74, 0.94, 0.72) if ok else Color(0.98, 0.42, 0.38)))
 		var idx_cap := i
 		btn.pressed.connect(func(): _select_item(idx_cap))
 		_list_vb.add_child(btn)
@@ -861,9 +932,10 @@ func _select_item(idx: int) -> void:
 	for i in range(_item_btns.size()):
 		if is_instance_valid(_item_btns[i]):
 			var sel := (i == idx)
+			var is_pin := bool(_filtered_items[i].get("pinned", false)) if i < _filtered_items.size() else false
 			_item_btns[i].add_theme_stylebox_override("normal", _make_box(
-				Color(0.24, 0.18, 0.08) if sel else Color(0.08, 0.065, 0.055),
-				Color(0.96, 0.78, 0.32) if sel else Color(0.26, 0.21, 0.16), 1, 5, 6
+				Color(0.10, 0.24, 0.30) if (sel and is_pin) else (Color(0.24, 0.18, 0.08) if sel else (Color(0.07, 0.14, 0.18) if is_pin else Color(0.08, 0.065, 0.055))),
+				Color(0.45, 0.94, 1.0) if (sel and is_pin) else (Color(0.96, 0.78, 0.32) if sel else (Color(0.32, 0.74, 0.88) if is_pin else Color(0.26, 0.21, 0.16))), 2 if is_pin else 1, 5, 6
 			))
 	_trigger_selected_preview()
 
@@ -871,6 +943,9 @@ func _select_item(idx: int) -> void:
 func _stop_all_previews() -> void:
 	_stop_audio_players()
 	_active_anim_player = null
+	if is_instance_valid(_fpv_showcase):
+		_fpv_showcase.queue_free()
+		_fpv_showcase = null
 	if is_instance_valid(_bankai_fx):
 		_bankai_fx.clear_aura()
 		_bankai_fx.queue_free()
@@ -884,6 +959,8 @@ func _stop_all_previews() -> void:
 	if is_instance_valid(_fx_root_3d):
 		for c in _fx_root_3d.get_children():
 			c.queue_free()
+	if is_instance_valid(_stage_fpv_wrap):
+		_stage_fpv_wrap.visible = false
 	_stage_3d_wrap.visible = false
 	_stage_2d_wrap.visible = false
 	_stage_anim_2d.visible = false
@@ -906,6 +983,25 @@ func _trigger_selected_preview() -> void:
 	_stage_meta_lbl.text = "Category: %s | Path: %s" % [str(it["cat"]), path if path != "" else "(Procedural / Built-in)"]
 
 	match kind:
+		"power_card_fpv":
+			_stage_fpv_wrap.visible = true
+			_fpv_showcase = PowerCardShowcaseScript.new()
+			_fpv_vp.add_child(_fpv_showcase)
+			_fpv_showcase.sfx_triggered.connect(func(sfx_key: String, vol_db: float, pitch_val: float):
+				if _is_headless or not is_instance_valid(_audio_player):
+					return
+				var st := _load_audio_stream("res://assets/audio/sfx_%s.mp3" % sfx_key)
+				if st == null:
+					st = _load_audio_stream("res://assets/audio/sfx_%s.wav" % sfx_key)
+				if st != null:
+					_audio_player.stream = st
+					_audio_player.volume_db = vol_db
+					_audio_player.pitch_scale = pitch_val
+					_audio_player.play()
+			)
+			_fpv_showcase.setup_fpv_preview(_fpv_cam, _fpv_overlay, _loop_enabled)
+			_fpv_showcase.set_speed(_speed_scale)
+			_fpv_showcase.set_playing(_is_playing)
 		"bankai":
 			_stage_anim_2d.visible = true
 			if not _is_headless:
