@@ -90,9 +90,10 @@ var splash_3d_rim_light: DirectionalLight3D
 var splash_mtn_root: Node3D
 var splash_mtn_mat: ShaderMaterial
 var splash_3d_snow_particles: GPUParticles3D
-var splash_chamois_nodes: Array[Node3D] = []
-var splash_chamois_anims: Array[AnimationPlayer] = []
-var splash_chamois_trails: Array[Dictionary] = []
+var splash_bird_root: Node3D
+var splash_bird_wing_l: Node3D
+var splash_bird_wing_r: Node3D
+var splash_bird_trails: Array[Dictionary] = []
 var splash_canvas: Control
 var splash_time: float = 0.0
 var splash_skipped: bool = false
@@ -548,26 +549,25 @@ func _setup_audio_engine() -> void:
 
 	bgm_cache["lobby"] = _load_audio("res://assets/audio/bgm_lobby_znelka", true)
 	bgm_cache["map"] = _load_audio("res://assets/audio/bgm_campaign_map", true)
-	bgm_cache["battle"] = _load_audio("res://assets/audio/bgm_battle_tavern", true)
 	bgm_cache["battle_calm"] = _load_audio("res://assets/audio/bgm_battle_calm", true)
 	bgm_cache["battle_epic"] = _load_audio("res://assets/audio/bgm_battle_epic", true)
-	# Intense-battle theme (snake theme) drives the climax layer; boss fights use it too.
+	# Intense-battle theme drives the climax layer & boss fights (no simple repeating WAV loop!)
 	bgm_cache["battle_climax"] = _load_audio("res://assets/audio/bgm_battle_intense", true)
 	if bgm_cache["battle_climax"] == null:
-		bgm_cache["battle_climax"] = _load_audio("res://assets/audio/bgm_battle_climax", true)
-	bgm_cache["battle_boss"] = _load_audio("res://assets/audio/bgm_battle_boss", true)
-	if bgm_cache["battle_boss"] == null:
-		bgm_cache["battle_boss"] = bgm_cache["battle_climax"]
+		bgm_cache["battle_climax"] = bgm_cache["battle_epic"]
+	bgm_cache["battle_boss"] = bgm_cache["battle_climax"]
+	bgm_cache["battle"] = bgm_cache["battle_epic"] if bgm_cache["battle_epic"] != null else bgm_cache["battle_climax"]
 	bgm_cache["amb_tavern"] = _load_audio("res://assets/audio/amb_tavern", true)
 
+	# Only rich foley/studio SFX (removed simple single-tone/repetitive beeps: turn_player, error, btn_card_tick)
 	for sfx_key in [
 		"splash_fujara", "ui_hover", "ui_click", "card_hover",
 		"card_shuffle", "card_deal", "card_throw_whoosh", "card_slam",
-		"card_draw", "puf", "turn_player", "win", "lose", "error",
+		"card_draw", "puf", "win", "lose",
 		"card_ace_strike", "card_seven_curse", "card_suit_shift", "card_shield_guard",
 		"anim_sword_unsheathe", "anim_sword_slash", "anim_sword_cleave",
 		"anim_parry_clang", "anim_combo_slam",
-		"btn_wooden_slam", "btn_card_tick", "btn_ghost_curse"
+		"btn_wooden_slam", "btn_ghost_curse"
 	]:
 		var st := _load_audio("res://assets/audio/sfx_%s" % sfx_key, false)
 		if st:
@@ -590,136 +590,10 @@ func _make_pcm16_wav(samples: PackedFloat32Array, mix_rate: int = 22050) -> Audi
 	return wav
 
 func _generate_procedural_sfx_wavs() -> void:
-	var sr := 22050
-	# 1. Polyphonic Tavern Lute + Harpsichord Stinger (dyad/triad with plucked overtone decay)
-	var n_lute := int(sr * 0.34)
-	var s_lute := PackedFloat32Array()
-	s_lute.resize(n_lute)
-	var freqs_lute := [220.0, 329.63, 440.0, 554.37, 659.25]
-	var amps_lute := [0.34, 0.28, 0.24, 0.16, 0.12]
-	for i in range(n_lute):
-		var t := float(i) / float(sr)
-		var env := minf(1.0, t / 0.004) * exp(-t * 10.5)
-		var h_env := minf(1.0, t / 0.002) * exp(-t * 22.0)
-		var sig := 0.0
-		for k in range(freqs_lute.size()):
-			var f: float = freqs_lute[k]
-			var a: float = amps_lute[k]
-			var delay_t := maxf(0.0, t - float(k) * 0.006)
-			if delay_t > 0.0:
-				var e_k := exp(-delay_t * (9.5 + float(k) * 2.2))
-				sig += a * e_k * (sin(TAU * f * delay_t) + 0.35 * sin(TAU * f * 2.0 * delay_t) + 0.15 * sin(TAU * f * 3.0 * delay_t))
-		# Crisp harpsichord quill pluck transient
-		sig += h_env * 0.18 * sin(TAU * 1760.0 * t)
-		s_lute[i] = sig * env * 0.85
-	sfx_cache["chord_lute"] = _make_pcm16_wav(s_lute, sr)
-
-	# 2. ON FIRE Overdrive Heartbeat + Crackling Tavern Flame Resonance
-	var n_ov := int(sr * 0.52)
-	var s_ov := PackedFloat32Array()
-	s_ov.resize(n_ov)
-	for i in range(n_ov):
-		var t := float(i) / float(sr)
-		# Lub-dub dual heartbeat thump + warm 5th flame drone
-		var b1 := exp(-pow((t - 0.05) / 0.042, 2.0)) * sin(TAU * 58.0 * t)
-		var b2 := 0.82 * exp(-pow((t - 0.19) / 0.048, 2.0)) * sin(TAU * 49.0 * t)
-		var flame_drone := exp(-t * 3.8) * (0.28 * sin(TAU * 110.0 * t) + 0.22 * sin(TAU * 165.0 * t) + 0.14 * sin(TAU * 220.0 * t))
-		var crackle := (sin(t * 4312.0) * cos(t * 7819.0)) * 0.08 * exp(-t * 5.0)
-		s_ov[i] = (b1 * 0.55 + b2 * 0.50 + flame_drone + crackle) * 0.90
-	sfx_cache["overdrive_hum"] = _make_pcm16_wav(s_ov, sr)
-
-	# 3. Clickable Tavern Tankard Clink + Oak Thud
-	var n_mug := int(sr * 0.28)
-	var s_mug := PackedFloat32Array()
-	s_mug.resize(n_mug)
-	for i in range(n_mug):
-		var t := float(i) / float(sr)
-		var wood_thud := exp(-t * 28.0) * sin(TAU * 135.0 * t) * 0.55
-		var pewter_ring := exp(-t * 14.0) * (0.35 * sin(TAU * 587.3 * t) + 0.25 * sin(TAU * 1174.6 * t) + 0.15 * sin(TAU * 1760.0 * t))
-		s_mug[i] = (wood_thud + pewter_ring) * 0.85
-	sfx_cache["prop_tankard"] = _make_pcm16_wav(s_mug, sr)
-
-	# 4. Clickable Coin Stack Jingle (4 cascading silver/gold florin strikes)
-	var n_coin := int(sr * 0.36)
-	var s_coin := PackedFloat32Array()
-	s_coin.resize(n_coin)
-	var c_times := [0.0, 0.055, 0.115, 0.175]
-	var c_freqs := [2349.3, 2793.8, 3136.0, 3951.1]
-	for i in range(n_coin):
-		var t := float(i) / float(sr)
-		var sig := 0.0
-		for k in range(4):
-			var dt: float = t - c_times[k]
-			if dt >= 0.0:
-				var f: float = c_freqs[k]
-				sig += exp(-dt * 24.0) * (0.32 * sin(TAU * f * dt) + 0.18 * sin(TAU * (f * 1.414) * dt))
-		s_coin[i] = sig * 0.85
-	sfx_cache["prop_coins"] = _make_pcm16_wav(s_coin, sr)
-
-	# 5. Clickable Bone Dice Clatter (5 crisp wooden/bone bounces)
-	var n_dice := int(sr * 0.32)
-	var s_dice := PackedFloat32Array()
-	s_dice.resize(n_dice)
-	var d_hits := [0.0, 0.05, 0.105, 0.165, 0.23]
-	for i in range(n_dice):
-		var t := float(i) / float(sr)
-		var sig := 0.0
-		for k in range(d_hits.size()):
-			var dt: float = t - d_hits[k]
-			if dt >= 0.0 and dt < 0.045:
-				var f := 620.0 + float(k) * 115.0
-				sig += exp(-dt * 65.0) * (sin(TAU * f * dt) + 0.5 * sin(TAU * (f * 2.3) * dt)) * (1.0 - float(k) * 0.12)
-		s_dice[i] = sig * 0.78
-	sfx_cache["prop_dice"] = _make_pcm16_wav(s_dice, sr)
-
-	# 6. Boss Modifier Omen Flare (Dark Gothic Low Brass Fifth)
-	var n_boss := int(sr * 0.44)
-	var s_boss := PackedFloat32Array()
-	s_boss.resize(n_boss)
-	for i in range(n_boss):
-		var t := float(i) / float(sr)
-		var env := minf(1.0, t / 0.025) * exp(-t * 5.2)
-		var sig := 0.42 * sin(TAU * 73.42 * t) + 0.34 * sin(TAU * 110.0 * t) + 0.24 * sin(TAU * 146.83 * t) + 0.15 * sin(TAU * 220.0 * t)
-		s_boss[i] = sig * env * 0.85
-	sfx_cache["boss_omen"] = _make_pcm16_wav(s_boss, sr)
-
-	# 7. Ghost Companion Speech Syllable (Warm Spectral Formant Blip)
-	var n_ghost := int(sr * 0.085)
-	var s_ghost := PackedFloat32Array()
-	s_ghost.resize(n_ghost)
-	for i in range(n_ghost):
-		var t := float(i) / float(sr)
-		var env := sin(PI * clampf(t / 0.085, 0.0, 1.0))
-		var freq := 245.0 + sin(t * 48.0) * 38.0
-		var sig := 0.55 * sin(TAU * freq * t) + 0.25 * sin(TAU * (freq * 2.0) * t) + 0.12 * sin(TAU * (freq * 3.0) * t)
-		s_ghost[i] = sig * env * 0.42
-	sfx_cache["ghost_speak"] = _make_pcm16_wav(s_ghost, sr)
-
-	# 8. Goose-Quill Ink Scratch on Parchment (3 organic dry-nib whisper variations)
-	for q_i in range(3):
-		var q_dur := 0.052 + float(q_i) * 0.008
-		var n_q := int(sr * q_dur)
-		var s_q := PackedFloat32Array()
-		s_q.resize(n_q)
-		var seed_v := 713 + q_i * 977
-		var prev_lp := 0.0
-		var prev_bp := 0.0
-		for i in range(n_q):
-			var t := float(i) / float(sr)
-			var u := clampf(t / q_dur, 0.0, 1.0)
-			var env := sin(PI * pow(u, 0.65)) * exp(-u * 1.45)
-			seed_v = int((seed_v * 1103515245 + 12345) & 0x7fffffff)
-			var white := (float(seed_v % 20001) / 10000.0) - 1.0
-			# Dual-band paper grain resonance (soft fiber rustle + subtle nib edge chirp)
-			prev_lp = lerpf(prev_lp, white, 0.32)
-			var hp := white - prev_lp
-			prev_bp = lerpf(prev_bp, hp, 0.48)
-			var grain := 0.42 * hp + 0.28 * prev_bp + 0.18 * sin(TAU * (1580.0 + float(q_i) * 210.0 + sin(u * PI * 3.0) * 320.0) * t)
-			s_q[i] = clampf(grain * env * 0.56, -0.95, 0.95)
-		var q_wav := _make_pcm16_wav(s_q, sr)
-		sfx_cache["quill_scratch_%d" % q_i] = q_wav
-		if q_i == 0:
-			sfx_cache["quill_scratch"] = q_wav
+	# Simple repeating single-tone procedural battle SFX (chord_lute, overdrive_hum,
+	# prop_tankard/coins/dice, boss_omen, ghost_speak, quill_scratch) removed so battle
+	# audio uses only rich complex music tracks and real studio foley/impact SFX.
+	pass
 
 func _load_audio(stem_or_path: String, loop: bool) -> AudioStream:
 	var stem := stem_or_path.get_basename() if (stem_or_path.ends_with(".mp3") or stem_or_path.ends_with(".wav")) else stem_or_path
@@ -1154,17 +1028,8 @@ func _ready() -> void:
 	ui_layer.add_child(transition_curtain)
 
 	_apply_audio_state()
-	var is_headless_run := (DisplayServer.get_name() == "headless") or ("--script" in OS.get_cmdline_args())
-	if is_headless_run:
-		_switch_to(ScreenState.SPLASH)
-	else:
-		# Launch Ouroboros 2D woodcut loading screen before Fujira splash
-		var loader := SnakeLoadingScreenScript.new()
-		loader.volume_db = -80.0 if (audio_muted or audio_volume_pct <= 0) else (-4.0 + linear_to_db(clampf(float(audio_volume_pct) / 100.0, 0.05, 1.0)))
-		add_child(loader)
-		loader.finished.connect(func():
-			_switch_to(ScreenState.SPLASH)
-		)
+	# Startup opens directly with the Fujira Studios intro + Fujira Studios sound
+	_switch_to(ScreenState.SPLASH)
 
 func _preload_custom_card_faces() -> void:
 	for s in LOBBY_SUITS:
@@ -1462,6 +1327,18 @@ func _on_match_lost_details(details: Dictionary) -> void:
 	pending_post_match_shop = true
 	Catalog.save_profile(run_profile)
 
+func show_ouroboros_loading(title: String, on_mid: Callable = Callable(), duration_sec: float = 2.9) -> void:
+	var is_headless_run := (DisplayServer.get_name() == "headless") or ("--script" in OS.get_cmdline_args())
+	if is_headless_run:
+		if on_mid.is_valid():
+			on_mid.call()
+		return
+	var loader := SnakeLoadingScreenScript.new()
+	var vdb := -80.0 if (audio_muted or audio_volume_pct <= 0) else (-6.5 + linear_to_db(clampf(float(audio_volume_pct) / 100.0, 0.05, 1.0)))
+	loader.configure_transition(title, on_mid, duration_sec, vdb)
+	add_child(loader)
+
+
 func _launch_era_battle(era_idx: int, force_tutorial: bool = false) -> void:
 	var idx := clampi(era_idx, 0, ERAS_DATA.size() - 1)
 	var era: Dictionary = ERAS_DATA[idx]
@@ -1470,8 +1347,11 @@ func _launch_era_battle(era_idx: int, force_tutorial: bool = false) -> void:
 	var loadout := {} if run_tut else _build_roguelite_loadout_for_era(era, false)
 	if not run_tut:
 		loadout["profile"] = run_profile
-	battle_3d.start_3d_battle(era, PLAYER_DECKS[selected_deck_idx], run_tut, loadout)
-	_switch_to(ScreenState.MATCH_3D)
+	var era_title := _tr("ENTERING DUEL — %s" % str(era.get("name", "TAVERN")).to_upper(), "NAČÍTÁNÍ DUELU — %s" % str(era.get("name_cs", "KRČMA")).to_upper())
+	show_ouroboros_loading(era_title, func():
+		battle_3d.start_3d_battle(era, PLAYER_DECKS[selected_deck_idx], run_tut, loadout)
+		_switch_to(ScreenState.MATCH_3D)
+	, 2.8)
 
 # ============================================================================
 # 1. EPICKÉ INTRO: FUJIRA STUDIOS (Vystúpi hora -> Zasneží -> Kamzíky & iskry)
@@ -1625,7 +1505,8 @@ func _build_splash_screen() -> void:
 		fb.mesh = _build_jagged_peak_mesh(0.28, 2.2, 2.65, 16, 42)
 		fb.material_override = splash_mtn_mat
 		splash_mtn_root.add_child(fb)
-	splash_mtn_root.position = Vector3(0.0, -3.0, 0.0)
+	splash_mtn_root.scale = Vector3.ONE * 0.78
+	splash_mtn_root.position = Vector3(0.0, -2.85, 0.0)
 	splash_3d_vp.add_child(splash_mtn_root)
 
 	# 3D fine summit micro-snow & drifting mist particles
@@ -1671,32 +1552,117 @@ func _build_splash_screen() -> void:
 	splash_3d_snow_particles.draw_pass_1 = snow_qm
 	splash_3d_vp.add_child(splash_3d_snow_particles)
 
-	# 3 Animated Blender 3D Tatra Chamois leaping across Krivan's snow-draped front ridge
-	splash_chamois_nodes.clear()
-	splash_chamois_anims.clear()
-	splash_chamois_trails.clear()
-	var chamois_outline := ShaderMaterial.new()
-	chamois_outline.shader = preload("res://shaders/outline.gdshader")
-	chamois_outline.set_shader_parameter("thickness", 0.005)
-	chamois_outline.set_shader_parameter("outline_color", Color(0.08, 0.05, 0.03, 1.0))
-	var chamois_scales := [0.56, 0.50, 0.46]
-	for c_idx in range(3):
-		var c_inst := _load_glb_scene("res://assets/models/intro_chamois.glb")
-		if c_inst == null:
-			continue
-		c_inst.visible = false
-		c_inst.scale = Vector3.ONE * float(chamois_scales[c_idx])
-		_attach_outline_to_surfaces(c_inst, chamois_outline)
-		splash_3d_vp.add_child(c_inst)
-		splash_chamois_nodes.append(c_inst)
-		var ap := _find_anim_player_recursive(c_inst)
-		if ap != null:
-			if ap.has_animation("LeapCycle"):
-				var anim_l := ap.get_animation("LeapCycle")
-				if anim_l != null:
-					anim_l.loop_mode = Animation.LOOP_LINEAR
-			ap.speed_scale = 1.30
-		splash_chamois_anims.append(ap)
+	# Articulated 3D Soaring Alpine Eagle / Falcon flying in across Krivan's snow peak!
+	splash_bird_trails.clear()
+	var bird_outline := ShaderMaterial.new()
+	bird_outline.shader = preload("res://shaders/outline.gdshader")
+	bird_outline.set_shader_parameter("thickness", 0.008)
+	bird_outline.set_shader_parameter("outline_color", Color(0.05, 0.03, 0.02, 1.0))
+
+	var mat_plumage := StandardMaterial3D.new()
+	mat_plumage.albedo_color = Color(0.16, 0.11, 0.08)
+	mat_plumage.roughness = 0.65
+	mat_plumage.next_pass = bird_outline
+
+	var mat_head_gold := StandardMaterial3D.new()
+	mat_head_gold.albedo_color = Color(0.46, 0.30, 0.14)
+	mat_head_gold.roughness = 0.55
+	mat_head_gold.next_pass = bird_outline
+
+	var mat_beak := StandardMaterial3D.new()
+	mat_beak.albedo_color = Color(0.96, 0.74, 0.22)
+	mat_beak.roughness = 0.35
+	mat_beak.next_pass = bird_outline
+
+	var mat_wing_tip := StandardMaterial3D.new()
+	mat_wing_tip.albedo_color = Color(0.10, 0.07, 0.06)
+	mat_wing_tip.roughness = 0.62
+	mat_wing_tip.next_pass = bird_outline
+
+	splash_bird_root = Node3D.new()
+	splash_bird_root.visible = false
+	splash_bird_root.scale = Vector3.ONE * 0.72
+	splash_3d_vp.add_child(splash_bird_root)
+
+	# Streamlined feathered torso pointing along +X
+	var b_torso := MeshInstance3D.new()
+	var t_sph := SphereMesh.new()
+	t_sph.radius = 0.12; t_sph.height = 0.44
+	b_torso.mesh = t_sph
+	b_torso.rotation_degrees = Vector3(0.0, 0.0, -90.0)
+	b_torso.scale = Vector3(0.75, 1.0, 0.82)
+	b_torso.material_override = mat_plumage
+	splash_bird_root.add_child(b_torso)
+
+	# Golden eagle head & hooked beak at +X front
+	var b_head := MeshInstance3D.new()
+	var h_sph := SphereMesh.new()
+	h_sph.radius = 0.078; h_sph.height = 0.16
+	b_head.mesh = h_sph
+	b_head.position = Vector3(0.24, 0.03, 0.0)
+	b_head.material_override = mat_head_gold
+	splash_bird_root.add_child(b_head)
+
+	var b_beak := MeshInstance3D.new()
+	var bk_prism := PrismMesh.new()
+	bk_prism.size = Vector3(0.055, 0.11, 0.042)
+	b_beak.mesh = bk_prism
+	b_beak.position = Vector3(0.34, 0.015, 0.0)
+	b_beak.rotation_degrees = Vector3(0.0, 0.0, -102.0)
+	b_beak.material_override = mat_beak
+	splash_bird_root.add_child(b_beak)
+
+	# Fanned tail feathers at -X rear
+	for tf_i in range(-2, 3):
+		var tf := MeshInstance3D.new()
+		var tf_box := BoxMesh.new()
+		tf_box.size = Vector3(0.28, 0.014, 0.055)
+		tf.mesh = tf_box
+		tf.position = Vector3(-0.28, -0.01, float(tf_i) * 0.042)
+		tf.rotation_degrees = Vector3(0.0, float(tf_i) * -10.5, 4.0)
+		tf.material_override = mat_wing_tip if abs(tf_i) == 2 else mat_plumage
+		splash_bird_root.add_child(tf)
+
+	# Articulated Left (-Z) & Right (+Z) Wings with layered primary flight feathers
+	for side_s in [-1.0, 1.0]:
+		var w_piv := Node3D.new()
+		w_piv.position = Vector3(0.04, 0.04, side_s * 0.07)
+		splash_bird_root.add_child(w_piv)
+		if side_s < 0.0:
+			splash_bird_wing_l = w_piv
+		else:
+			splash_bird_wing_r = w_piv
+
+		# Inner wing airfoil
+		var w_in := MeshInstance3D.new()
+		var wi_b := BoxMesh.new()
+		wi_b.size = Vector3(0.24, 0.022, 0.42)
+		w_in.mesh = wi_b
+		w_in.position = Vector3(-0.02, 0.0, side_s * 0.20)
+		w_in.rotation_degrees = Vector3(0.0, side_s * -8.0, 0.0)
+		w_in.material_override = mat_plumage
+		w_piv.add_child(w_in)
+
+		# Swept outer wing pinion
+		var w_out := MeshInstance3D.new()
+		var wo_b := BoxMesh.new()
+		wo_b.size = Vector3(0.18, 0.016, 0.44)
+		w_out.mesh = wo_b
+		w_out.position = Vector3(-0.09, 0.01, side_s * 0.56)
+		w_out.rotation_degrees = Vector3(side_s * 6.0, side_s * -20.0, 0.0)
+		w_out.material_override = mat_wing_tip
+		w_piv.add_child(w_out)
+
+		# Splayed primary flight feathers at wingtip
+		for pf_i in range(4):
+			var pf := MeshInstance3D.new()
+			var pf_b := BoxMesh.new()
+			pf_b.size = Vector3(0.055, 0.010, 0.22 - float(pf_i) * 0.02)
+			pf.mesh = pf_b
+			pf.position = Vector3(-0.06 - float(pf_i) * 0.052, 0.02 + float(pf_i) * 0.004, side_s * (0.78 - float(pf_i) * 0.04))
+			pf.rotation_degrees = Vector3(side_s * 12.0, side_s * (-12.0 - float(pf_i) * 11.0), 0.0)
+			pf.material_override = mat_wing_tip
+			w_piv.add_child(pf)
 
 	# 3. Front layer: foreground snow flakes, golden hoof spindrift, studio title & dark curtain
 	splash_canvas = Control.new()
@@ -1730,11 +1696,12 @@ func _draw_splash_sky() -> void:
 	splash_sky_canvas.draw_circle(sun_pos, 82.0 * sun_rise, Color(1.0, 0.88, 0.54, 0.82 * sun_rise))
 
 
-func _krivan_chamois_arc_pos(gp: float, c_idx: int) -> Vector3:
-	var x := lerpf(-2.45, 2.58, gp)
-	var shoulder_y := 1.44 + (1.0 - pow(clampf(absf(x) / 2.6, 0.0, 1.0), 1.45)) * 0.74
-	var y := shoulder_y + sin(gp * PI) * 0.62 + float(c_idx % 2) * 0.14
-	var z := 0.94 + float(c_idx) * 0.14 - sin(gp * PI) * 0.08
+func _krivan_bird_flight_pos(gp: float) -> Vector3:
+	# Sweeping eagle swoop from upper-left sky down toward the peak crest, then soaring toward sunrise right!
+	var x := lerpf(-3.25, 3.15, gp)
+	var dip := -sin(gp * PI) * 0.42 + pow(maxf(0.0, gp - 0.45), 1.6) * 0.85
+	var y := 2.32 + dip
+	var z := lerpf(1.45, 0.72, gp) + sin(gp * PI * 1.4) * 0.22
 	return Vector3(x, y, z)
 
 
@@ -1747,13 +1714,13 @@ func _update_splash_3d() -> void:
 		rise_ease = 1.0 + sin(settle * PI) * 0.035
 
 	if is_instance_valid(splash_mtn_root):
-		splash_mtn_root.position.y = lerpf(-2.95, -0.22, rise_ease)
+		splash_mtn_root.position.y = lerpf(-2.85, -0.04, rise_ease)
 		splash_mtn_root.rotation_degrees.y = sin(t * 0.42) * 3.5
 
 	if is_instance_valid(splash_3d_cam):
 		var cam_dolly := clampf(t / 4.2, 0.0, 1.0)
-		splash_3d_cam.position = Vector3(sin(t * 0.35) * 0.18, lerpf(0.72, 0.82, cam_dolly), lerpf(8.35, 7.75, cam_dolly))
-		splash_3d_cam.look_at(Vector3(0.0, lerpf(1.36, 1.30, cam_dolly), 0.0), Vector3.UP)
+		splash_3d_cam.position = Vector3(sin(t * 0.35) * 0.18, lerpf(0.76, 0.84, cam_dolly), lerpf(8.85, 8.25, cam_dolly))
+		splash_3d_cam.look_at(Vector3(0.0, lerpf(1.24, 1.18, cam_dolly), 0.0), Vector3.UP)
 
 	if is_instance_valid(splash_3d_sun):
 		var sun_sweep := clampf((t - 0.2) / 3.2, 0.0, 1.0)
@@ -1768,8 +1735,8 @@ func _update_splash_3d() -> void:
 	if is_instance_valid(splash_3d_snow_particles):
 		splash_3d_snow_particles.emitting = (t >= 0.90 and t <= 4.10)
 
-	# Animate 3 Blender 3D Tatra Chamois leaping gracefully across Krivan's snow-draped ridge
-	splash_chamois_trails.clear()
+	# Animate soaring 3D Alpine Bird flying in across the smaller Krivan peak!
+	splash_bird_trails.clear()
 	var can_unproject := (
 		is_instance_valid(splash_3d_cam)
 		and is_instance_valid(splash_3d_vp)
@@ -1781,43 +1748,35 @@ func _update_splash_3d() -> void:
 	if can_unproject:
 		vp_to_canvas = splash_3d_container.size / Vector2(splash_3d_vp.size)
 
-	for c_idx in range(splash_chamois_nodes.size()):
-		var ch := splash_chamois_nodes[c_idx]
-		if not is_instance_valid(ch):
-			continue
-		var ap: AnimationPlayer = splash_chamois_anims[c_idx] if c_idx < splash_chamois_anims.size() else null
-		var g_start := 2.02 + float(c_idx) * 0.34
-		var gp := (t - g_start) / 1.18
-		if gp > 0.005 and gp < 0.995:
-			if not ch.visible:
-				ch.visible = true
-				if is_instance_valid(ap) and ap.has_animation("LeapCycle"):
-					ap.play("LeapCycle")
-					ap.seek(fmod(float(c_idx) * 0.22, 1.1), true)
-			var pos_now := _krivan_chamois_arc_pos(gp, c_idx)
-			var pos_next := _krivan_chamois_arc_pos(minf(gp + 0.025, 1.0), c_idx)
+	if is_instance_valid(splash_bird_root):
+		var bp := (t - 1.55) / 2.25
+		if bp > 0.005 and bp < 0.995:
+			splash_bird_root.visible = true
+			var pos_now := _krivan_bird_flight_pos(bp)
+			var pos_next := _krivan_bird_flight_pos(minf(bp + 0.025, 1.0))
 			var vel := pos_next - pos_now
-			ch.position = pos_now
+			splash_bird_root.position = pos_now
 			var pitch_deg := rad_to_deg(atan2(vel.y, maxf(0.001, vel.x)))
-			ch.rotation_degrees = Vector3(sin(gp * PI * 2.0) * 4.5, -12.0 + float(c_idx) * 3.0, clampf(pitch_deg, -34.0, 34.0))
+			var bank_deg := sin(bp * PI * 1.5) * 18.0
+			splash_bird_root.rotation_degrees = Vector3(bank_deg, -10.0, clampf(pitch_deg, -28.0, 28.0))
+			# Realistic alternating powerful wingbeats -> majestic soaring glide across the summit
+			var flap_env := 1.0 if (bp < 0.38 or bp > 0.72) else 0.18
+			var flap_deg := sin(t * 11.5) * 34.0 * flap_env + 6.0
+			if is_instance_valid(splash_bird_wing_l):
+				splash_bird_wing_l.rotation_degrees.x = flap_deg
+			if is_instance_valid(splash_bird_wing_r):
+				splash_bird_wing_r.rotation_degrees.x = -flap_deg
 
 			if can_unproject:
-				var edge_fade := clampf(sin(gp * PI) * 2.6, 0.0, 1.0)
-				for tr_i in range(1, 7):
-					var tp := clampf(gp - float(tr_i) * 0.024, 0.0, 1.0)
-					var w_tr := _krivan_chamois_arc_pos(tp, c_idx) + Vector3(-0.14, 0.04, 0.0)
+				var edge_fade := clampf(sin(bp * PI) * 2.4, 0.0, 1.0)
+				for tr_i in range(1, 9):
+					var tp := clampf(bp - float(tr_i) * 0.022, 0.0, 1.0)
+					var w_tr := _krivan_bird_flight_pos(tp) + Vector3(-0.18, 0.02, 0.0)
 					if not splash_3d_cam.is_position_behind(w_tr):
 						var s_pt := splash_3d_cam.unproject_position(w_tr) * vp_to_canvas
-						splash_chamois_trails.append({
-							"pos": s_pt,
-							"step": tr_i,
-							"alpha": edge_fade,
-						})
+						splash_bird_trails.append({"pos": s_pt, "step": tr_i, "alpha": edge_fade})
 		else:
-			if ch.visible:
-				ch.visible = false
-				if is_instance_valid(ap):
-					ap.stop()
+			splash_bird_root.visible = false
 
 	if is_instance_valid(splash_sky_canvas):
 		splash_sky_canvas.queue_redraw()
@@ -1875,13 +1834,13 @@ func _draw_splash_animation() -> void:
 			var rad := 0.9 + fmod(float(f_i) * 0.31, 0.75)
 			splash_canvas.draw_circle(Vector2(fx, fy), rad, Color(0.96, 0.98, 1.0, 0.46 * mist_alpha * sin(fy_cyc * PI)))
 
-	# Zlatisté obláčiky snežného prašanu za kopytami 3D kamzíkov
-	for tr in splash_chamois_trails:
+	# Zlatistý vzdušný vír a peříčka za letícím alpským orlem
+	for tr in splash_bird_trails:
 		var tr_i: int = int(tr["step"])
 		var edge_fade: float = float(tr["alpha"])
 		var s_pos: Vector2 = tr["pos"]
-		var p_col := Color(1.0, 0.98, 0.92, (0.50 - float(tr_i) * 0.07) * edge_fade) if (tr_i % 2 == 0) else Color(0.98, 0.80, 0.34, (0.54 - float(tr_i) * 0.08) * edge_fade)
-		splash_canvas.draw_circle(s_pos, maxf(1.2, 6.2 - float(tr_i) * 0.7), p_col)
+		var p_col := Color(1.0, 0.96, 0.86, (0.42 - float(tr_i) * 0.045) * edge_fade) if (tr_i % 2 == 0) else Color(0.98, 0.78, 0.36, (0.46 - float(tr_i) * 0.05) * edge_fade)
+		splash_canvas.draw_circle(s_pos, maxf(1.2, 5.2 - float(tr_i) * 0.5), p_col)
 
 	# Podkladová linka horizontu
 	splash_canvas.draw_line(Vector2(cx - 460.0 * rise_ease, horizon_y), Vector2(cx + 460.0 * rise_ease, horizon_y), Color(0.24, 0.18, 0.13, 0.88), 3.2)
@@ -3274,7 +3233,7 @@ func _populate_menu_signs() -> void:
 		44.0,
 		38,
 		true,
-		func(): _switch_to(ScreenState.WORLD_3D),
+		func(): show_ouroboros_loading(_tr("LOADING CAMPAIGN MAP", "NAČÍTÁNÍ MAPY KAMPANĚ"), func(): _switch_to(ScreenState.WORLD_3D), 2.3),
 		true
 	))
 
@@ -3287,7 +3246,7 @@ func _populate_menu_signs() -> void:
 		25,
 		true,
 		func():
-			_play_transition_to(func(): _launch_era_battle(0, true))
+			_launch_era_battle(0, true)
 	)
 	tut_sign.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hero_row.add_child(tut_sign)

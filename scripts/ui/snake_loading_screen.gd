@@ -1,10 +1,10 @@
 extends CanvasLayer
-## LIALO Ouroboros Serpent Loading Screen (v2 — Hand-Drawn Woodcut 2D Edition)
-## - Detailed woodcut/ink 2D serpent sprite ribbon (head closed/open, tiled scale body, barbed tail)
-## - 4-phase choreography: Slither In -> Tightening Coil -> 2× Tail-Dodge Bite Lunges -> 3rd Clamp Ouroboros Seal
-## - Drifting hand-drawn LIALO cards background with parallax & occasional ink/ember burn
-## - Plays assets/audio/sfx_loading_snake.mp3 (<= 15 s) + synced procedural hiss/snap SFX
-## - Click/key skip after 3.0 s; auto-finishes after choreography; skipped in headless/script runs.
+## LIALO Ouroboros Serpent Loading Screen (v3 — Ultra-Detailed Woodcut 2D Edition)
+## - High-resolution 1024x256 anatomical keeled-scale serpent body ribbon with seamless UV tiling
+## - Detailed fanged head (closed/open) + spined barbed tail + crimson woodcut aura
+## - Used whenever loading Campaign battles, Multiplayer matches, or World transitions
+## - Plays ONLY the rich studio track assets/audio/sfx_loading_snake.mp3 (no simple sine tones!)
+## - Supports fast transition loading mode (auto-fires on_mid_load callback behind cover)
 
 signal finished
 
@@ -16,29 +16,29 @@ const HEAD_OPEN_PATH := "res://assets/ui/ouroboros_head_open.png"
 const BODY_STRIP_PATH := "res://assets/ui/ouroboros_body_strip.png"
 const TAIL_PATH := "res://assets/ui/ouroboros_tail.png"
 
-const MIN_SKIP_TIME := 3.0
-const AUTO_END_TIME := 10.6
 const AUDIO_MAX_SEC := 15.0
-
-const SEGMENTS := 56
-const SEG_SPACING := 10.5
-const START_CIRCLE_R := 192.0
+const SEGMENTS := 64
+const SEG_SPACING := 9.2
+const START_CIRCLE_R := 188.0
 const SEAL_CIRCLE_R := 124.0
 
 var volume_db: float = -4.0
+var loading_title: String = "LOADING"
+var min_skip_time: float = 0.85
+var auto_end_time: float = 3.2
+var transition_mode: bool = true
+var on_mid_load: Callable = Callable()
+
 var _t: float = 0.0
+var _mid_fired: bool = false
 var _ending: bool = false
 var _root: Control
 var _canvas: Control
 var _label: Label
 var _sub_label: Label
 var _player: AudioStreamPlayer
-var _sfx_player: AudioStreamPlayer
-var _sfx_hiss: AudioStreamWAV
-var _sfx_snap: AudioStreamWAV
-var _sfx_seal: AudioStreamWAV
 
-# Textures
+# High-res textures
 var _tex_head_closed: Texture2D
 var _tex_head_open: Texture2D
 var _tex_body: Texture2D
@@ -67,9 +67,18 @@ var _sparks: Array[Dictionary] = []
 var _rng := RandomNumberGenerator.new()
 
 
+func configure_transition(title: String, mid_cb: Callable = Callable(), duration_sec: float = 3.0, vol_db: float = -5.0) -> void:
+	loading_title = title
+	on_mid_load = mid_cb
+	transition_mode = true
+	auto_end_time = clampf(duration_sec, 2.0, 10.6)
+	min_skip_time = 0.9 if auto_end_time <= 4.0 else 3.0
+	volume_db = vol_db
+
+
 func _ready() -> void:
-	layer = 90
-	_rng.seed = 2026192
+	layer = 95
+	_rng.seed = int(Time.get_ticks_msec()) ^ 2026193
 
 	_tex_head_closed = Toon.tex(HEAD_CLOSED_PATH)
 	_tex_head_open = Toon.tex(HEAD_OPEN_PATH)
@@ -80,29 +89,32 @@ func _ready() -> void:
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_root.mouse_filter = Control.MOUSE_FILTER_STOP
+	_root.modulate.a = 0.0
 	add_child(_root)
 
 	var bg := ColorRect.new()
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.color = Color(0.036, 0.022, 0.022, 1.0)
+	bg.color = Color(0.032, 0.019, 0.020, 1.0)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(bg)
 
 	_canvas = Control.new()
 	_canvas.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_canvas.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_canvas.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	_canvas.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	_canvas.draw.connect(_draw_scene)
 	_root.add_child(_canvas)
 
 	_label = Label.new()
-	_label.text = "LIALO"
+	_label.text = loading_title
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_label.offset_top = -98
-	_label.offset_left = -260
-	_label.offset_right = 260
+	_label.offset_left = -320
+	_label.offset_right = 320
 	_label.add_theme_font_size_override("font_size", 24)
-	_label.add_theme_color_override("font_color", Color(0.92, 0.78, 0.48))
+	_label.add_theme_color_override("font_color", Color(0.94, 0.80, 0.48))
 	_label.add_theme_color_override("font_outline_color", Color(0.04, 0.02, 0.02))
 	_label.add_theme_constant_override("outline_size", 5)
 	_root.add_child(_label)
@@ -112,33 +124,45 @@ func _ready() -> void:
 	_sub_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_sub_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	_sub_label.offset_top = -62
-	_sub_label.offset_left = -260
-	_sub_label.offset_right = 260
+	_sub_label.offset_left = -280
+	_sub_label.offset_right = 280
 	_sub_label.add_theme_font_size_override("font_size", 14)
 	_sub_label.add_theme_color_override("font_color", Color(0.76, 0.62, 0.46, 0.85))
 	_root.add_child(_sub_label)
 
 	var vs := _vp_size()
-	_head_pos = Vector2(-90.0, vs.y * 0.76)
-	_head_dir = Vector2(0.86, -0.5).normalized()
-	_trail.clear()
-	for i in range(SEGMENTS * 4):
-		_trail.append(_head_pos - _head_dir * (float(i) * 3.5))
+	var center := vs * 0.5
+	if transition_mode:
+		# Start already sweeping into the center coil so loading feels immediate and vivid!
+		_circle_ang = PI * 0.9
+		_circle_r = START_CIRCLE_R
+		_head_pos = center + Vector2(cos(_circle_ang), sin(_circle_ang)) * _circle_r
+		_head_dir = Vector2(-sin(_circle_ang), cos(_circle_ang)).normalized()
+		_phase = 1
+		_trail.clear()
+		for i in range(SEGMENTS * 4):
+			var a := _circle_ang - float(i) * 0.032
+			_trail.append(center + Vector2(cos(a), sin(a)) * (_circle_r + float(i) * 0.18))
+	else:
+		_head_pos = Vector2(-90.0, vs.y * 0.76)
+		_head_dir = Vector2(0.86, -0.5).normalized()
+		_trail.clear()
+		for i in range(SEGMENTS * 4):
+			_trail.append(_head_pos - _head_dir * (float(i) * 3.5))
 
 	_init_bg_cards(vs)
-	_build_procedural_sfx()
+
+	# Smooth quick fade-in over 0.22s so loading transitions feel crisp
+	var fade_in := create_tween()
+	fade_in.tween_property(_root, "modulate:a", 1.0, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 	_player = AudioStreamPlayer.new()
 	_player.volume_db = volume_db
 	add_child(_player)
 	var st := _load_stream()
-	if st:
+	if st and volume_db > -70.0 and DisplayServer.get_name() != "headless":
 		_player.stream = st
 		_player.play()
-
-	_sfx_player = AudioStreamPlayer.new()
-	_sfx_player.volume_db = volume_db - 2.0
-	add_child(_sfx_player)
 
 
 func _load_bg_card_textures() -> void:
@@ -174,70 +198,8 @@ func _init_bg_cards(vs: Vector2) -> void:
 			"depth": depth,
 			"flip_phase": _rng.randf_range(0.0, TAU),
 			"burn": 0.0,
-			"burn_cd": _rng.randf_range(2.2, 8.5),
+			"burn_cd": _rng.randf_range(1.6, 6.5),
 		})
-
-
-func _build_procedural_sfx() -> void:
-	var sr := 22050
-	# 1. Serpent Hiss (sibilant bandpass-like hiss)
-	var n_h := int(sr * 0.42)
-	var s_h := PackedFloat32Array()
-	s_h.resize(n_h)
-	var prev := 0.0
-	for i in range(n_h):
-		var t := float(i) / float(sr)
-		var env := minf(1.0, t / 0.06) * exp(-t * 4.5)
-		var wn := _rng.randf_range(-1.0, 1.0)
-		var hp := wn - prev * 0.85
-		prev = wn
-		s_h[i] = hp * env * 0.28
-	_sfx_hiss = _pcm16(s_h, sr)
-
-	# 2. Fang Snap (sharp percussive jaw click + low thud)
-	var n_s := int(sr * 0.24)
-	var s_s := PackedFloat32Array()
-	s_s.resize(n_s)
-	for i in range(n_s):
-		var t := float(i) / float(sr)
-		var click := exp(-t * 45.0) * sin(TAU * (820.0 - t * 2400.0) * t)
-		var thud := exp(-t * 18.0) * sin(TAU * 135.0 * t)
-		var grit := exp(-t * 32.0) * _rng.randf_range(-0.35, 0.35)
-		s_s[i] = clampf((click * 0.55 + thud * 0.48 + grit * 0.3), -1.0, 1.0) * 0.72
-	_sfx_snap = _pcm16(s_s, sr)
-
-	# 3. Ouroboros Seal Resonance (deep resonant arcane gong)
-	var n_g := int(sr * 0.95)
-	var s_g := PackedFloat32Array()
-	s_g.resize(n_g)
-	for i in range(n_g):
-		var t := float(i) / float(sr)
-		var env := minf(1.0, t / 0.015) * exp(-t * 2.4)
-		var sig := sin(TAU * 110.0 * t) * 0.45 + sin(TAU * 164.81 * t) * 0.30 + sin(TAU * 220.0 * t) * 0.22 + sin(TAU * 440.0 * t) * 0.12
-		s_g[i] = clampf(sig * env * 0.78, -1.0, 1.0)
-	_sfx_seal = _pcm16(s_g, sr)
-
-
-func _pcm16(samples: PackedFloat32Array, mix_rate: int) -> AudioStreamWAV:
-	var wav := AudioStreamWAV.new()
-	wav.format = AudioStreamWAV.FORMAT_16_BITS
-	wav.mix_rate = mix_rate
-	wav.stereo = false
-	wav.loop_mode = AudioStreamWAV.LOOP_DISABLED
-	var bytes := PackedByteArray()
-	bytes.resize(samples.size() * 2)
-	for i in range(samples.size()):
-		var v := clampi(int(round(clampf(samples[i], -1.0, 1.0) * 32767.0)), -32768, 32767)
-		bytes.encode_s16(i * 2, v)
-	wav.data = bytes
-	return wav
-
-
-func _play_fx(st: AudioStreamWAV, pitch: float = 1.0) -> void:
-	if is_instance_valid(_sfx_player) and st != null:
-		_sfx_player.stream = st
-		_sfx_player.pitch_scale = pitch
-		_sfx_player.play()
 
 
 func _load_stream() -> AudioStream:
@@ -267,7 +229,7 @@ func _input(event: InputEvent) -> void:
 		var vp := get_viewport()
 		if vp:
 			vp.set_input_as_handled()
-		if _t >= MIN_SKIP_TIME:
+		if _t >= min_skip_time and _mid_fired:
 			_finish()
 
 
@@ -289,8 +251,14 @@ func _process(delta: float) -> void:
 	var dt := minf(delta, 0.05)
 	_t += dt
 	_phase_t += dt
-	_bite_flash = maxf(0.0, _bite_flash - dt * 2.6)
-	_tail_dodge_offset = lerpf(_tail_dodge_offset, 0.0, 1.0 - exp(-5.0 * dt))
+	_bite_flash = maxf(0.0, _bite_flash - dt * 2.8)
+	_tail_dodge_offset = lerpf(_tail_dodge_offset, 0.0, 1.0 - exp(-5.5 * dt))
+
+	# Fire heavy scene load callback safely once loading screen is opaque (~0.26s)
+	if not _mid_fired and _t >= 0.26:
+		_mid_fired = true
+		if on_mid_load.is_valid():
+			on_mid_load.call()
 
 	if is_instance_valid(_player) and _player.playing and _player.get_playback_position() >= AUDIO_MAX_SEC:
 		_player.stop()
@@ -301,15 +269,15 @@ func _process(delta: float) -> void:
 	_step_sparks(dt)
 	_step_serpent(dt, center)
 
-	var dots := int(_t * 2.2) % 4
-	_label.text = "LIALO — OUROBOROS" if _phase == 3 else ("LOADING" + ".".repeat(dots))
-	if _t >= MIN_SKIP_TIME:
-		_sub_label.text = "Click or press any key to continue"
+	var dots := int(_t * 2.5) % 4
+	_label.text = loading_title + ".".repeat(dots)
+	if _t >= min_skip_time and _mid_fired:
+		_sub_label.text = "Click or press any key to enter"
 	else:
 		_sub_label.text = ""
 
 	_canvas.queue_redraw()
-	if not _ending and _t >= AUTO_END_TIME:
+	if not _ending and _t >= auto_end_time:
 		_finish()
 
 
@@ -353,78 +321,76 @@ func _step_sparks(dt: float) -> void:
 
 func _step_serpent(dt: float, center: Vector2) -> void:
 	var prev_head := _head_pos
+	var speed_mul := 1.65 if transition_mode else 1.0
 	match _phase:
-		0: # SLITHER_IN from bottom-left to entry point of circle
+		0:
 			var entry := center + Vector2(cos(PI * 0.85), sin(PI * 0.85)) * START_CIRCLE_R
 			var to_entry := entry - _head_pos
 			var dist := to_entry.length()
-			var spd := 315.0
-			if dist < 24.0 or _phase_t >= 2.4:
+			var spd := 330.0 * speed_mul
+			if dist < 24.0 or _phase_t >= (1.4 if transition_mode else 2.4):
 				_phase = 1
 				_phase_t = 0.0
 				_circle_ang = atan2(_head_pos.y - center.y, _head_pos.x - center.x)
 				_circle_r = _head_pos.distance_to(center)
-				_play_fx(_sfx_hiss, 0.95)
 			else:
 				var d := to_entry / maxf(1.0, dist)
 				var perp := Vector2(-d.y, d.x)
 				_head_pos += d * spd * dt + perp * sin(_t * 8.5) * 145.0 * dt
 			_jaw_open = 0.0
 
-		1: # COIL: tighten orbit smoothly around center
-			var target_r := lerpf(START_CIRCLE_R, SEAL_CIRCLE_R + 28.0, clampf(_phase_t / 2.6, 0.0, 1.0))
-			_circle_r = lerpf(_circle_r, target_r, 1.0 - exp(-3.5 * dt))
-			var ang_spd := lerpf(1.65, 2.55, clampf(_phase_t / 2.6, 0.0, 1.0))
+		1:
+			var coil_dur := 0.85 if transition_mode else 2.4
+			var target_r := lerpf(START_CIRCLE_R, SEAL_CIRCLE_R + 24.0, clampf(_phase_t / coil_dur, 0.0, 1.0))
+			_circle_r = lerpf(_circle_r, target_r, 1.0 - exp(-4.8 * dt))
+			var ang_spd := lerpf(1.9, 2.8, clampf(_phase_t / coil_dur, 0.0, 1.0)) * speed_mul
 			_circle_ang += ang_spd * dt
-			var undul := sin(_t * 9.0) * 6.5
+			var undul := sin(_t * 9.5) * 6.0
 			_head_pos = center + Vector2(cos(_circle_ang), sin(_circle_ang)) * (_circle_r + undul)
 			_jaw_open = 0.0
-			if _phase_t >= 2.6:
+			if _phase_t >= coil_dur:
 				_phase = 2
 				_phase_t = 0.0
 				_bite_count = 0
 				_bite_lunge_t = 0.0
 
-		2: # BITE_CHASE: 2 lunges where tail dodges, 3rd clamps tail!
+		2:
 			_bite_lunge_t += dt
-			var lunge_period := 1.02
+			var lunge_period := 0.56 if transition_mode else 0.98
 			var local_u := fmod(_bite_lunge_t, lunge_period) / lunge_period
 			var lunge_boost := 0.0
-			if local_u > 0.58 and local_u < 0.88:
+			if local_u > 0.52 and local_u < 0.88:
 				_jaw_open = 1.0
-				lunge_boost = 1.55
+				lunge_boost = 1.75
 			else:
 				_jaw_open = lerpf(_jaw_open, 0.0, 1.0 - exp(-12.0 * dt))
 
-			var target_r := lerpf(SEAL_CIRCLE_R + 28.0, SEAL_CIRCLE_R, clampf(float(_bite_count) / 2.5, 0.0, 1.0))
-			_circle_r = lerpf(_circle_r, target_r, 1.0 - exp(-4.5 * dt))
-			_circle_ang += (2.55 + lunge_boost) * dt
+			var target_r := lerpf(SEAL_CIRCLE_R + 24.0, SEAL_CIRCLE_R, clampf(float(_bite_count) / 2.2, 0.0, 1.0))
+			_circle_r = lerpf(_circle_r, target_r, 1.0 - exp(-5.5 * dt))
+			_circle_ang += (2.6 + lunge_boost) * speed_mul * dt
 			_head_pos = center + Vector2(cos(_circle_ang), sin(_circle_ang)) * _circle_r
 
-			# Trigger snap event at peak of each lunge cycle
-			var expected_bites := int(floor((_bite_lunge_t + 0.18) / lunge_period))
+			var target_bites := 2 if transition_mode else 3
+			var expected_bites := int(floor((_bite_lunge_t + 0.12) / lunge_period))
 			if expected_bites > _bite_count:
 				_bite_count = expected_bites
 				_bite_flash = 1.0
 				_bite_flash_pos = _head_pos
-				if _bite_count < 3:
+				if _bite_count < target_bites:
 					_tail_dodge_offset = 24.0
-					_play_fx(_sfx_snap, 1.05 + float(_bite_count) * 0.08)
-					_spawn_ember_burst(_head_pos, 14, Color(1.0, 0.34, 0.18))
+					_spawn_ember_burst(_head_pos, 16, Color(1.0, 0.34, 0.18))
 				else:
-					# 3rd bite clamps the tail -> OUROBOROS SEAL!
 					_phase = 3
 					_phase_t = 0.0
 					_jaw_open = 1.0
-					_play_fx(_sfx_seal, 1.0)
-					_spawn_ember_burst(_head_pos, 32, Color(1.0, 0.82, 0.34))
+					_spawn_ember_burst(_head_pos, 34, Color(1.0, 0.82, 0.34))
 
-		3: # OUROBOROS_SEAL: Perfect closed glowing ring rotating majestically
-			_circle_r = lerpf(_circle_r, SEAL_CIRCLE_R, 1.0 - exp(-6.0 * dt))
-			_circle_ang += 0.95 * dt
+		3:
+			_circle_r = lerpf(_circle_r, SEAL_CIRCLE_R, 1.0 - exp(-6.5 * dt))
+			_circle_ang += 1.05 * dt
 			_head_pos = center + Vector2(cos(_circle_ang), sin(_circle_ang)) * _circle_r
 			_jaw_open = 1.0
-			_seal_glow = minf(1.0, _seal_glow + dt * 1.4)
+			_seal_glow = minf(1.0, _seal_glow + dt * 1.8)
 			if _rng.randf() < 0.35:
 				var ra := _rng.randf_range(0.0, TAU)
 				_spawn_ember_burst(center + Vector2(cos(ra), sin(ra)) * _circle_r, 1, Color(1.0, 0.72, 0.24))
@@ -442,7 +408,6 @@ func _step_serpent(dt: float, center: Vector2) -> void:
 func _sample_spine(center: Vector2) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	if _phase == 3:
-		# Smoothly blend spine onto exact closed Ouroboros circle so jaws grip the tail!
 		var ring_len := TAU * _circle_r * 0.96
 		for i in range(SEGMENTS):
 			var u := float(i) / float(SEGMENTS - 1)
@@ -464,7 +429,6 @@ func _sample_spine(center: Vector2) -> PackedVector2Array:
 		if pts.size() >= SEGMENTS:
 			break
 
-	# Apply whip-dodge deflection to the tail end when dodging the jaws
 	if _tail_dodge_offset > 0.5 and pts.size() > 8:
 		var n := pts.size()
 		for i in range(n - 10, n):
@@ -475,47 +439,43 @@ func _sample_spine(center: Vector2) -> PackedVector2Array:
 
 
 func _seg_half_width(u: float) -> float:
-	if u < 0.08:
-		return lerpf(18.0, 21.0, u / 0.08)
-	return lerpf(21.0, 4.5, pow((u - 0.08) / 0.92, 1.35))
+	if u < 0.09:
+		return lerpf(19.5, 24.5, u / 0.09)
+	return lerpf(24.5, 5.5, pow((u - 0.09) / 0.91, 1.28))
 
 
 func _draw_scene() -> void:
 	var vs := _vp_size()
 	var center := vs * 0.5
 
-	# 1. Background vignette + drifting hand-drawn LIALO cards
 	_draw_bg_cards()
 
-	# 2. Ancient woodcut ritual rings behind serpent
-	var ring_a := 0.22 + _seal_glow * 0.65
+	# Ancient woodcut ritual rings behind serpent
+	var ring_a := 0.24 + _seal_glow * 0.65
 	var ring_col := Color(0.68, 0.20, 0.14, ring_a).lerp(Color(1.0, 0.78, 0.32, ring_a), _seal_glow)
-	_canvas.draw_arc(center, _circle_r + 42.0, 0.0, TAU, 96, ring_col, 2.2)
-	_canvas.draw_arc(center, _circle_r - 36.0, 0.0, TAU, 96, Color(ring_col.r, ring_col.g, ring_col.b, ring_a * 0.65), 1.5)
-	# Rotating arcane tick notches on outer ring
+	_canvas.draw_arc(center, _circle_r + 46.0, 0.0, TAU, 96, ring_col, 2.4)
+	_canvas.draw_arc(center, _circle_r - 38.0, 0.0, TAU, 96, Color(ring_col.r, ring_col.g, ring_col.b, ring_a * 0.65), 1.6)
 	for ti in range(24):
 		var a := float(ti) * (TAU / 24.0) + _t * (0.28 + _seal_glow * 0.6)
-		var p1 := center + Vector2(cos(a), sin(a)) * (_circle_r + 36.0)
-		var p2 := center + Vector2(cos(a), sin(a)) * (_circle_r + 48.0)
-		_canvas.draw_line(p1, p2, ring_col, 1.8)
+		var p1 := center + Vector2(cos(a), sin(a)) * (_circle_r + 39.0)
+		var p2 := center + Vector2(cos(a), sin(a)) * (_circle_r + 53.0)
+		_canvas.draw_line(p1, p2, ring_col, 1.9)
 
 	if _seal_glow > 0.01:
-		var shock_r := SEAL_CIRCLE_R + _seal_glow * 135.0
-		_canvas.draw_arc(center, shock_r, 0.0, TAU, 96, Color(1.0, 0.76, 0.28, (1.0 - _seal_glow) * 0.85), 4.0)
+		var shock_r := SEAL_CIRCLE_R + _seal_glow * 140.0
+		_canvas.draw_arc(center, shock_r, 0.0, TAU, 96, Color(1.0, 0.76, 0.28, (1.0 - _seal_glow) * 0.88), 4.2)
 
-	# 3. Articulated woodcut Ouroboros serpent body ribbon
 	var pts := _sample_spine(center)
 	var n := pts.size()
 	if n < 3:
 		return
 
-	# Soft drop shadow underneath
+	# Soft drop shadow underneath body
 	for i in range(n - 1):
 		var u := float(i) / float(n - 1)
 		var hw := _seg_half_width(u)
-		_canvas.draw_line(pts[i] + Vector2(6, 9), pts[i + 1] + Vector2(6, 9), Color(0.0, 0.0, 0.0, 0.42), hw * 1.85)
+		_canvas.draw_line(pts[i] + Vector2(7, 10), pts[i + 1] + Vector2(7, 10), Color(0.0, 0.0, 0.0, 0.45), hw * 1.9)
 
-	# Textured scaled body quads along spine (tail -> neck so front segments layer cleanly)
 	var tangents: Array[Vector2] = []
 	for i in range(n):
 		var fwd := (pts[maxi(i - 1, 0)] - pts[mini(i + 1, n - 1)])
@@ -523,54 +483,55 @@ func _draw_scene() -> void:
 
 	var left_pts := PackedVector2Array()
 	var right_pts := PackedVector2Array()
+	var arc_lens: Array[float] = [0.0]
 	for i in range(n):
 		var u := float(i) / float(n - 1)
 		var hw := _seg_half_width(u)
 		var side := Vector2(-tangents[i].y, tangents[i].x)
 		left_pts.append(pts[i] - side * hw)
 		right_pts.append(pts[i] + side * hw)
+		if i > 0:
+			arc_lens.append(arc_lens[i - 1] + pts[i].distance_to(pts[i - 1]))
 
+	# Continuous arc-length UV tiled detailed 1024x256 keeled-scale serpent body!
 	if _tex_body != null:
+		var tile_px := 220.0
+		var tint := Color.WHITE.lerp(Color(1.0, 0.90, 0.65), _seal_glow * 0.35)
+		var cols := PackedColorArray([tint, tint, tint, tint])
 		for i in range(n - 2, -1, -1):
-			var u0 := fmod(float(i) * 0.16, 1.0)
-			var u1 := u0 + 0.16
-			if u1 > 1.0:
-				u0 = 0.0
-				u1 = 0.16
+			var u0 := arc_lens[i] / tile_px
+			var u1 := arc_lens[i + 1] / tile_px
 			var quad := PackedVector2Array([left_pts[i], right_pts[i], right_pts[i + 1], left_pts[i + 1]])
 			var uvs := PackedVector2Array([Vector2(u0, 0.0), Vector2(u0, 1.0), Vector2(u1, 1.0), Vector2(u1, 0.0)])
-			var tint := Color.WHITE.lerp(Color(1.0, 0.90, 0.65), _seal_glow * 0.35)
-			_canvas.draw_polygon(quad, PackedColorArray([tint, tint, tint, tint]), uvs, _tex_body)
+			_canvas.draw_polygon(quad, cols, uvs, _tex_body)
 	else:
 		for i in range(n - 2, -1, -1):
 			var u := float(i) / float(n - 1)
 			_canvas.draw_line(pts[i], pts[i + 1], Color(0.68, 0.09, 0.09), _seg_half_width(u) * 1.9)
 
-	# Barbed tail sprite attached to last segment
+	# Barbed detailed tail sprite
 	if _tex_tail != null:
 		var tail_pos := pts[n - 1]
 		var tail_ang := tangents[n - 1].angle()
-		_canvas.draw_set_transform(tail_pos, tail_ang, Vector2(0.42, 0.42))
-		_canvas.draw_texture(_tex_tail, Vector2(-190.0, -64.0), Color.WHITE)
+		_canvas.draw_set_transform(tail_pos, tail_ang, Vector2(0.38, 0.38))
+		_canvas.draw_texture(_tex_tail, Vector2(-240.0, -80.0), Color.WHITE)
 		_canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-	# Woodcut Serpent Head (open fanged jaws during lunges & Ouroboros clamp!)
+	# Detailed fanged woodcut head
 	var head_tex := _tex_head_open if (_jaw_open > 0.45 and _tex_head_open != null) else _tex_head_closed
 	if head_tex != null:
 		var head_ang := tangents[0].angle()
-		var h_sc := 0.44 + _jaw_open * 0.05 + _seal_glow * 0.04
+		var h_sc := 0.38 + _jaw_open * 0.045 + _seal_glow * 0.035
 		var h_tint := Color.WHITE.lerp(Color(1.0, 0.88, 0.62), _seal_glow * 0.45)
 		_canvas.draw_set_transform(pts[0], head_ang, Vector2(h_sc, h_sc))
-		_canvas.draw_texture(head_tex, Vector2(-125.0, -120.0), h_tint)
+		_canvas.draw_texture(head_tex, Vector2(-150.0, -144.0), h_tint)
 		_canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-	# Fang-snap crimson/gold flash burst
 	if _bite_flash > 0.01:
-		var r_fl := 24.0 + (1.0 - _bite_flash) * 56.0
+		var r_fl := 26.0 + (1.0 - _bite_flash) * 58.0
 		_canvas.draw_circle(_bite_flash_pos, r_fl * 0.55, Color(1.0, 0.82, 0.35, _bite_flash * 0.45))
 		_canvas.draw_arc(_bite_flash_pos, r_fl, 0.0, TAU, 36, Color(1.0, 0.32, 0.16, _bite_flash * 0.85), 3.0)
 
-	# 4. Ember / ink spark particles
 	for sp in _sparks:
 		var a := clampf(float(sp["life"]) / maxf(0.01, float(sp["max_life"])), 0.0, 1.0)
 		var col: Color = sp["col"]
@@ -600,10 +561,14 @@ func _finish() -> void:
 	if _ending:
 		return
 	_ending = true
+	if not _mid_fired:
+		_mid_fired = true
+		if on_mid_load.is_valid():
+			on_mid_load.call()
 	var tw := create_tween().set_parallel(true)
-	tw.tween_property(_root, "modulate:a", 0.0, 0.72).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(_root, "modulate:a", 0.0, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	if is_instance_valid(_player) and _player.playing:
-		tw.tween_property(_player, "volume_db", -60.0, 0.72)
+		tw.tween_property(_player, "volume_db", -60.0, 0.45)
 	tw.chain().tween_callback(func():
 		finished.emit()
 		queue_free()

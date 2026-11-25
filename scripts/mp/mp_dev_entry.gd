@@ -79,40 +79,46 @@ func _free_lobby() -> void:
 
 
 func _on_match_started(_init: Dictionary) -> void:
-	_free_lobby()
-	if is_instance_valid(_menu_ctrl):
-		_menu_ctrl.visible = false
+	var build_arena_cb := func():
+		_free_lobby()
+		if is_instance_valid(_menu_ctrl):
+			_menu_ctrl.visible = false
 
-	if is_instance_valid(_arena):
-		_arena.queue_free()
-	_arena = ArenaScript.new()
-	_arena.position = Vector3(-500.0, 0.0, -500.0)
-	var muted := bool(_root.get("audio_muted")) if _root else false
-	var vpct := int(_root.get("audio_volume_pct")) if _root else 85
-	_arena.configure(_mp_net, muted, vpct)
-	if _arena.woodcut_mat and _root and _root.get("woodcut_mode") != null:
-		_arena.woodcut_mat.set_shader_parameter("print_mode", int(_root.get("woodcut_mode")))
-	_arena.play_sfx_requested.connect(func(sn: String):
-		if is_instance_valid(_root) and _root.has_method("_play_sfx"):
-			_root.call("_play_sfx", sn, -5.0, randf_range(0.96, 1.04))
-	)
-	if _arena.has_signal("return_to_lobby_requested"):
-		_arena.return_to_lobby_requested.connect(_return_arena_to_lobby_keep_session)
-	_arena.exit_mp_requested.connect(func():
-		if _mp_net and _mp_net.in_session:
-			_mp_net.leave_room(false)
-		_exit_arena_to_lobby()
-	)
-	if _arena.has_signal("open_options_requested"):
-		_arena.open_options_requested.connect(func():
-			if is_instance_valid(_root) and _root.has_method("_open_options_modal"):
-				_root.call("_open_options_modal")
+		if is_instance_valid(_arena):
+			_arena.queue_free()
+		_arena = ArenaScript.new()
+		_arena.position = Vector3(-500.0, 0.0, -500.0)
+		var muted := bool(_root.get("audio_muted")) if _root else false
+		var vpct := int(_root.get("audio_volume_pct")) if _root else 85
+		_arena.configure(_mp_net, muted, vpct)
+		if _arena.woodcut_mat and _root and _root.get("woodcut_mode") != null:
+			_arena.woodcut_mat.set_shader_parameter("print_mode", int(_root.get("woodcut_mode")))
+		_arena.play_sfx_requested.connect(func(sn: String):
+			if is_instance_valid(_root) and _root.has_method("_play_sfx"):
+				_root.call("_play_sfx", sn, -5.0, randf_range(0.96, 1.04))
 		)
-	_root.add_child(_arena)
-	if is_instance_valid(_arena.woodcut_mat) and _root:
-		_arena.woodcut_mat.set_shader_parameter("print_mode", int(_root.get("woodcut_mode")))
-	if is_instance_valid(_root) and _root.has_method("_play_bgm"):
-		_root.call("_play_bgm", "battle", true)
+		if _arena.has_signal("return_to_lobby_requested"):
+			_arena.return_to_lobby_requested.connect(_return_arena_to_lobby_keep_session)
+		_arena.exit_mp_requested.connect(func():
+			if _mp_net and _mp_net.in_session:
+				_mp_net.leave_room(false)
+			_exit_arena_to_lobby()
+		)
+		if _arena.has_signal("open_options_requested"):
+			_arena.open_options_requested.connect(func():
+				if is_instance_valid(_root) and _root.has_method("_open_options_modal"):
+					_root.call("_open_options_modal")
+			)
+		_root.add_child(_arena)
+		if is_instance_valid(_arena.woodcut_mat) and _root:
+			_arena.woodcut_mat.set_shader_parameter("print_mode", int(_root.get("woodcut_mode")))
+		if is_instance_valid(_root) and _root.has_method("_play_bgm"):
+			_root.call("_play_bgm", "battle", true)
+
+	if is_instance_valid(_root) and _root.has_method("show_ouroboros_loading"):
+		_root.call("show_ouroboros_loading", "LOADING MULTIPLAYER TAVERN", build_arena_cb, 2.7)
+	else:
+		build_arena_cb.call()
 
 
 func _return_arena_to_lobby_keep_session() -> void:
