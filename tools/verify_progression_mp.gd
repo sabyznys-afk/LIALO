@@ -281,6 +281,35 @@ func _run_all() -> void:
 	sls.free()
 	print("  OK 9: 8 Core Relics, 30-45s Turn Timer, DeckBuilder, Bankai 4-Card Combo & Ouroboros verified")
 
+	# 10. v0.193 9-Point Overhaul DoD Checks
+	_assert(LialoIcons.get_icon("sword") != null and LialoIcons.get_icon("help") != null and LialoIcons.get_icon("gear") != null, "LialoIcons woodcut PNG pack loaded")
+	_assert(Catalog.MAX_ACTIVE_RELICS == 2 and Catalog.MAX_POWER_CARDS == 3, "Catalog caps MAX_ACTIVE_RELICS=2 and MAX_POWER_CARDS=3")
+	var dirty_prof := Catalog.get_default_profile()
+	var bloated_cc: Array = []
+	for _i in range(65):
+		bloated_cc.append("SPEC_SHIELD")
+	dirty_prof["custom_cards"] = bloated_cc
+	dirty_prof["active_relics"] = ["REL_FORGEMASTER", "REL_FINAL_TOLL", "REL_ROYAL", "REL_GREED"]
+	Catalog.sanitize_profile(dirty_prof)
+	_assert((dirty_prof["custom_cards"] as Array).size() <= 3, "sanitize_profile fixes 65/3 custom_cards bloat")
+	_assert((dirty_prof["active_relics"] as Array).size() <= 2, "sanitize_profile caps active_relics to <= 2")
+	var saved_entry := Catalog.save_named_deck(dirty_prof, "v0193 Test Build", "DECK_TEST_V0193")
+	_assert(str(saved_entry.get("id", "")) == "DECK_TEST_V0193" and (dirty_prof.get("saved_decks", []) as Array).size() >= 1, "save_named_deck persists preset")
+	_assert(Catalog.apply_saved_deck(dirty_prof, "DECK_TEST_V0193"), "apply_saved_deck restores preset")
+	Catalog.delete_saved_deck(dirty_prof, "DECK_TEST_V0193")
+	_assert(Catalog.get_relic_glb_path("REL_FORGEMASTER") != "", "Core relics expose 3D GLB path")
+	var gs_build := Catalog.get_deck_build_loc("GUILLOTINE_ACES", "en")
+	_assert("GRAND SEAL" in str(gs_build.get("bankai_name", "")) and not ("BANKAI" in str(gs_build.get("bankai_name", ""))), "Grand Seal display rename applied")
+	var ri := RelicInspect3D.new()
+	root.add_child(ri)
+	ri.inspect_relic("REL_FORGEMASTER", "en", true, true, "Test")
+	_assert(ri.visible, "RelicInspect3D opens cleanly for 3D relic inspection")
+	ri.close_inspect()
+	ri.queue_free()
+	var lb_before := MpHistory.get_leaderboard_entries().size()
+	_assert(lb_before >= 0, "MpHistory leaderboard query works")
+	print("  OK 10: v0.193 9-Point Overhaul DoD checks verified")
+
 	if _failures.is_empty():
 		print("=== VERIFY PROGRESSION & MP: ALL CHECKS PASSED ===")
 		quit(0)

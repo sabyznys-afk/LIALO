@@ -217,17 +217,17 @@ func _on_viewport_input(event: InputEvent) -> void:
 
 func inspect_relic(relic_id: String, lang: String = "en", is_unlocked: bool = true, is_equipped: bool = false, source_text: String = "") -> void:
 	var cs := lang == "cs"
-	var data := LialoCatalog.get_relic(relic_id, lang)
+	var data := LialoCatalog.get_relic(relic_id)
 	var is_table := false
 	if data.is_empty():
-		data = LialoCatalog.get_table_relic(relic_id, lang)
+		data = LialoCatalog.get_table_relic(relic_id)
 		is_table = not data.is_empty()
 	if data.is_empty():
 		return
 
-	_title_lbl.text = str(data.get("name", relic_id))
-	_cat_lbl.text = str(data.get("category", "Tabletop Relic" if is_table else "Core Relic")).to_upper()
-	_desc_lbl.text = str(data.get("desc", ""))
+	_title_lbl.text = str(data.get("name_cs" if cs else "name", data.get("name", relic_id)))
+	_cat_lbl.text = str(data.get("category_cs" if cs else "category", data.get("category", "Tabletop Relic" if is_table else "Core Relic"))).to_upper()
+	_desc_lbl.text = str(data.get("desc_cs" if cs else "desc", data.get("desc", "")))
 	if is_equipped:
 		_status_lbl.text = "EQUIPPED (ACTIVE)" if not cs else "NASAZENO (AKTIVNÍ)"
 		_status_lbl.add_theme_color_override("font_color", Color(0.98, 0.82, 0.34))

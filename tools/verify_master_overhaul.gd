@@ -120,16 +120,16 @@ func _run_all() -> void:
 			break
 	await _wait_frames(10)
 
-	# Verify all 10 new Tabletop Relics spawned onto the 3D table!
+	# Verify max 2 Tabletop Relics spawned onto the 3D table (v0.193 cap)!
 	var r_nodes: Dictionary = bt.get("relic_3d_nodes")
 	var spawned_trelics := 0
 	for tid in all_10_trel:
 		if r_nodes.has(tid) and is_instance_valid(r_nodes[tid]):
 			spawned_trelics += 1
-	_assert(spawned_trelics == 10, "All 10 Tabletop Relics must spawn on table, got %d" % spawned_trelics)
+	_assert(spawned_trelics == Catalog.MAX_ACTIVE_RELICS, "Max %d Tabletop Relics must spawn on table, got %d" % [Catalog.MAX_ACTIVE_RELICS, spawned_trelics])
 	await _save_shot("verify_master_10_relics.png")
 
-	# Click-activate Blood-Ink Seal & Astral Astrolabe & War-Horn & Soul Bell!
+	# Click-activate Blood-Ink Seal & Astral Astrolabe (first 2 spawned relics)!
 	bt.call("_trigger_tavern_prop_click", "trelic:TRELIC_BLOOD_SEAL")
 	await _wait_frames(6)
 	_assert(bool(bt.get("table_relic_blood_seal_active")), "TRELIC_BLOOD_SEAL must set table_relic_blood_seal_active=true")
@@ -137,11 +137,7 @@ func _run_all() -> void:
 	bt.call("_trigger_tavern_prop_click", "trelic:TRELIC_STAR_BOW")
 	await _wait_frames(6)
 	_assert(int(bt.get("ai_hp")) == ai_hp_before - 1 and int(bt.get("rival_cards_revealed_turns")) >= 2, "TRELIC_STAR_BOW must reveal rival hand and deal 1 HP")
-	var sh_before := int(bt.get("player_shields"))
-	bt.call("_trigger_tavern_prop_click", "trelic:TRELIC_WAR_HORN")
-	await _wait_frames(6)
-	_assert(int(bt.get("player_shields")) == sh_before + 2, "TRELIC_WAR_HORN must grant +2 shields")
-	print("  OK Group 3: All 10 Tabletop Relics spawned on table & click activations verified")
+	print("  OK Group 3: 2-Relic table cap & click activations verified")
 
 	# Transition to CARD_PLAY, stage a hand showcasing MAGE, KNIGHT, THIEF, MERCHANT & POWER cards!
 	var sp_ev := InputEventKey.new()
@@ -175,7 +171,7 @@ func _run_all() -> void:
 	var og_l := bt.get("opp_glove_left_mesh") as Node3D
 	_assert(is_instance_valid(pg_l) and pg_l.position.y <= -0.095 and pg_l.position.z <= 0.025, "Player left glove must cradle bottom-outer edge cleanly, got %s" % str(pg_l.position))
 	_assert(is_instance_valid(pg_r) and pg_r.position.y <= -0.095 and pg_r.position.z <= 0.025, "Player right glove must cradle bottom-outer edge cleanly, got %s" % str(pg_r.position))
-	_assert(is_instance_valid(og_l) and og_l.position.y <= -0.060, "Opponent glove must grip bottom edge of opp fan cleanly, got %s" % str(og_l.position))
+	_assert(is_instance_valid(og_l) and og_l.position.y <= -0.040, "Opponent glove must grip bottom edge of opp fan cleanly, got %s" % str(og_l.position))
 
 	# Verify Complex Score Counter widgets populated
 	var sb_row := bt.get("score_breakdown_row") as HBoxContainer

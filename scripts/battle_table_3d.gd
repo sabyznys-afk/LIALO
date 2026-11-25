@@ -6596,7 +6596,7 @@ func _get_prop_hover_info(prop_id: String) -> Array[String]:
 		"coins":
 			var coins_desc := _tr("Spent in the Crossroads Shop. Merchant cards forge bonus Florins on play.", "Platidlo do Obchodu. Kupecké karty při zahrání přidají bonusové zlato.")
 			if _can_change_opening_wager():
-				coins_desc = _tr("💰 CLICK BEFORE TURN 1: Stake %dg Gold Wager! " % wager_gold_amount, "💰 KLIKNI PŘED 1. TAHEM: Vsadit %dg zlata! " % wager_gold_amount) + coins_desc
+				coins_desc = _tr("CLICK BEFORE TURN 1: Stake %dg Gold Wager! " % wager_gold_amount, "KLIKNI PŘED 1. TAHEM: Vsadit %dg zlata! " % wager_gold_amount) + coins_desc
 			return [
 				_tr("Florin Purse: %d Gold", "Měšec florinů: %d zlata") % player_available_gold,
 				coins_desc
@@ -6874,8 +6874,8 @@ func _get_tutorial_ghost_copy(step: int, sub: int = 0) -> Dictionary:
 				return {
 					"en": "OK! Rival's heart is racing! Unleash a Special Card cutscene.",
 					"cs": "OK! Soupeřovo srdce zběsile buší! Povolej Mocnou kartu s cutscénou.",
-					"task_en": "TASK: Play your special card 🦇 Vampire Leech (SPEC_VAMPIRE)!",
-					"task_cs": "ÚKOL: Zahraj speciální kartu 🦇 Upíří pijavice (SPEC_VAMPIRE)!",
+					"task_en": "TASK: Play your special card Vampire Leech (SPEC_VAMPIRE)!",
+					"task_cs": "ÚKOL: Zahraj speciální kartu Upíří pijavice (SPEC_VAMPIRE)!",
 					"btn_en": "Next", "btn_cs": "Dál",
 					"show_btn": false,
 				}
@@ -9701,7 +9701,7 @@ func set_duel_wager(w_type: String, silent: bool = false) -> void:
 				elif wager_3d_ring.material_override is StandardMaterial3D:
 					(wager_3d_ring.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.84, 0.24, 0.65)
 			if not silent:
-				table_status_label3d.text = _tr("💰 Coin Wager (%dg) staked!" % wager_gold_amount, "💰 Sázka mincí (%dg)!") if active_wager_type == "GOLD" else _tr("Phial Wager staked!", "Vsazena baňka IGNIS!")
+				table_status_label3d.text = _tr("Coin Wager (%dg) staked!" % wager_gold_amount, "Sázka mincí (%dg)!") if active_wager_type == "GOLD" else _tr("Phial Wager staked!", "Vsazena baňka IGNIS!")
 	_refresh_wager_indicator_ui()
 	if not silent:
 		_refresh_table_labels()
@@ -12199,7 +12199,7 @@ func _handle_card_click_or_drop(c_idx: int, from_arena_drop: bool = false) -> vo
 	if tutorial_mode and tutorial_step == 6:
 		if tutorial_substep == 0:
 			if str(player_hand[c_idx].get("power_id", "")) != "SPEC_VAMPIRE":
-				_whisper_tutorial_nudge(_tr("Task: Play your special card 🦇 Vampire Leech (SPEC_VAMPIRE)!", "Úkol: Zahraj speciální kartu 🦇 Upíří pijavice (SPEC_VAMPIRE)!"))
+				_whisper_tutorial_nudge(_tr("Task: Play your special card Vampire Leech (SPEC_VAMPIRE)!", "Úkol: Zahraj speciální kartu Upíří pijavice (SPEC_VAMPIRE)!"))
 				return
 		else:
 			_whisper_tutorial_nudge(_tr("First toss the 3D Hellfire Phial IGNIS on the right side of the table!", "Nejdřív vyzkoušej 3D Baňku pekelného ohně IGNIS vpravo na stole!"))
@@ -12255,7 +12255,7 @@ func _trigger_tavern_prop_click(prop_id: String) -> void:
 		Fx.gold_flakes(self, tavern_coins_root.global_position + Vector3(0.0, 0.10, 0.0), 18, 0.95)
 		if _can_change_opening_wager():
 			set_duel_wager("GOLD")
-			Fx.float_number(self, tavern_coins_root.global_position + Vector3(0.0, 0.20, 0.0), _tr("💰 GOLD WAGER!", "💰 SÁZKA ZLATA!"), Color(1.0, 0.88, 0.30), 46, 0.18, 0.72, 1.42)
+			Fx.float_number(self, tavern_coins_root.global_position + Vector3(0.0, 0.20, 0.0), _tr("GOLD WAGER!", "SÁZKA ZLATA!"), Color(1.0, 0.88, 0.30), 46, 0.18, 0.72, 1.42)
 		else:
 			Fx.float_number(self, tavern_coins_root.global_position + Vector3(0.0, 0.18, 0.0), _tr("FLORINS!", "ZLAŤÁKY!"), Color(1.0, 0.86, 0.28), 42, 0.16, 0.65, 1.35)
 	elif prop_id == "phial" and is_instance_valid(magic_puf_bottle):
@@ -12508,8 +12508,8 @@ func _spawn_suit_discard_rune_ring_3d(impact_global_pos: Vector3, suit_id: Strin
 	var s_obj := _get_suit_obj(suit_id)
 	var scol: Color = s_obj.get("col", Color(0.94, 0.74, 0.28))
 	var ring_root := Node3D.new()
-	ring_root.global_position = impact_global_pos + Vector3(0.0, 0.018, 0.0)
 	add_child(ring_root)
+	ring_root.global_position = impact_global_pos + Vector3(0.0, 0.018, 0.0)
 
 	# Outer ink-rimmed woodcut ring
 	var outer_mi := MeshInstance3D.new()
@@ -14388,7 +14388,7 @@ func _apply_ai_draw_or_skip_state() -> Array:
 				)
 		if not tutorial_mode and "REL_HEX_DOLL" in run_active_relics:
 			var hex_pts := 6 * cnt
-			_award_player_score_immediately(hex_pts, _tr("🪆 Hex Doll (+%d)" % hex_pts, "🪆 Prokletá panenka (+%d)" % hex_pts), Color(0.86, 0.44, 1.0))
+			_award_player_score_immediately(hex_pts, _tr("Hex Doll (+%d)" % hex_pts, "Prokletá panenka (+%d)" % hex_pts), Color(0.86, 0.44, 1.0))
 			_pulse_relic_trigger("REL_HEX_DOLL", "+%d!" % hex_pts, false)
 		table_status_label3d.text = _tr("Rival forced to draw +%d cards!" % cnt, "Soupeř musel lízat +%d karty!" % cnt)
 	else:
@@ -16140,7 +16140,7 @@ func _refresh_table_labels() -> void:
 		var t_title := ""
 		var t_sub := ""
 		var t_col := Color(0.45, 0.94, 0.62)
-		var stake_tag := "SWORD" if active_wager_type == "SWORD" else ("IGNIS" if active_wager_type == "ITEM" else ("💰 %dg" % wager_gold_amount))
+		var stake_tag := "SWORD" if active_wager_type == "SWORD" else ("IGNIS" if active_wager_type == "ITEM" else ("%dg" % wager_gold_amount))
 		var k_sub := _tr(" • COUNTER KING!", " • PŘEBIJ KRÁLEM!") if (not pending_king_challenge.is_empty() and bool(pending_king_challenge.get("from_ai", false))) else ""
 		if not is_player_turn:
 			next_key = "AI_%s_%d" % [active_wager_type, rival_burn_turns]

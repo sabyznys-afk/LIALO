@@ -123,11 +123,11 @@ func _run_verification() -> void:
 	bt.call("_sync_peek_ui_visibility")
 	await process_frame
 
-	# 4. Verify Task #7 Compact Wager Indicator + Standalone Veto Pill + 3D Table Prop Wager Selection
+	# 4. Verify Task #7 Compact Wager Indicator (hidden in Campaign SP v0.193) + Standalone Veto Pill + 3D Table Prop Wager Selection
 	var veto_p: Control = bt.get("veto_standalone_panel")
 	var wager_p: Control = bt.get("wager_indicator_pill")
 	_assert_true(veto_p.visible, "veto_standalone_panel must be visible before Turn 1")
-	_assert_true(wager_p.visible, "wager_indicator_pill must be visible before Turn 1")
+	_assert_true(not wager_p.visible, "wager_indicator_pill must stay hidden in Campaign SP (v0.193)")
 
 	bt.call("_trigger_tavern_prop_click", "phial")
 	_assert_true(str(bt.get("active_wager_type")) == "ITEM", "Clicking phial before Turn 1 should select ITEM wager")
