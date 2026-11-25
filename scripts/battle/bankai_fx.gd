@@ -13,7 +13,7 @@ var _aura_col: Color = Color(0.32, 0.88, 1.0)
 var _cutin_t: float = 0.0
 var _cutin_dur: float = 2.25
 var _cutin_playing: bool = false
-var _title_txt: String = "BANKAI"
+var _title_txt: String = "GRAND SEAL"
 var _sub_txt: String = ""
 var _caster_txt: String = ""
 var _combo_textures: Array[Texture2D] = []
@@ -59,10 +59,14 @@ func _load_bankai_stinger() -> AudioStream:
 	return null
 
 
+func trigger_grand_seal(build_id: String, caster_name: String, combo_keys: Array, lang: String = "en", persist_aura: bool = true) -> void:
+	trigger_bankai(build_id, caster_name, combo_keys, lang, persist_aura)
+
+
 func trigger_bankai(build_id: String, caster_name: String, combo_keys: Array, lang: String = "en", persist_aura: bool = true) -> void:
 	var b := Catalog.get_deck_build_loc(build_id, lang)
 	_aura_col = b.get("col", Color(0.32, 0.88, 1.0))
-	_title_txt = str(b.get("bankai_name", "BANKAI AWAKENING"))
+	_title_txt = str(b.get("bankai_name", "GRAND SEAL AWAKENING"))
 	_sub_txt = str(b.get("bankai_desc", ""))
 	_caster_txt = caster_name
 	_aura_active = persist_aura
@@ -199,9 +203,9 @@ func _draw_fx() -> void:
 			_canvas.draw_texture(tex, -tsz * 0.5, Color(1.0, 1.0, 1.0, 0.92 * env))
 		_canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-		# Calligraphic Caster Tag + BANKAI Headline + Buff Subtitle
+		# Calligraphic Caster Tag + GRAND SEAL Headline + Buff Subtitle
 		var slide_x := (1.0 - minf(1.0, u / 0.18)) * 90.0
-		var header_txt := ("⚡ %s — 4-CARD AWAKENING SEAL ⚡" % _caster_txt.to_upper()) if _caster_txt != "" else "⚡ 4-CARD AWAKENING SEAL ⚡"
+		var header_txt := ("%s — 4-CARD GRAND SEAL" % _caster_txt.to_upper()) if _caster_txt != "" else "4-CARD GRAND SEAL"
 		_canvas.draw_string(_font_disp, Vector2(40.0 + slide_x, cy - 42.0), header_txt, HORIZONTAL_ALIGNMENT_CENTER, vs.x - 80.0, 18, Color(1.0, 0.92, 0.58, env))
 		_canvas.draw_string_outline(_font_disp, Vector2(40.0 - slide_x, cy + 16.0), _title_txt, HORIZONTAL_ALIGNMENT_CENTER, vs.x - 80.0, 48, 12, Color(0.02, 0.01, 0.02, env))
 		_canvas.draw_string(_font_disp, Vector2(40.0 - slide_x, cy + 16.0), _title_txt, HORIZONTAL_ALIGNMENT_CENTER, vs.x - 80.0, 48, _aura_col.lightened(0.32) * Color(1, 1, 1, env))

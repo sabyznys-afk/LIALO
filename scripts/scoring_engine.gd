@@ -512,16 +512,17 @@ static func calculate_hand_score(
 					breakdown_chips.append({"tag": "Mist Conduit", "val": "×1.45", "col": Color(0.38, 0.96, 0.78)})
 					steps.append(_make_step("relic", "Mistborn Conduit (×1.45)", "Mage / Power Surge", 0, 0.0, 1.45, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.38, 0.96, 0.78), "REL_OVERCHARGE", true))
 
-		# Bankai Awakening Persistent Build Buff (Bleach-style 4-card combo transformation!)
+		# Grand Seal Awakening Persistent Build Buff (4-card combo transformation)
 		if bool(context.get("bankai_active", false)):
 			var b_build := str(context.get("bankai_build_id", "GUILLOTINE_ACES"))
+			var seal_tag := "SEAL" if not cs else "PEČEŤ"
 			match b_build:
 				"GUILLOTINE_ACES":
 					x_mult_product *= 1.4
 					bonus_pts += 15 * aces_played
 					lightning = true
-					breakdown_chips.append({"tag": "⚡ BANKAI", "val": "×1.4", "col": Color(0.32, 0.88, 1.0)})
-					steps.append(_make_step("relic", "⚡ BANKAI: CRIMSON GUILLOTINE (×1.4)", "Awakened Execution", 15 * aces_played, 0.0, 1.4, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.32, 0.88, 1.0), "", true))
+					breakdown_chips.append({"tag": seal_tag, "val": "×1.4", "col": Color(0.32, 0.88, 1.0)})
+					steps.append(_make_step("relic", "GRAND SEAL: SEAL OF EXECUTION (×1.4)", "Awakened Execution", 15 * aces_played, 0.0, 1.4, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.32, 0.88, 1.0), "", true))
 				"MIRROR_MONARCH":
 					var court_cnt := 0
 					for cc in played_cards:
@@ -530,8 +531,8 @@ static func calculate_hand_score(
 					bonus_pts += 18 * maxi(1, court_cnt)
 					x_mult_product *= 1.35
 					shields_gained += 1
-					breakdown_chips.append({"tag": "👑 BANKAI", "val": "×1.35 +🛡", "col": Color(1.0, 0.78, 0.28)})
-					steps.append(_make_step("relic", "👑 BANKAI: SOVEREIGN MIRROR (×1.35)", "Awakened Monarch", 18 * maxi(1, court_cnt), 0.0, 1.35, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.78, 0.28), "", true))
+					breakdown_chips.append({"tag": seal_tag, "val": "×1.35 +SHIELD", "col": Color(1.0, 0.78, 0.28)})
+					steps.append(_make_step("relic", "GRAND SEAL: SOVEREIGN SEAL (×1.35)", "Awakened Monarch", 18 * maxi(1, court_cnt), 0.0, 1.35, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(1.0, 0.78, 0.28), "", true))
 				"CHAOS_JESTER":
 					bonus_gold += 20
 					rival_drain += 14
@@ -539,8 +540,8 @@ static func calculate_hand_score(
 						extra_draw += 2 * sevens_played
 					x_mult_product *= 1.35
 					lightning = true
-					breakdown_chips.append({"tag": "🃏 BANKAI", "val": "×1.35 -14", "col": Color(0.96, 0.36, 0.78)})
-					steps.append(_make_step("relic", "🃏 BANKAI: CARNIVAL OF RUIN (×1.35)", "Awakened Chaos", 0, 0.0, 1.35, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.96, 0.36, 0.78), "", true))
+					breakdown_chips.append({"tag": seal_tag, "val": "×1.35 -14", "col": Color(0.96, 0.36, 0.78)})
+					steps.append(_make_step("relic", "GRAND SEAL: JESTER'S PACT (×1.35)", "Awakened Chaos", 0, 0.0, 1.35, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.96, 0.36, 0.78), "", true))
 				"MISTBLADE_DUELIST":
 					mage_charge_boost += 2
 					if cnt >= 2:
@@ -549,15 +550,15 @@ static func calculate_hand_score(
 					else:
 						x_mult_product *= 1.25
 					lightning = true
-					breakdown_chips.append({"tag": "🌫 BANKAI", "val": "×1.45 -15", "col": Color(0.38, 0.96, 0.78)})
-					steps.append(_make_step("relic", "🌫 BANKAI: ENDLESS MIST (×1.45)", "Awakened Shadow", 0, 0.0, 1.45 if cnt >= 2 else 1.25, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.38, 0.96, 0.78), "", true))
+					breakdown_chips.append({"tag": seal_tag, "val": "×1.45 -15", "col": Color(0.38, 0.96, 0.78)})
+					steps.append(_make_step("relic", "GRAND SEAL: MISTBOUND RITE (×1.45)", "Awakened Shadow", 0, 0.0, 1.45 if cnt >= 2 else 1.25, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.38, 0.96, 0.78), "", true))
 
 		# Active Tabletop Relic Buffs (Blood-Ink Seal ×2, Phantom Mask ×2, Storm Surge)
 		if bool(context.get("blood_seal_active", false)):
 			x_mult_product *= 2.0
 			rival_drain += 10
 			lightning = true
-			breakdown_chips.append({"tag": "🩸 SEAL" if not cs else "🩸 PEČEŤ", "val": "×2", "col": Color(0.96, 0.14, 0.24)})
+			breakdown_chips.append({"tag": "SEAL" if not cs else "PEČEŤ", "val": "×2", "col": Color(0.96, 0.14, 0.24)})
 			steps.append(_make_step("relic", "🩸 Blood-Ink Seal (×2.0)", "Crimson Resonance", 0, 0.0, 2.0, base_subtotal + bonus_pts, mult_val, x_mult_product, Color(0.96, 0.14, 0.24), "TRELIC_BLOOD_SEAL", true))
 		if bool(context.get("hollow_mask_active", false)):
 			x_mult_product *= 2.0
