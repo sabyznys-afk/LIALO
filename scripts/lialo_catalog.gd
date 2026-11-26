@@ -172,10 +172,10 @@ const CLASSIC_STAGE_MULTS := {
 const CARD_CLASSES := {
 	"NORMAL": {
 		"id": "NORMAL", "name": "Ironborne", "name_cs": "Obyčejná", "short_cls": "Normal", "short_cls_cs": "Klasika", "badge": "", "badge_cs": "", "shader_id": 0,
-		"gold_bonus": 2, "max_charge": 0,
-		"col": Color(0.76, 0.72, 0.64), "cost": 0,
-		"desc": "Classic tavern card. Steady points and +2 Florins.",
-		"desc_cs": "Klasická krčmová karta. Dává základní body a +2 Zlaté."
+		"gold_bonus": 6, "max_charge": 0,
+		"col": Color(0.84, 0.76, 0.56), "cost": 0,
+		"desc": "Classic tavern card. Steady points and +6 bonus Florins on every play!",
+		"desc_cs": "Klasická krčmová karta. Základní body a +6 Zlatých navíc při každém zahrání!"
 	},
 	"MAGE": {
 		"id": "MAGE", "name": "Runecaster", "name_cs": "Mág", "short_cls": "Mage", "short_cls_cs": "Mág", "badge": "MAGE", "badge_cs": "MÁG", "shader_id": 1,
@@ -186,10 +186,10 @@ const CARD_CLASSES := {
 	},
 	"KNIGHT": {
 		"id": "KNIGHT", "name": "Mistblade", "name_cs": "Rytíř", "short_cls": "Knight", "short_cls_cs": "Rytíř", "badge": "KNIGHT", "badge_cs": "RYTÍŘ", "shader_id": 2,
-		"gold_bonus": 4, "max_charge": 0,
+		"gold_bonus": 2, "max_charge": 3,
 		"col": Color(0.60, 0.88, 0.98), "cost": 24,
-		"desc": "Fast strike (+10 pts, ×1.5) hidden in Mist! Wrong guess forces Rival +1 Draw.",
-		"desc_cs": "Rychlý úder (+10 b., ×1.5) v mlze! Chybný tip donutí soupeře líznout +1 kartu."
+		"desc": "Stealth strike (+10 pts, ×1.5) & +1/3 Aegis Shield! 3 Knights (3/3) forge +1 Full Shield (blocks 1 HP DMG).",
+		"desc_cs": "Rychlý úder (+10 b., ×1.5) v mlze a +1/3 Štítu! 3 Rytíři (3/3) ukovou +1 celý Štít (blokuje 1 HP DMG)."
 	},
 	"MERCHANT": {
 		"id": "MERCHANT", "name": "Guildsman", "name_cs": "Kupec", "short_cls": "Merchant", "short_cls_cs": "Kupec", "badge": "GUILD", "badge_cs": "KUPEC", "shader_id": 3,
@@ -1108,7 +1108,37 @@ static func get_default_profile() -> Dictionary:
 			"sword_skin": "SWORD_IRON",
 		},
 		"seen_unlock_tips": [],
+		"seen_comics": [],
+		"completed_micro_tutorials": [],
 	}
+
+static func has_seen_comic(prof: Dictionary, comic_id: String) -> bool:
+	if comic_id == "":
+		return true
+	var arr = prof.get("seen_comics", [])
+	return (arr is Array) and (comic_id in (arr as Array))
+
+static func mark_comic_seen(prof: Dictionary, comic_id: String) -> void:
+	if comic_id == "":
+		return
+	var arr: Array = prof.get("seen_comics", []) if (prof.get("seen_comics", []) is Array) else []
+	if not (comic_id in arr):
+		arr.append(comic_id)
+	prof["seen_comics"] = arr
+
+static func has_completed_micro_tutorial(prof: Dictionary, era_id: String) -> bool:
+	if era_id == "":
+		return true
+	var arr = prof.get("completed_micro_tutorials", [])
+	return (arr is Array) and (era_id in (arr as Array))
+
+static func mark_micro_tutorial_completed(prof: Dictionary, era_id: String) -> void:
+	if era_id == "":
+		return
+	var arr: Array = prof.get("completed_micro_tutorials", []) if (prof.get("completed_micro_tutorials", []) is Array) else []
+	if not (era_id in arr):
+		arr.append(era_id)
+	prof["completed_micro_tutorials"] = arr
 
 static func has_seen_unlock_tip(prof: Dictionary, tip_id: String) -> bool:
 	if tip_id == "":
@@ -1466,6 +1496,25 @@ static func sanitize_profile(prof: Dictionary) -> Dictionary:
 			if bid != "" and not (bid in clean_br):
 				clean_br.append(bid)
 	prof["broken_relics"] = clean_br
+
+	# Sanitize seen_comics & completed_micro_tutorials
+	var clean_sc: Array = []
+	var raw_sc = prof.get("seen_comics", [])
+	if raw_sc is Array:
+		for sv in raw_sc:
+			var sc_id := str(sv)
+			if sc_id != "" and not (sc_id in clean_sc):
+				clean_sc.append(sc_id)
+	prof["seen_comics"] = clean_sc
+
+	var clean_mt: Array = []
+	var raw_mt = prof.get("completed_micro_tutorials", [])
+	if raw_mt is Array:
+		for mv in raw_mt:
+			var mt_id := str(mv)
+			if mt_id != "" and not (mt_id in clean_mt):
+				clean_mt.append(mt_id)
+	prof["completed_micro_tutorials"] = clean_mt
 
 	# Sanitize mp_loadout against unlocked meta-collection & slot caps
 	var raw_mp = prof.get("mp_loadout", {})

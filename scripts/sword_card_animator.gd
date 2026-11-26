@@ -54,12 +54,16 @@ static func _load_weapon_tex(path: String) -> Texture2D:
 
 
 static func _pick_weapon_style(card_data: Dictionary, use_mist: bool) -> String:
+	if bool(card_data.get("shield_block", false)):
+		return "shield"
 	if use_mist:
 		return "sword_mist"
 	var cls := str(card_data.get("edition", card_data.get("card_class", "NORMAL"))).to_upper()
 	var pid := str(card_data.get("power_id", "")).to_upper()
 	var rank := str(card_data.get("rank", "")).to_upper()
 	var suit := str(card_data.get("suit", "CERVEN")).to_upper()
+	if pid == "SPEC_SHIELD":
+		return "shield"
 	if cls == "MAGE" or pid in ["SPEC_ORACLE", "SPEC_MIRROR", "SPEC_ALCHEMIST"]:
 		return "staff"
 	if cls == "THIEF" or rank == "7" or pid in ["SPEC_HEX", "SPEC_PLAGUE"]:
@@ -70,8 +74,8 @@ static func _pick_weapon_style(card_data: Dictionary, use_mist: bool) -> String:
 		return "mace"
 	if rank in ["H", "D"] or (rank in ["8", "9"] and suit == "ZELEN"):
 		return "halberd"
-	if pid in ["SPEC_SHIELD", "SPEC_PHOENIX", "SPEC_VAMPIRE", "SPEC_MAGNET", "SPEC_JESTER"] or rank in ["8", "9"]:
-		return "shield"
+	if pid in ["SPEC_PHOENIX", "SPEC_VAMPIRE", "SPEC_MAGNET", "SPEC_JESTER"]:
+		return "sword_royal"
 	return "sword_royal"
 
 
@@ -616,8 +620,8 @@ class _SwordVfxRig extends Node3D:
 		_shadow_mat.set_shader_parameter("sheen_strength", 0.0)
 		_shadow_mat.set_shader_parameter("opacity", 0.0)
 
-		_shadow_blade_mesh = _make_quad_node("SwordBladeInkDepth", blade_w * 1.03, blade_h * 1.01, _shadow_mat, 5)
-		_shadow_blade_mesh.position = Vector3(0.004, (0.0 if _weapon_style == "shield" else blade_h * 0.36) - 0.004, -0.006 * _dir_z)
+		_shadow_blade_mesh = _make_quad_node("SwordBladeInkDepth", blade_w * 1.06, blade_h * 1.03, _shadow_mat, 5)
+		_shadow_blade_mesh.position = Vector3(0.010, (0.0 if _weapon_style == "shield" else blade_h * 0.36) - 0.009, -0.014 * _dir_z)
 		_sword_pivot.add_child(_shadow_blade_mesh)
 
 		_sword_pivot.scale = Vector3.ONE * 0.05

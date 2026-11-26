@@ -88,6 +88,7 @@ func setup_match(lobby_seats: Array, settings: Dictionary) -> void:
 			"hp": Config.START_HP,
 			"max_hp": Config.START_HP,
 			"shields": Config.START_SHIELDS,
+			"knight_shield_charge": 0,
 			"gold": Config.START_GOLD,
 			"kills": 0,
 			"total_dmg": 0,
@@ -224,6 +225,8 @@ func handle_play_cards(peer_id: int, seat_idx_hint: int, card_indices: Array, ta
 	var queen_cnt := 0
 	var knight_cnt := 0
 	var thief_cnt := 0
+	var normal_cnt := 0
+	var non_normal_cnt := 0
 	var power_ids: Array = []
 	for c in played:
 		var r := str(c.get("rank", ""))
@@ -235,6 +238,8 @@ func handle_play_cards(peer_id: int, seat_idx_hint: int, card_indices: Array, ta
 		elif r == "H": queen_cnt += 1
 		if cls == "KNIGHT": knight_cnt += 1
 		elif cls == "THIEF": thief_cnt += 1
+		if cls != "NORMAL": non_normal_cnt += 1
+		elif pid == "": normal_cnt += 1
 		if pid != "": power_ids.append(pid)
 
 	# Check 4-Card Bankai Awakening Seal (instant 4-card play OR cumulative 4/4 in duel)
@@ -303,9 +308,10 @@ func handle_play_cards(peer_id: int, seat_idx_hint: int, card_indices: Array, ta
 		op_mult *= 1.85
 	var base_dmg := maxi(10, int(round(float(raw_pts) * 0.42 * op_mult)))
 
-	# Emit hand-drawn card slam + King-style 2D sword score anim event for all played cards!
-	var has_sword := true
+	# Only fire weapon sword/shield VFX for combos, Knight/classed plays, Power cards, or special ranks (7, K, E)
+	var has_sword := (cnt >= 2 or non_normal_cnt > 0 or seven_cnt > 0 or king_cnt > 0 or ace_cnt > 0 or not power_ids.is_empty())
 	var is_knight_vfx := (knight_cnt > 0)
+	var mp_pierce_shield := bankai_just_triggered or bool(s.get("bankai_active", false))
 	broadcast_vfx_event.emit({
 		"type": "CARD_PLAY",
 		"from_seat": turn_seat,
@@ -314,13 +320,24 @@ func handle_play_cards(peer_id: int, seat_idx_hint: int, card_indices: Array, ta
 		"dmg": base_dmg,
 		"has_sword": has_sword,
 		"is_knight": is_knight_vfx,
+		"pierce_shield": mp_pierce_shield,
 		"combo_label": str(score_res.get("slam_name", "Slam")),
 	})
 
-	var gold_gain := 8 + cnt * 4 + (8 if knight_cnt > 0 else 0) + int(score_res.get("bonus_gold", 0))
+	var normal_gold_unit := int(Catalog.CARD_CLASSES.get("NORMAL", {}).get("gold_bonus", 6))
+	var gold_gain := 8 + cnt * 4 + (normal_cnt * normal_gold_unit) + (8 if knight_cnt > 0 else 0) + int(score_res.get("bonus_gold", 0))
 	if "REL_GREED" in passive_rels:
 		gold_gain += 4
 	s["gold"] = int(s["gold"]) + gold_gain
+
+	# 3-Part Knight Aegis Shield Charging (1/3 per KNIGHT -> 3/3 = +1 Full Shield tier)
+	if knight_cnt > 0:
+		var k_chg := int(s.get("knight_shield_charge", 0)) + knight_cnt
+		while k_chg >= 3:
+			k_chg -= 3
+			s["shields"] = int(s["shields"]) + 15
+			banner_text = "AEGIS FORGED! %s completed 3/3 Knight Shield (+15 Shield)!" % str(s["name"])
+		s["knight_shield_charge"] = k_chg
 
 	# REL_FANG: Hearts Drain passive
 	var tgt_s := _get_seat(tgt)
@@ -395,8 +412,10 @@ func handle_play_cards(peer_id: int, seat_idx_hint: int, card_indices: Array, ta
 				_check_shedding_refill(s)
 				_sync_all()
 				return
-			_apply_damage(s, tgt_s, base_dmg)
-			if seven_cnt == 0 and queen_cnt < 2 and power_ids.is_empty() and thief_cnt == 0:
+			_apply_damage(s, tgt_s, base_dmg, mp_pierce_shield)
+			if mp_pierce_shield:
+				banner_text = "CRITICAL • SHIELD PIERCE! %s struck %s for %d DMG!" % [s["name"], tgt_s["name"], base_dmg]
+			elif seven_cnt == 0 and queen_cnt < 2 and power_ids.is_empty() and thief_cnt == 0:
 				banner_text = "%s strikes %s for %d DMG!" % [s["name"], tgt_s["name"], base_dmg]
 
 	_check_shedding_refill(s)
@@ -1250,6 +1269,7 @@ func _build_public_seats() -> Array:
 			"hp": int(s["hp"]),
 			"max_hp": int(s["max_hp"]),
 			"shields": int(s["shields"]),
+			"knight_shield_charge": int(s.get("knight_shield_charge", 0)),
 			"gold": int(s["gold"]),
 			"kills": int(s["kills"]),
 			"alive": bool(s["alive"]),

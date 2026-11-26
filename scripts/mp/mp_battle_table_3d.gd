@@ -1523,8 +1523,9 @@ func _on_public_state(state: Dictionary) -> void:
 	var my_hp := int(my_pub.get("hp", Config.START_HP))
 	var my_max_hp := int(my_pub.get("max_hp", Config.START_HP))
 	var my_sh := int(my_pub.get("shields", 0))
+	var my_sh_chg := int(my_pub.get("knight_shield_charge", 0))
 	if is_instance_valid(player_hp_heart):
-		player_hp_heart.call("set_hp_with_status", my_hp, my_max_hp, my_sh, "", true)
+		player_hp_heart.call("set_hp_with_status", my_hp, my_max_hp, my_sh, "", true, my_sh_chg)
 		if my_hp < _last_local_hp:
 			player_hp_heart.call("trigger_damage_pulse", _last_local_hp - my_hp)
 	_last_local_hp = my_hp
@@ -1669,20 +1670,24 @@ func _on_vfx_event(evt: Dictionary) -> void:
 			var mp_float_sz := 86 if c_tier >= 4 else (76 if c_tier == 3 else (66 if c_tier == 2 else 54))
 			var mp_float_sc := clampf(1.35 + (mult_f - 1.0) * 0.22, 1.35, 2.05)
 			Fx.float_number(self, center + Vector3(0.0, 0.30, 0.0), ("%d× +%d" % [c_tier, dmg_v]) if c_tier >= 2 else ("+%d" % dmg_v), play_suit_col.lightened(0.28), mp_float_sz, 0.30, 1.05, mp_float_sc)
-			SwordCardAnim.play_ancient_circle_sigil(self, lead_c, center)
+			if bool(evt.get("has_sword", false)):
+				SwordCardAnim.play_ancient_circle_sigil(self, lead_c, center)
 			if tavern_env != null:
 				tavern_env.trigger_suit_pulse(1.3)
 				tavern_env.boost_impact(0.7, 1.2)
-			SwordCardAnim.play_sword_card_mp_strike(
-				self,
-				lead_c,
-				from_p,
-				to_p,
-				center,
-				maxi(20, int(evt.get("dmg", 32))),
-				clampf(1.0 + float(maxi(0, cards_arr.size() - 1)) * 0.4, 1.0, 2.5),
-				bool(evt.get("is_knight", false))
-			)
+			if bool(evt.get("has_sword", false)):
+				SwordCardAnim.play_sword_card_mp_strike(
+					self,
+					lead_c,
+					from_p,
+					to_p,
+					center,
+					maxi(20, int(evt.get("dmg", 32))),
+					clampf(1.0 + float(maxi(0, cards_arr.size() - 1)) * 0.4, 1.0, 2.5),
+					bool(evt.get("is_knight", false))
+				)
+			if bool(evt.get("pierce_shield", false)):
+				Fx.float_number(self, to_p + Vector3(0.0, 0.38, 0.0), "CRITICAL • SHIELD PIERCE!", Color(1.0, 0.86, 0.28), 64, 0.26, 1.0, 1.7)
 			cam_spring.trigger_score_recoil(int(evt.get("dmg", 32)) * 3, mult_f * 1.25, clampf(0.58 + (mult_f - 1.0) * 0.24, 0.58, 1.45))
 			if c_tier >= 2 and is_inside_tree():
 				Engine.time_scale = 0.25

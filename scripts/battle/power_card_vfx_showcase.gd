@@ -49,6 +49,72 @@ const CARD_META := {
 		"title": "CHRONOS GLASS!",
 		"sub": "TIME FROZEN  •  EXTRA TURN!",
 	},
+	"SPEC_MIRROR": {
+		"tex": "res://assets/cards/SPEC_MIRROR.png",
+		"accent": Color(0.56, 0.90, 1.0),
+		"title": "MIRROR GATE!",
+		"sub": "DUPLICATE & REFLECT CARD",
+	},
+	"SPEC_ALCHEMIST": {
+		"tex": "res://assets/cards/SPEC_ALCHEMIST.png",
+		"accent": Color(0.54, 0.96, 0.42),
+		"title": "ALCHEMIST'S CRUCIBLE!",
+		"sub": "TRANSMUTE  •  +GOLD & ×MULT",
+	},
+	"SPEC_ORACLE": {
+		"tex": "res://assets/cards/SPEC_ORACLE.png",
+		"accent": Color(0.76, 0.56, 1.0),
+		"title": "ALL-SEEING ORACLE!",
+		"sub": "RIVAL HAND REVEALED!",
+	},
+	"SPEC_MIDAS": {
+		"tex": "res://assets/cards/SPEC_MIDAS.png",
+		"accent": Color(1.0, 0.84, 0.24),
+		"title": "MIDAS TOUCH!",
+		"sub": "GOLDEN CASCADE  •  +FLORINS",
+	},
+	"SPEC_JESTER": {
+		"tex": "res://assets/cards/SPEC_JESTER.png",
+		"accent": Color(0.96, 0.48, 0.94),
+		"title": "FOOL'S GAMBIT!",
+		"sub": "CHAOS VORTEX  •  RELIC SURGE",
+	},
+	"SPEC_HEX": {
+		"tex": "res://assets/cards/SPEC_HEX.png",
+		"accent": Color(0.64, 0.30, 0.96),
+		"title": "SHADOW HEX!",
+		"sub": "CURSED CHAINS  •  RIVAL DRAIN",
+	},
+	"SPEC_MAGNET": {
+		"tex": "res://assets/cards/SPEC_MAGNET.png",
+		"accent": Color(0.94, 0.34, 0.38),
+		"title": "ARCANE MAGNET!",
+		"sub": "PULL MATCHING CARDS!",
+	},
+	"SPEC_SHIELD": {
+		"tex": "res://assets/cards/SPEC_SHIELD.png",
+		"accent": Color(0.50, 0.90, 1.0),
+		"title": "IRON BASTION!",
+		"sub": "FORGE AEGIS  •  +2 SHIELDS",
+	},
+	"SPEC_GAMBLER": {
+		"tex": "res://assets/cards/SPEC_GAMBLER.png",
+		"accent": Color(1.0, 0.78, 0.28),
+		"title": "LOADED FATE!",
+		"sub": "GOLDEN DICE  •  ×2 / ×3 MULT",
+	},
+	"SPEC_PLAGUE": {
+		"tex": "res://assets/cards/SPEC_PLAGUE.png",
+		"accent": Color(0.42, 0.94, 0.72),
+		"title": "FROST PLAGUE!",
+		"sub": "BLIZZARD FREEZE  •  STUNNED!",
+	},
+	"SPEC_CROWN": {
+		"tex": "res://assets/cards/SPEC_CROWN.png",
+		"accent": Color(1.0, 0.88, 0.36),
+		"title": "SOVEREIGN'S DECREE!",
+		"sub": "ROYAL HALO  •  COURT SURGE",
+	},
 }
 
 var _mode: String = "fpv_preview"
@@ -128,6 +194,12 @@ var _astro_gears: Array[Node3D] = []
 var _clock_hand_min: Node3D = null
 var _clock_hand_hr: Node3D = null
 var _glass_shards: Array[Dictionary] = []
+
+# Shared Hybrid 2.5D Rig Nodes for the 11 Power Cards (Mirror..Crown)
+var _hybrid_stage_root: Node3D = null
+var _hybrid_spinners: Array[Dictionary] = []
+var _hybrid_motes: Array[Dictionary] = []
+var _hybrid_pillars: Array[MeshInstance3D] = []
 
 
 func _ready() -> void:
@@ -488,7 +560,7 @@ func _build_fx_rig() -> void:
 		spoke.mesh = sm
 		spoke.rotation_degrees.y = float(bi) * 45.0
 		spoke.material_override = _rune_seal_mat
-		_apply_ink_outline(spoke, 0.008)
+		_apply_ink_outline(spoke, 0.013)
 		_rune_seal_root.add_child(spoke)
 
 	_shock_rings.clear()
@@ -519,6 +591,8 @@ func _build_fx_rig() -> void:
 			_build_phoenix_specific_rig()
 		"SPEC_CHRONOS":
 			_build_chronos_specific_rig()
+		_:
+			_build_hybrid_power_rig(_card_id, tex_path)
 
 
 func _build_storm_specific_rig(tex_path: String) -> void:
@@ -1031,6 +1105,8 @@ func _apply_animation_state(t: float) -> void:
 			_animate_phoenix(t)
 		"SPEC_CHRONOS":
 			_animate_chronos(t)
+		_:
+			_animate_hybrid_power(t)
 
 	# FPV Stage Lighting, Camera Choreography & Rival Reaction
 	if _mode == "fpv_preview":
@@ -1450,3 +1526,303 @@ func _draw_overlay() -> void:
 
 		if _font_body != null:
 			_overlay.draw_string(_font_body, Vector2(cx - 280.0, banner_y + 44.0), sub_txt, HORIZONTAL_ALIGNMENT_CENTER, 560, 16, Color(0.98, 0.88, 0.48, out_a))
+
+
+func _make_hybrid_mat(col: Color, alpha: float = 0.94) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.albedo_color = Color(col.r, col.g, col.b, alpha)
+	return mat
+
+
+func _build_hybrid_power_rig(card_id: String, tex_path: String) -> void:
+	_hybrid_stage_root = Node3D.new()
+	_hybrid_stage_root.position = _impact_pos
+	_fx_root.add_child(_hybrid_stage_root)
+	_hybrid_spinners.clear()
+	_hybrid_motes.clear()
+	_hybrid_pillars.clear()
+
+	var main_mat := _make_hybrid_mat(_accent, 0.95)
+	var trim_mat := _make_hybrid_mat(Color(1.0, 0.90, 0.48), 0.96)
+	var dark_mat := _make_hybrid_mat(Color(0.10, 0.08, 0.12), 0.94)
+
+	match card_id:
+		"SPEC_MIRROR":
+			# Octagonal Cracking Mirror Gate + Echo Card Clones
+			var frame := MeshInstance3D.new()
+			var fm := TorusMesh.new()
+			fm.inner_radius = 0.34; fm.outer_radius = 0.40; fm.rings = 8; fm.ring_segments = 8
+			frame.mesh = fm
+			frame.position = Vector3(0.0, 0.44, -0.18)
+			frame.rotation_degrees = Vector3(90.0, 0.0, 0.0)
+			frame.material_override = trim_mat
+			_apply_ink_outline(frame, 0.015)
+			_hybrid_stage_root.add_child(frame)
+			_hybrid_spinners.append({"node": frame, "spin_z": 42.0, "bob": 0.05})
+			for mi in range(2):
+				var mc := _create_card_quad_node(tex_path, CARD_BACK_TEX, _accent, Vector2(0.18, 0.26))
+				mc.position = Vector3((-0.34 if mi == 0 else 0.34), 0.38, -0.05)
+				_hybrid_stage_root.add_child(mc)
+				_hybrid_spinners.append({"node": mc, "spin_y": 140.0 if mi == 0 else -140.0, "bob": 0.08})
+			_spawn_hybrid_motes(24, PrismMesh.new(), Vector3(0.08, 0.14, 0.02), main_mat, "burst")
+
+		"SPEC_ALCHEMIST":
+			# Counter-rotating Golden Transmutation Rings + Central Crucible Orb + Elixir Sparks
+			for ri in range(2):
+				var tr := MeshInstance3D.new()
+				var tm := TorusMesh.new()
+				tm.inner_radius = 0.32 + float(ri) * 0.12; tm.outer_radius = 0.36 + float(ri) * 0.12; tm.rings = 32; tm.ring_segments = 8
+				tr.mesh = tm
+				tr.position = Vector3(0.0, 0.12 + float(ri) * 0.18, 0.0)
+				tr.material_override = trim_mat if ri == 0 else main_mat
+				_apply_ink_outline(tr, 0.013)
+				_hybrid_stage_root.add_child(tr)
+				_hybrid_spinners.append({"node": tr, "spin_y": 160.0 if ri == 0 else -190.0, "bob": 0.04})
+			var flask := MeshInstance3D.new()
+			var sphm := SphereMesh.new()
+			sphm.radius = 0.14; sphm.height = 0.28
+			flask.mesh = sphm
+			flask.position = Vector3(0.0, 0.38, 0.0)
+			flask.material_override = main_mat
+			_apply_ink_outline(flask, 0.015)
+			_hybrid_stage_root.add_child(flask)
+			_hybrid_pillars.append(flask)
+			_spawn_hybrid_motes(26, SphereMesh.new(), Vector3(0.045, 0.045, 0.045), trim_mat, "rise")
+
+		"SPEC_ORACLE":
+			# All-Seeing Third Eye Iris + Sweeping Divination Beams over Rival
+			var outer_eye := MeshInstance3D.new()
+			var oem := TorusMesh.new()
+			oem.inner_radius = 0.28; oem.outer_radius = 0.34; oem.rings = 32; oem.ring_segments = 8
+			outer_eye.mesh = oem
+			outer_eye.position = Vector3(0.0, 0.56, -0.15)
+			outer_eye.rotation_degrees = Vector3(90.0, 0.0, 0.0)
+			outer_eye.material_override = trim_mat
+			_apply_ink_outline(outer_eye, 0.015)
+			_hybrid_stage_root.add_child(outer_eye)
+			_hybrid_spinners.append({"node": outer_eye, "spin_z": 95.0, "bob": 0.06})
+			var iris := MeshInstance3D.new()
+			var im := SphereMesh.new()
+			im.radius = 0.15; im.height = 0.30
+			iris.mesh = im
+			iris.position = Vector3(0.0, 0.56, -0.15)
+			iris.material_override = main_mat
+			_apply_ink_outline(iris, 0.014)
+			_hybrid_stage_root.add_child(iris)
+			_hybrid_pillars.append(iris)
+			for bi in range(4):
+				var ray := MeshInstance3D.new()
+				var rm := BoxMesh.new()
+				rm.size = Vector3(0.035, 0.035, 1.35)
+				ray.mesh = rm
+				ray.position = Vector3((float(bi) - 1.5) * 0.18, 0.38, -0.55)
+				ray.rotation_degrees = Vector3(-18.0, (float(bi) - 1.5) * 10.0, 0.0)
+				ray.material_override = trim_mat if bi % 2 == 0 else main_mat
+				_apply_ink_outline(ray, 0.010)
+				_hybrid_stage_root.add_child(ray)
+				_hybrid_pillars.append(ray)
+			_spawn_hybrid_motes(18, PrismMesh.new(), Vector3(0.05, 0.12, 0.03), trim_mat, "orbit")
+
+		"SPEC_MIDAS":
+			# Stamped Gold Coin Cyclone + Golden Light Pillar
+			var col_pil := MeshInstance3D.new()
+			var cpm := CylinderMesh.new()
+			cpm.top_radius = 0.22; cpm.bottom_radius = 0.12; cpm.height = 1.25
+			col_pil.mesh = cpm
+			col_pil.position = Vector3(0.0, 0.62, 0.0)
+			col_pil.material_override = _make_hybrid_mat(Color(1.0, 0.86, 0.26), 0.72)
+			_apply_ink_outline(col_pil, 0.014)
+			_hybrid_stage_root.add_child(col_pil)
+			_hybrid_pillars.append(col_pil)
+			var coin_m := CylinderMesh.new()
+			coin_m.top_radius = 0.5; coin_m.bottom_radius = 0.5; coin_m.height = 0.14; coin_m.radial_segments = 16
+			_spawn_hybrid_motes(28, coin_m, Vector3(0.09, 0.09, 0.09), trim_mat, "orbit")
+
+		"SPEC_JESTER":
+			# Chaotic Card & Diamond Shards Orbiting Vortex
+			for ci in range(6):
+				var a := float(ci) * (TAU / 6.0)
+				var jc := _create_card_quad_node(CARD_BACK_TEX, CARD_BACK_TEX, _accent if ci % 2 == 0 else Color(1.0, 0.82, 0.28), Vector2(0.14, 0.20))
+				jc.position = Vector3(cos(a) * 0.42, 0.36 + float(ci % 3) * 0.10, sin(a) * 0.42)
+				_hybrid_stage_root.add_child(jc)
+				_hybrid_spinners.append({"node": jc, "spin_y": 240.0, "bob": 0.12, "phase": a})
+			_spawn_hybrid_motes(24, PrismMesh.new(), Vector3(0.07, 0.10, 0.04), main_mat, "burst")
+
+		"SPEC_HEX":
+			# Cursed Violet Rings + Piercing Ink Needles around Rival
+			for hi in range(3):
+				var ch := MeshInstance3D.new()
+				var tm := TorusMesh.new()
+				tm.inner_radius = 0.28 + float(hi) * 0.05; tm.outer_radius = 0.33 + float(hi) * 0.05; tm.rings = 24; tm.ring_segments = 8
+				ch.mesh = tm
+				ch.position = _rival_pos - _impact_pos + Vector3(0.0, 0.22 + float(hi) * 0.16, 0.0)
+				ch.rotation_degrees = Vector3(24.0 * float(hi - 1), float(hi) * 35.0, 0.0)
+				ch.material_override = dark_mat if hi == 1 else main_mat
+				_apply_ink_outline(ch, 0.015)
+				_hybrid_stage_root.add_child(ch)
+				_hybrid_spinners.append({"node": ch, "spin_y": 150.0 if hi % 2 == 0 else -150.0, "bob": 0.04})
+			_spawn_hybrid_motes(20, PrismMesh.new(), Vector3(0.04, 0.18, 0.04), main_mat, "strike")
+
+		"SPEC_MAGNET":
+			# Dual Polarity Torus Arcs + Attracted Cards Spiraling Inward
+			var arch := MeshInstance3D.new()
+			var am := TorusMesh.new()
+			am.inner_radius = 0.26; am.outer_radius = 0.34; am.rings = 28; am.ring_segments = 8
+			arch.mesh = am
+			arch.position = Vector3(0.0, 0.42, 0.10)
+			arch.rotation_degrees = Vector3(72.0, 0.0, 0.0)
+			arch.material_override = main_mat
+			_apply_ink_outline(arch, 0.015)
+			_hybrid_stage_root.add_child(arch)
+			_hybrid_spinners.append({"node": arch, "spin_z": 120.0, "bob": 0.06})
+			for ai in range(5):
+				var ac := _create_card_quad_node(CARD_BACK_TEX, tex_path, _accent, Vector2(0.13, 0.19))
+				ac.position = Vector3((float(ai) - 2.0) * 0.26, 0.32, -0.45)
+				_hybrid_stage_root.add_child(ac)
+				_hybrid_spinners.append({"node": ac, "spin_y": 180.0, "bob": 0.08, "phase": float(ai)})
+			_spawn_hybrid_motes(22, SphereMesh.new(), Vector3(0.045, 0.045, 0.045), _make_hybrid_mat(Color(0.45, 0.90, 1.0), 0.95), "orbit")
+
+		"SPEC_SHIELD":
+			# Twin Octagonal Steel & Gold Aegis Bastion Shields Protecting Player
+			for si in range(2):
+				var sh := MeshInstance3D.new()
+				var shm := CylinderMesh.new()
+				shm.top_radius = 0.34; shm.bottom_radius = 0.30; shm.height = 0.05; shm.radial_segments = 8
+				sh.mesh = shm
+				sh.position = Vector3((-0.38 if si == 0 else 0.38), 0.38, 0.26)
+				sh.rotation_degrees = Vector3(76.0, -24.0 if si == 0 else 24.0, 0.0)
+				sh.material_override = main_mat if si == 0 else trim_mat
+				_apply_ink_outline(sh, 0.016)
+				_hybrid_stage_root.add_child(sh)
+				_hybrid_spinners.append({"node": sh, "spin_y": 40.0 if si == 0 else -40.0, "bob": 0.06})
+			_spawn_hybrid_motes(22, PrismMesh.new(), Vector3(0.05, 0.08, 0.03), trim_mat, "rise")
+
+		"SPEC_GAMBLER":
+			# Twin Oversized Tumbling Golden Inked Dice
+			for di in range(2):
+				var die := MeshInstance3D.new()
+				var dm := BoxMesh.new()
+				dm.size = Vector3(0.22, 0.22, 0.22)
+				die.mesh = dm
+				die.position = Vector3((-0.22 if di == 0 else 0.22), 0.38, -0.04 if di == 0 else 0.08)
+				die.material_override = trim_mat if di == 0 else _make_hybrid_mat(Color(0.96, 0.90, 0.72), 0.98)
+				_apply_ink_outline(die, 0.016)
+				_hybrid_stage_root.add_child(die)
+				_hybrid_spinners.append({"node": die, "spin_y": 320.0, "spin_x": 210.0, "bob": 0.14, "phase": float(di) * 1.5})
+			_spawn_hybrid_motes(24, PrismMesh.new(), Vector3(0.06, 0.10, 0.04), trim_mat, "burst")
+
+		"SPEC_PLAGUE":
+			# Howling Blizzard Cone + 10 Jagged Emerald-Ice Spires Erupting around Rival
+			for ii in range(10):
+				var a := float(ii) * (TAU / 10.0)
+				var sp := MeshInstance3D.new()
+				var sm := PrismMesh.new()
+				sm.size = Vector3(0.11, 0.42 + float(ii % 3) * 0.14, 0.11)
+				sp.mesh = sm
+				sp.position = _rival_pos - _impact_pos + Vector3(cos(a) * 0.42, 0.04, sin(a) * 0.34)
+				sp.rotation_degrees = Vector3(sin(a) * 18.0, rad_to_deg(-a), cos(a) * 18.0)
+				sp.material_override = main_mat if ii % 2 == 0 else _make_hybrid_mat(Color(0.72, 0.98, 1.0), 0.92)
+				_apply_ink_outline(sp, 0.014)
+				_hybrid_stage_root.add_child(sp)
+				_hybrid_pillars.append(sp)
+			_spawn_hybrid_motes(28, PrismMesh.new(), Vector3(0.05, 0.11, 0.04), _make_hybrid_mat(Color(0.76, 0.98, 1.0), 0.92), "orbit")
+
+		_:
+			# SPEC_CROWN (and clean fallback): Levitating Sovereign Crown with 8 Spires & Royal Rays
+			var cr_root := Node3D.new()
+			cr_root.position = Vector3(0.0, 0.48, 0.0)
+			_hybrid_stage_root.add_child(cr_root)
+			var band := MeshInstance3D.new()
+			var bm := TorusMesh.new()
+			bm.inner_radius = 0.24; bm.outer_radius = 0.30; bm.rings = 28; bm.ring_segments = 8
+			band.mesh = bm
+			band.material_override = trim_mat
+			_apply_ink_outline(band, 0.015)
+			cr_root.add_child(band)
+			for si in range(8):
+				var a := float(si) * (TAU / 8.0)
+				var sp := MeshInstance3D.new()
+				var pm := PrismMesh.new()
+				pm.size = Vector3(0.08, 0.18, 0.08)
+				sp.mesh = pm
+				sp.position = Vector3(cos(a) * 0.26, 0.12, sin(a) * 0.26)
+				sp.material_override = trim_mat if si % 2 == 0 else _make_hybrid_mat(Color(0.96, 0.24, 0.28), 0.95)
+				_apply_ink_outline(sp, 0.013)
+				cr_root.add_child(sp)
+			_hybrid_spinners.append({"node": cr_root, "spin_y": 115.0, "bob": 0.10})
+			_spawn_hybrid_motes(24, PrismMesh.new(), Vector3(0.05, 0.12, 0.03), trim_mat, "rise")
+
+
+func _spawn_hybrid_motes(count: int, mesh: Mesh, mesh_scale: Vector3, mat: Material, pattern: String) -> void:
+	for i in range(count):
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.scale = mesh_scale
+		mi.material_override = mat
+		_apply_ink_outline(mi, 0.008)
+		mi.visible = false
+		_hybrid_stage_root.add_child(mi)
+		_hybrid_motes.append({
+			"node": mi,
+			"pattern": pattern,
+			"angle": float(i) * (TAU / float(maxi(1, count))) + _rng.randf_range(-0.2, 0.2),
+			"rad": _rng.randf_range(0.24, 0.88),
+			"spd": _rng.randf_range(0.8, 1.8),
+			"phase": _rng.randf(),
+		})
+
+
+func _animate_hybrid_power(t: float) -> void:
+	_fire_beat("impact_main", 1.56, "card_ace_strike", -2.5, 1.05)
+	_fire_beat("echo_climax", 2.24, "anim_sword_cleave", -4.0, 1.15)
+	if not is_instance_valid(_hybrid_stage_root):
+		return
+
+	var vis_u := clampf((t - 0.55) / 0.50, 0.0, 1.0)
+	var out_u := 1.0 if t < 3.25 else clampf(1.0 - (t - 3.25) / 0.85, 0.0, 1.0)
+	var env := vis_u * out_u
+	_hybrid_stage_root.visible = env > 0.01
+
+	for sp in _hybrid_spinners:
+		var nd: Node3D = sp.get("node", null) as Node3D
+		if not is_instance_valid(nd):
+			continue
+		var s_sc := maxf(0.05, env * (1.18 if (t >= 1.56 and t <= 2.55) else 1.0))
+		nd.scale = Vector3.ONE * s_sc
+		nd.rotation_degrees.y += float(sp.get("spin_y", 0.0)) * 0.016
+		nd.rotation_degrees.x += float(sp.get("spin_x", 0.0)) * 0.016
+		nd.rotation_degrees.z += float(sp.get("spin_z", 0.0)) * 0.016
+		nd.position.y += sin(t * 4.5 + float(sp.get("phase", 0.0))) * float(sp.get("bob", 0.04)) * 0.03
+
+	for pi in range(_hybrid_pillars.size()):
+		var p_nd: MeshInstance3D = _hybrid_pillars[pi]
+		if is_instance_valid(p_nd):
+			var p_env := clampf((t - 1.35) / 0.35, 0.0, 1.0) * out_u
+			p_nd.visible = p_env > 0.01
+			p_nd.scale = Vector3(0.6 + p_env * 0.6, p_env * 1.15, 0.6 + p_env * 0.6)
+
+	for m in _hybrid_motes:
+		var mn: MeshInstance3D = m["node"] as MeshInstance3D
+		if not is_instance_valid(mn):
+			continue
+		if t >= 0.75 and t < 3.55:
+			mn.visible = true
+			var life := fmod((t - 0.75) * float(m["spd"]) + float(m["phase"]), 1.0)
+			var a := float(m["angle"]) + life * 3.4
+			var r := float(m["rad"]) * (0.45 + life * 0.85)
+			var pat := str(m["pattern"])
+			if pat == "strike":
+				var sr := (_rival_pos - _impact_pos)
+				mn.position = Vector3(0.0, 0.25, 0.0).lerp(sr + Vector3(cos(a) * 0.25, 0.3, sin(a) * 0.25), ease(life, 0.45))
+			elif pat == "burst":
+				mn.position = Vector3(cos(a) * r * 1.2, 0.25 + sin(life * PI) * 0.85, sin(a) * r * 1.2)
+			elif pat == "orbit":
+				mn.position = Vector3(cos(a + t * 2.5) * r, 0.28 + sin(t * 4.0 + a) * 0.24, sin(a + t * 2.5) * r)
+			else:
+				mn.position = Vector3(cos(a) * r * 0.75, 0.12 + life * 1.15, sin(a) * r * 0.75)
+			mn.rotation_degrees = Vector3(life * 180.0, rad_to_deg(-a), life * 120.0)
+		else:
+			mn.visible = false

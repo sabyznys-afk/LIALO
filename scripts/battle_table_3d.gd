@@ -35,6 +35,8 @@ const CombatLogDrawerScript := preload("res://scripts/battle/combat_log_drawer.g
 const LialoIcons := preload("res://scripts/ui/lialo_icons.gd")
 const RelicInspect3D := preload("res://scripts/ui/relic_inspect_3d.gd")
 const PowerCardShowcase := preload("res://scripts/battle/power_card_vfx_showcase.gd")
+const StoryData := preload("res://scripts/campaign/campaign_story_data.gd")
+const ComicPlayerScript := preload("res://scripts/ui/comic_cutscene_player.gd")
 const OUTLINE_SHADER := preload("res://shaders/outline.gdshader")
 const CARD_FX_SHADER := preload("res://shaders/card_fx.gdshader")
 const SCREEN_JUICE_SHADER := preload("res://shaders/screen_juice.gdshader")
@@ -448,6 +450,14 @@ var active_boss_mod: String = ""
 var active_boss_desc: String = ""
 var redraws_left: int = 2
 var player_shields: int = 0
+var player_knight_shield_charge: int = 0
+var ai_shields: int = 0
+var boss_phase: int = 1
+var sealed_suit_id: String = ""
+var sealed_suit_turns: int = 0
+var shifting_winds_active: bool = false
+var stamped_card_key: String = ""
+var _mid_comic_layer: CanvasLayer = null
 var rival_cards_revealed_turns: int = 0
 var aces_played: int = 0
 var extra_player_turn: bool = false
@@ -758,12 +768,12 @@ func _sync_heartbeat_hp_displays(animate_change: bool = true) -> void:
 	var show_player_hp := ((not tutorial_mode) or tutorial_step >= 5) and (not _is_cinematic_playing())
 	if is_instance_valid(player_hp_heart):
 		player_hp_heart.visible = show_player_hp
-		player_hp_heart.call("set_hp_with_status", player_hp, player_max_hp, player_shields, "", animate_change)
+		player_hp_heart.call("set_hp_with_status", player_hp, player_max_hp, player_shields, "", animate_change, player_knight_shield_charge)
 	var show_rival_hp := ((not tutorial_mode) or tutorial_step >= 5) and (not _is_cinematic_playing())
 	if is_instance_valid(rival_hp_heart):
 		rival_hp_heart.visible = show_rival_hp
 		var r_tag := ("%d" % rival_burn_turns) if rival_burn_turns > 0 else (("%d" % rival_poison_turns) if rival_poison_turns > 0 else "")
-		rival_hp_heart.call("set_hp_with_status", ai_hp, ai_max_hp, 0, r_tag, animate_change)
+		rival_hp_heart.call("set_hp_with_status", ai_hp, ai_max_hp, ai_shields, r_tag, animate_change)
 
 func _position_rival_hp_heart(is_boss: bool) -> void:
 	if not is_instance_valid(rival_hp_heart):
@@ -3042,6 +3052,20 @@ func _is_fancy_play_card(card: Dictionary, cnt: int = 1) -> bool:
 		return true
 	return false
 
+func _should_play_weapon_card_anim(card_data: Dictionary, combo_count: int = 1, is_shield_block: bool = false) -> bool:
+	if is_shield_block:
+		return true
+	if combo_count >= 2:
+		return true
+	var cls := Catalog.normalize_card_class(str(card_data.get("edition", card_data.get("card_class", "NORMAL"))))
+	if cls != "NORMAL":
+		return true
+	var pid := str(card_data.get("power_id", ""))
+	if pid != "":
+		return true
+	var rank := str(card_data.get("rank", ""))
+	return rank in ["7", "D", "K", "E"]
+
 func _spawn_signature_play_vfx(chosen_cards: Array[Dictionary], impact_pos: Vector3, cnt: int) -> Node3D:
 	if chosen_cards.is_empty():
 		return null
@@ -3057,8 +3081,10 @@ func _spawn_signature_play_vfx(chosen_cards: Array[Dictionary], impact_pos: Vect
 		if _is_fancy_play_card(c_f, cnt):
 			has_fancy = true
 			break
-	var b_card_fx: Node3D = SwordCardAnim.play_ancient_circle_sigil(self, lead, impact_pos)
-	_register_blender_vfx(b_card_fx)
+	var b_card_fx: Node3D = null
+	if _should_play_weapon_card_anim(lead, cnt) or has_fancy:
+		b_card_fx = SwordCardAnim.play_ancient_circle_sigil(self, lead, impact_pos)
+		_register_blender_vfx(b_card_fx)
 
 	# Camera micro-choreography: FOV punch + Dutch roll on multi-card slams
 	if cam_spring:
@@ -3067,31 +3093,25 @@ func _spawn_signature_play_vfx(chosen_cards: Array[Dictionary], impact_pos: Vect
 			var dir := -1.0 if (cnt % 2 == 0) else 1.0
 			cam_spring.rot_vel_deg.z += dir * (14.0 + 6.0 * float(mini(cnt, 4)))
 
-	match pid:
-		"SPEC_VAMPIRE", "SPEC_PHOENIX", "SPEC_CHRONOS", "SPEC_STORM":
-			var accent_c: Color = Color(0.92, 0.14, 0.18) if pid == "SPEC_VAMPIRE" else (Color(1.0, 0.48, 0.14) if pid == "SPEC_PHOENIX" else (Color(0.32, 0.92, 1.0) if pid == "SPEC_CHRONOS" else Color(0.45, 0.80, 1.0)))
-			Fx.shard_burst(self, impact_pos, accent_c, 12, 0.52)
-			if pid == "SPEC_PHOENIX":
-				overdrive_light_target = maxf(overdrive_light_target, 0.6)
-			emit_signal("play_sfx_pitched_requested", "card_ace_strike", 1.12 if pid == "SPEC_STORM" else 1.02)
-			var card_vfx := PowerCardShowcase.new()
-			add_child(card_vfx)
-			card_vfx.sfx_triggered.connect(func(sfx_key: String, _vol: float, pitch_val: float):
-				emit_signal("play_sfx_pitched_requested", sfx_key, pitch_val)
-			)
-			card_vfx.setup_battle_fx(impact_pos, rival_pos, pid)
-		"SPEC_SHIELD":
-			Fx.shard_burst(self, impact_pos, lead.get("accent", Color(0.68, 0.78, 0.88)), 8, 0.42)
-			emit_signal("play_sfx_requested", "card_shield_guard")
-		"SPEC_PLAGUE":
-			Fx.shard_burst(self, impact_pos, Color(0.45, 0.85, 0.25), 10, 0.45)
+	if PowerCardShowcase.CARD_META.has(pid):
+		var meta_p: Dictionary = PowerCardShowcase.CARD_META[pid]
+		var accent_c: Color = meta_p.get("accent", lead.get("accent", Color(1.0, 0.84, 0.32)))
+		Fx.shard_burst(self, impact_pos, accent_c, 12, 0.52)
+		if pid == "SPEC_PHOENIX":
+			overdrive_light_target = maxf(overdrive_light_target, 0.6)
+		elif pid == "SPEC_PLAGUE":
 			Fx.ink_splat(self, impact_pos, 26, 1.2)
-		"SPEC_CROWN":
-			Fx.shard_burst(self, impact_pos, Color(1.0, 0.82, 0.30), 12, 0.5)
-			Fx.light_pillar(self, impact_pos, Color(1.0, 0.82, 0.30), 1.6, 0.8)
-		_:
-			if pid != "":
-				Fx.shard_burst(self, impact_pos, lead.get("accent", Color(1.0, 0.84, 0.32)), 8, 0.42)
+		elif pid == "SPEC_CROWN":
+			Fx.light_pillar(self, impact_pos, accent_c, 1.6, 0.8)
+		emit_signal("play_sfx_pitched_requested", "card_ace_strike", 1.12 if pid == "SPEC_STORM" else 1.02)
+		var card_vfx := PowerCardShowcase.new()
+		add_child(card_vfx)
+		card_vfx.sfx_triggered.connect(func(sfx_key: String, _vol: float, pitch_val: float):
+			emit_signal("play_sfx_pitched_requested", sfx_key, pitch_val)
+		)
+		card_vfx.setup_battle_fx(impact_pos, rival_pos, pid)
+	elif pid != "":
+		Fx.shard_burst(self, impact_pos, lead.get("accent", Color(1.0, 0.84, 0.32)), 8, 0.42)
 
 	if pid == "":
 		if rank == "7":
@@ -5452,6 +5472,7 @@ func _award_player_score_immediately(pts: int, note: String, col: Color, best_sl
 		_punch_hud_label(player_score_lbl, 1.24)
 	_refresh_score_ledger_ui()
 	_sync_charge_chalice_art(false)
+	_check_boss_phase_awakening()
 	if is_instance_valid(score_chalice_art) and pts > 0:
 		var vp_rect := get_viewport().get_visible_rect().size if get_viewport() else Vector2(1366, 768)
 		var origin_p := vp_rect * Vector2(0.50, 0.50)
@@ -5490,9 +5511,9 @@ func _award_ai_score_immediately(pts: int, note: String = "", col: Color = Color
 		ai_score_lbl.text = _tr("RIVAL: %s / %s", "SOUPEŘ: %s / %s") % [_format_pts_ui(ai_score), _format_pts_ui(target_score)]
 		if pts > 0:
 			_punch_hud_label(ai_score_lbl, 1.28)
-	if ai_liquid_bar:
-		ai_liquid_bar.queue_redraw()
 	_refresh_score_ledger_ui()
+	if pts > 0:
+		_check_boss_phase_awakening()
 	if pts > 0 and hud_score_revealed:
 		var pop_txt := note if note != "" else _tr("+%d RIVAL" % pts, "+%d SOUPEŘ" % pts)
 		_spawn_score_popup(pop_txt, col, false)
@@ -9269,6 +9290,13 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 		active_boss_desc = ""
 		redraws_left = 0
 		player_shields = 0
+		player_knight_shield_charge = 0
+		ai_shields = 0
+		boss_phase = 1
+		sealed_suit_id = ""
+		sealed_suit_turns = 0
+		shifting_winds_active = (active_boss_mod == "SHIFTING_WINDS")
+		stamped_card_key = ""
 		cards_points_revealed = false
 		abilities_revealed = false
 		hud_score_revealed = false
@@ -9298,6 +9326,13 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 		var base_redraw := 3 if active_campaign_difficulty == "traveler" else 2
 		redraws_left = base_redraw + (2 if "REL_CHRONO_P" in run_active_relics else 0)
 		player_shields = (1 if active_campaign_difficulty == "traveler" else 0) + (1 if "REL_IRON_BOOT" in run_active_relics else 0) + (1 if active_retry_blessing > 0 else 0)
+		player_knight_shield_charge = 0
+		ai_shields = 0
+		boss_phase = 1
+		sealed_suit_id = ""
+		sealed_suit_turns = 0
+		shifting_winds_active = (active_boss_mod == "SHIFTING_WINDS")
+		stamped_card_key = ""
 		bankai_build_id = str(active_run_profile.get("selected_build_id", "GUILLOTINE_ACES"))
 		var b_def := Catalog.get_deck_build(bankai_build_id)
 		bankai_combo = (active_run_profile.get("bankai_combo", b_def.get("default_bankai", ["CERVEN_E", "ZALUD_E", "ZELEN_E", "GULA_E"])) as Array).duplicate()
@@ -9657,7 +9692,106 @@ func start_3d_battle(era: Dictionary, chosen_deck: Dictionary = {}, is_tutorial:
 			_begin_player_item_review_stage(true)
 			_play_table_items_intro_showcase()
 			_check_battle_unlock_tips()
+			_check_campaign_micro_tutorial()
 	)
+
+func _check_campaign_micro_tutorial() -> void:
+	if tutorial_mode or active_run_profile.is_empty():
+		return
+	var stage_i := int(active_stage_data.get("stage_idx", 0))
+	if stage_i > 1:
+		return
+	var e_id := str(active_era.get("id", ""))
+	if e_id == "" or Catalog.has_completed_micro_tutorial(active_run_profile, e_id):
+		return
+	var tip: Dictionary = StoryData.get_era_micro_tutorial(e_id)
+	if tip.is_empty():
+		return
+	Catalog.mark_micro_tutorial_completed(active_run_profile, e_id)
+	Catalog.save_profile(active_run_profile)
+	var title_t := str(tip.get("title_cs" if opts_language == "cs" else "title_en", "SPIRKO TIP"))
+	var body_t := str(tip.get("body_cs" if opts_language == "cs" else "body_en", ""))
+	_flash_turn_toast(title_t, body_t, Color(0.45, 0.94, 1.0), 4.6, true)
+	if combat_log_drawer != null:
+		combat_log_drawer.add_entry("%s — %s" % [title_t, body_t], Color(0.45, 0.94, 1.0))
+
+func _check_boss_phase_awakening() -> void:
+	if tutorial_mode or not is_inside_tree():
+		return
+	var stage_i := int(active_stage_data.get("stage_idx", 0))
+	if stage_i < 2:
+		return
+	var e_id := str(active_era.get("id", ""))
+	var bp_info: Dictionary = StoryData.get_boss_phase_info(e_id)
+	if bp_info.is_empty():
+		return
+	var hp_ratio := float(ai_hp) / float(maxi(1, ai_max_hp))
+	var sc_ratio := float(ai_score) / float(maxi(1, target_score))
+	if boss_phase == 1 and (hp_ratio <= float(bp_info.get("phase2_hp_ratio", 0.50)) or sc_ratio >= float(bp_info.get("phase2_score_ratio", 0.60))):
+		boss_phase = 2
+		var p2_title := str(bp_info.get("phase2_title_cs" if opts_language == "cs" else "phase2_title_en", "BOSS PHASE 2!"))
+		var p2_desc := str(bp_info.get("phase2_desc_cs" if opts_language == "cs" else "phase2_desc_en", ""))
+		_flash_turn_toast(p2_title, p2_desc, Color(1.0, 0.42, 0.24), 3.4, true)
+		_trigger_boss_modifier_flare(p2_title)
+		cam_kick_shake = maxf(cam_kick_shake, 0.65)
+		if combat_log_drawer != null:
+			combat_log_drawer.add_entry("%s — %s" % [p2_title, p2_desc], Color(1.0, 0.48, 0.28))
+		match e_id:
+			"antika":
+				var candidates: Array[String] = []
+				for su in SUITS:
+					var sid := str(su["id"])
+					if sid != active_suit_id:
+						candidates.append(sid)
+				if not candidates.is_empty():
+					sealed_suit_id = candidates[randi() % candidates.size()]
+					sealed_suit_turns = 1
+			"rim":
+				ai_shields += 2
+				_sync_heartbeat_hp_displays(true)
+			"stredovek":
+				ai_shields += 2
+				var best_k := ""
+				var best_pts := -1
+				for hc in player_hand:
+					if int(hc.get("pts", 0)) > best_pts:
+						best_pts = int(hc.get("pts", 0))
+						best_k = "%s_%s" % [str(hc.get("suit", "")), str(hc.get("rank", ""))]
+				stamped_card_key = best_k
+				_sync_heartbeat_hp_displays(true)
+			"objavy":
+				shifting_winds_active = true
+			"prohibicia":
+				ai_score += 15
+				display_ai_score = float(ai_score)
+				var is_hl := (DisplayServer.get_name() == "headless") or ("--script" in OS.get_cmdline_args())
+				if not is_hl:
+					if _mid_comic_layer == null:
+						_mid_comic_layer = CanvasLayer.new()
+						_mid_comic_layer.layer = 27
+						add_child(_mid_comic_layer)
+					var flash_cp := ComicPlayerScript.new()
+					_mid_comic_layer.add_child(flash_cp)
+					flash_cp.scene_finished.connect(func(_sid: String):
+						if is_instance_valid(flash_cp):
+							flash_cp.queue_free()
+					)
+					flash_cp.play_scene("COMIC_CAPONE_PHASE2", opts_language, true, true)
+	elif e_id == "prohibicia" and boss_phase == 2 and (ai_hp <= 2 or sc_ratio >= 0.85):
+		boss_phase = 3
+		overdrive_light_target = maxf(overdrive_light_target, 1.55)
+		var p3_title := str(bp_info.get("phase3_title_cs" if opts_language == "cs" else "phase3_title_en", "FINAL CLIMAX!"))
+		var p3_desc := str(bp_info.get("phase3_desc_cs" if opts_language == "cs" else "phase3_desc_en", ""))
+		_flash_turn_toast(p3_title, p3_desc, Color(1.0, 0.88, 0.34), 3.6, true)
+		cam_kick_shake = maxf(cam_kick_shake, 0.80)
+		if bankai_charged.size() < bankai_combo.size():
+			for bk in bankai_combo:
+				if not (bk in bankai_charged):
+					bankai_charged.append(bk)
+					break
+			_refresh_bankai_seal_hud()
+		if combat_log_drawer != null:
+			combat_log_drawer.add_entry("%s — %s" % [p3_title, p3_desc], Color(1.0, 0.88, 0.34))
 
 var _tutorial_action_done: String = ""
 
@@ -10787,6 +10921,8 @@ func _sort_player_hand(mode: String) -> void:
 			tw.tween_property(cn, "scale", Vector3.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _can_play(card: Dictionary) -> bool:
+	if sealed_suit_turns > 0 and sealed_suit_id != "" and str(card.get("suit", "")) == sealed_suit_id and str(card.get("rank", "")) != "H" and not bool(card.get("wild", false)):
+		return false
 	var top: Dictionary = discard_pile.back()
 	var p_id: String = str(card.get("power_id", ""))
 	if pending_draw > 0:
@@ -10811,45 +10947,62 @@ func _get_suit_obj(s_id: String) -> Dictionary:
 	fallback["name"] = _tr(str(SUITS[0]["name"]), str(SUITS[0].get("name_cs", SUITS[0]["name"])))
 	return fallback
 
-func _apply_hp_damage(to_player: bool, dmg: int, reason: String = "") -> int:
+func _apply_hp_damage(to_player: bool, dmg: int, reason: String = "", pierce_shield: bool = false) -> int:
 	if dmg <= 0:
 		return 0
 	if to_player:
-		if not tutorial_mode and player_shields > 0:
-			player_shields -= 1
+		if not tutorial_mode and not pierce_shield and player_shields > 0:
+			var blocked := mini(player_shields, dmg)
+			player_shields -= blocked
+			dmg -= blocked
 			if is_instance_valid(player_hp_heart):
 				player_hp_heart.call("set_shields", player_shields)
-			_spawn_score_popup(_tr("SHIELD BLOCKED -%d ♥ HP!" % dmg, "ŠTÍT VYKRYL -%d ♥ HP!" % dmg), Color(0.45, 0.94, 1.0), true)
+			_spawn_score_popup(_tr("SHIELD BLOCKED -%d ♥ HP!" % blocked, "ŠTÍT VYKRYL -%d ♥ HP!" % blocked), Color(0.45, 0.94, 1.0), true)
+			SwordCardAnim.play_sword_card_score_anim(self, {"suit": "CERVEN", "rank": "D", "edition": "KNIGHT", "shield_block": true}, null, true, player_hand_anchor.global_position + Vector3(0.0, 0.14, -0.18), blocked, 1.2, false)
 			_refresh_table_labels()
-			return 0
+			if dmg <= 0:
+				return 0
 		var min_hp := 1 if (tutorial_mode and tutorial_step < 8) else 0
 		player_hp = maxi(min_hp, player_hp - dmg)
 		_trigger_screen_juice(Color(0.96, 0.16, 0.20), 0.72, 0.44)
 		cam_kick_shake = maxf(cam_kick_shake, 0.75)
 		if is_instance_valid(player_hp_heart):
-			player_hp_heart.call("set_hp", player_hp, player_max_hp, false)
+			player_hp_heart.call("set_hp_with_status", player_hp, player_max_hp, player_shields, "", false, player_knight_shield_charge)
 			player_hp_heart.call("trigger_damage_pulse", dmg)
 		if player_hp_lbl:
 			_punch_hud_label(player_hp_lbl, 1.38)
-		var msg := ("-%d ♥ HP! %s" % [dmg, reason]).strip_edges()
-		_spawn_score_popup(msg, Color(1.0, 0.30, 0.34), true)
+		var msg := (("%s " % _tr("CRITICAL • SHIELD PIERCE!", "KRITICKÝ PRŮRAZ ŠTÍTEM!")) if pierce_shield else "") + ("-%d ♥ HP! %s" % [dmg, reason]).strip_edges()
+		_spawn_score_popup(msg, Color(1.0, 0.82, 0.28) if pierce_shield else Color(1.0, 0.30, 0.34), true)
 		Fx.float_number(self, player_hand_anchor.global_position + Vector3(0.0, 0.22, -0.10), "-%d ♥ HP!" % dmg, Color(1.0, 0.26, 0.30), 74, 0.26, 1.0, 1.8)
 	else:
+		if not tutorial_mode and not pierce_shield and ai_shields > 0:
+			var r_blocked := mini(ai_shields, dmg)
+			ai_shields -= r_blocked
+			dmg -= r_blocked
+			if is_instance_valid(rival_hp_heart):
+				rival_hp_heart.call("set_shields", ai_shields)
+			_spawn_score_popup(_tr("RIVAL SHIELD BLOCKED -%d!" % r_blocked, "SOUPEŘŮV ŠTÍT VYKRYL -%d!" % r_blocked), Color(0.56, 0.88, 1.0), false)
+			if dmg <= 0:
+				return 0
+		elif pierce_shield and ai_shields > 0:
+			_spawn_score_popup(_tr("CRITICAL • SHIELD PIERCE!", "KRITICKÝ PRŮRAZ ŠTÍTEM!"), Color(1.0, 0.86, 0.24), true)
 		var min_hp := 1 if (tutorial_mode and tutorial_step < 8) else 0
 		ai_hp = maxi(min_hp, ai_hp - dmg)
-		_trigger_boss_recoil_stagger(dmg >= 4)
-		cam_kick_shake = maxf(cam_kick_shake, 0.65 if dmg >= 4 else 0.42)
+		_trigger_boss_recoil_stagger(dmg >= 4 or pierce_shield)
+		cam_kick_shake = maxf(cam_kick_shake, 0.82 if pierce_shield else (0.65 if dmg >= 4 else 0.42))
 		if is_instance_valid(rival_hp_heart):
-			rival_hp_heart.call("set_hp", ai_hp, ai_max_hp, false)
+			rival_hp_heart.call("set_hp_with_status", ai_hp, ai_max_hp, ai_shields, "", false)
 			rival_hp_heart.call("trigger_damage_pulse", dmg)
 		if ai_hp_lbl:
 			_punch_hud_label(ai_hp_lbl, 1.38)
 		var r_pos := opp_hands_anchor.global_position + Vector3(0.0, 0.24, 0.05) if is_instance_valid(opp_hands_anchor) else Vector3(0.0, 1.25, -1.0)
-		Fx.burst(self, r_pos, Color(1.0, 0.24, 0.28), 22 if dmg >= 4 else 12, 1.35, 0.52, 0.036, 1.4, true, 150.0, Vector3.UP, true)
-		var amsg := ("-%d ♥ HP! %s" % [dmg, reason]).strip_edges()
-		_spawn_score_popup(amsg, Color(1.0, 0.42, 0.26), false)
-		Fx.float_number(self, r_pos, "-%d ♥ HP!" % dmg, Color(1.0, 0.32, 0.24), 78 if dmg >= 4 else 64, 0.26, 1.0, 1.85)
+		Fx.burst(self, r_pos, Color(1.0, 0.82, 0.24) if pierce_shield else Color(1.0, 0.24, 0.28), 24 if (dmg >= 4 or pierce_shield) else 12, 1.35, 0.52, 0.036, 1.4, true, 150.0, Vector3.UP, true)
+		var amsg := (("CRITICAL • SHIELD PIERCE! " if pierce_shield else "") + "-%d ♥ HP! %s" % [dmg, reason]).strip_edges()
+		_spawn_score_popup(amsg, Color(1.0, 0.86, 0.24) if pierce_shield else Color(1.0, 0.42, 0.26), false)
+		Fx.float_number(self, r_pos, ("CRIT PIERCE -%d ♥!" % dmg) if pierce_shield else ("-%d ♥ HP!" % dmg), Color(1.0, 0.86, 0.26) if pierce_shield else Color(1.0, 0.32, 0.24), 78 if (dmg >= 4 or pierce_shield) else 64, 0.26, 1.0, 1.85)
 	_refresh_table_labels()
+	if not to_player:
+		_check_boss_phase_awakening()
 	return dmg
 
 func _draw_from_deck() -> Dictionary:
@@ -13238,6 +13391,35 @@ func _play_player_cards_3d(play_indices: Array, chosen_suit: String) -> void:
 			ai_score += int(score_res["rival_bonus"])
 		if int(score_res["bonus_gold"]) > 0:
 			match_bonus_gold += int(score_res["bonus_gold"])
+			duel_gold_delta += int(score_res["bonus_gold"])
+		# NORMAL class economy buff: +6 Florins per pure base card played
+		var normal_gold_cnt := 0
+		var knight_charge_cnt := 0
+		for cc_cls in chosen_cards:
+			var n_cls := Catalog.normalize_card_class(str(cc_cls.get("edition", "NORMAL")))
+			if n_cls == "NORMAL" and str(cc_cls.get("power_id", "")) == "":
+				normal_gold_cnt += 1
+			elif n_cls == "KNIGHT":
+				knight_charge_cnt += 1
+		if normal_gold_cnt > 0:
+			var n_gold_bonus := normal_gold_cnt * int(Catalog.CARD_CLASSES.get("NORMAL", {}).get("gold_bonus", 6))
+			match_bonus_gold += n_gold_bonus
+			duel_gold_delta += n_gold_bonus
+			Fx.float_number(self, discard_pile_root.global_position + Vector3(0.0, 0.24, 0.0), "+%dg NORMAL" % n_gold_bonus, Color(1.0, 0.86, 0.28), 52, 0.24, 0.9, 1.35)
+		if knight_charge_cnt > 0 and not tutorial_mode:
+			for _ki in range(knight_charge_cnt):
+				player_knight_shield_charge += 1
+				if player_knight_shield_charge >= 3:
+					player_knight_shield_charge -= 3
+					player_shields += 1
+					if is_instance_valid(player_hp_heart):
+						player_hp_heart.call("trigger_shield_charge_pulse", player_knight_shield_charge, true)
+						player_hp_heart.call("set_shields", player_shields)
+					_spawn_score_popup(_tr("AEGIS FORGED! +1 FULL SHIELD (3/3)", "ŠTÍT UKOVÁN! +1 CELÝ ŠTÍT (3/3)"), Color(1.0, 0.88, 0.34), true)
+				else:
+					if is_instance_valid(player_hp_heart):
+						player_hp_heart.call("trigger_shield_charge_pulse", player_knight_shield_charge, false)
+					_spawn_score_popup(_tr("KNIGHT SHIELD: %d/3" % player_knight_shield_charge, "RYTÍŘSKÝ ŠTÍT: %d/3" % player_knight_shield_charge), Color(0.45, 0.94, 1.0), true)
 		if float(score_res["seven_grimoire_delta"]) > 0.0:
 			match_relic_scales["REL_SEVEN_GRIMOIRE"] = float(score_res["seven_grimoire_new"])
 		if int(score_res.get("shields_gained", 0)) > 0:
@@ -13555,7 +13737,7 @@ func _execute_balatro_stagger_timeline(
 		musical_step += 1
 		emit_signal("play_sfx_pitched_requested", "card_hover", semi_pitch)
 		emit_signal("play_sfx_pitched_requested", "chord_lute", semi_pitch * 0.88)
-		if ci < chosen_cards.size() and not sword_fired_idxs.has(ci):
+		if ci < chosen_cards.size() and not sword_fired_idxs.has(ci) and _should_play_weapon_card_anim(chosen_cards[ci], cnt):
 			var sc_card: Dictionary = chosen_cards[ci]
 			var sc_cls := Catalog.normalize_card_class(str(sc_card.get("edition", "NORMAL")))
 			sword_fired_idxs[ci] = true
@@ -13565,8 +13747,8 @@ func _execute_balatro_stagger_timeline(
 			await get_tree().create_timer(_pace(0.55)).timeout
 			if token != _stagger_seq_token or not is_inside_tree() or not visible:
 				return
-		elif ci == 0 and cnt == 1 and sword_fired_idxs.has(0):
-			await get_tree().create_timer(_pace(0.20)).timeout
+		elif ci == 0 and cnt == 1:
+			await get_tree().create_timer(_pace(0.18)).timeout
 			if token != _stagger_seq_token or not is_inside_tree() or not visible:
 				return
 
@@ -13677,7 +13859,7 @@ func _execute_balatro_stagger_timeline(
 		for cc_a in chosen_cards:
 			if str(cc_a.get("rank", "")) == "E" and Catalog.normalize_card_class(str(cc_a.get("edition", "NORMAL"))) != "MERCHANT":
 				ace_cnt += 1
-		_apply_hp_damage(false, ace_dmg, _tr("%d× ACE STRIKE!" % maxi(1, ace_cnt), "ÚDER %d× ESA!" % maxi(1, ace_cnt)))
+		_apply_hp_damage(false, ace_dmg, _tr("%d× ACE STRIKE!" % maxi(1, ace_cnt), "ÚDER %d× ESA!" % maxi(1, ace_cnt)), bankai_active)
 
 	var climax_col: Color = Color(1.0, 0.86, 0.28) if (is_shed or cnt >= 2 or force_lightning or is_on_fire) else s_obj["col"].lightened(0.30)
 	var played_has_knight := false
@@ -13983,6 +14165,8 @@ func _check_and_trigger_bankai(chosen_cards: Array) -> void:
 			"CHAOS_JESTER":
 				ai_score = maxi(0, ai_score - 14)
 				display_ai_score = float(ai_score)
+		if not tutorial_mode:
+			_apply_hp_damage(false, 2, _tr("GRAND SEAL FINISHER!", "ÚDER VELKÉ PEČETĚ!"), true)
 		if combat_log_drawer != null:
 			var b_loc := Catalog.get_deck_build_loc(bankai_build_id, opts_language)
 			combat_log_drawer.add_entry("%s — %s" % [str(b_loc["bankai_name"]), str(b_loc["bankai_desc"])], b_loc["col"])
@@ -14453,8 +14637,9 @@ func _execute_ai_turn_body(my_ai_seq: int) -> void:
 			_add_card_mesh_to_discard_pile(c)
 			turn_glance_timer = 1.15
 			var is_rival_knight := (c_cls == "KNIGHT")
-			var r_sword_fx := SwordCardAnim.play_sword_card_score_anim(self, c, null, false, target_pos, ai_pts, 1.0, is_rival_knight)
-			_register_blender_vfx(r_sword_fx)
+			if _should_play_weapon_card_anim(c, 1):
+				var r_sword_fx := SwordCardAnim.play_sword_card_score_anim(self, c, null, false, target_pos, ai_pts, 1.0, is_rival_knight)
+				_register_blender_vfx(r_sword_fx)
 			if is_rival_knight and not tutorial_mode and not _check_win_or_redeal():
 				table_status_label3d.text = _tr("RIVAL KNIGHT! Memorize: %s %s before MIST rolls in!", "RYTÍŘ SOUPEŘE! Zapamatuj si: %s %s před MLHOU!") % [s_obj["sym"], _get_rank_name(str(c.get("rank", "")))]
 				_rebuild_all_3d_hands()
@@ -14730,8 +14915,9 @@ func _run_rival_turn_with_cinematic(my_ai_seq: int) -> void:
 			var s_obj := _get_suit_obj(c["suit"])
 			_spawn_impact_shockwave(card_world, s_obj["col"], 2.3)
 			var is_rival_knight := (c_cls == "KNIGHT")
-			var r_sword_fx := SwordCardAnim.play_sword_card_score_anim(self, c, null, false, card_world, ai_pts, 1.0, is_rival_knight)
-			_register_blender_vfx(r_sword_fx)
+			if _should_play_weapon_card_anim(c, 1):
+				var r_sword_fx := SwordCardAnim.play_sword_card_score_anim(self, c, null, false, card_world, ai_pts, 1.0, is_rival_knight)
+				_register_blender_vfx(r_sword_fx)
 			var r_disp := _get_rank_name(str(c.get("rank", "")))
 			if is_rival_knight:
 				rival_knight_card = c
@@ -14786,10 +14972,14 @@ func _finish_ai_3d_turn() -> void:
 			else:
 				player_score = maxi(0, player_score - 8)
 				_spawn_score_popup(_tr("-8 VENOM TICK", "-8 JED"), Color(0.55, 0.90, 0.45), true)
-		if active_boss_mod == "SHIFTING_WINDS" and match_turn_count % 3 == 0:
+		if (active_boss_mod == "SHIFTING_WINDS" and match_turn_count % 3 == 0) or (shifting_winds_active and boss_phase >= 2 and match_turn_count % 2 == 0):
 			active_suit_id = str(SUITS[randi() % SUITS.size()]["id"])
 			_trigger_boss_modifier_flare(_tr("Shifting Winds!", "Proměnlivé větry!"))
 			_spawn_score_popup(_tr("WINDS SHIFT SUIT!", "VÍTR MĚNÍ BARVU!"), Color(0.45, 0.88, 1.0), true)
+		if sealed_suit_turns > 0:
+			sealed_suit_turns -= 1
+			if sealed_suit_turns <= 0:
+				sealed_suit_id = ""
 	_flush_pending_exchange_scores_immediately()
 	_rebuild_all_3d_hands()
 	_refresh_table_labels()
@@ -16313,6 +16503,7 @@ func _refresh_table_labels() -> void:
 	_sync_contextual_cancel_btn()
 	_refresh_score_ledger_ui()
 	_sync_charge_chalice_art(false)
+	_check_boss_phase_awakening()
 	if score_goal_bar_ctrl:
 		score_goal_bar_ctrl.queue_redraw()
 	if player_puf_lbl:

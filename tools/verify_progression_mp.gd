@@ -343,13 +343,13 @@ func _run_all() -> void:
 		var dai2 := DevInspScript.new() as Control
 		root.add_child(dai2)
 		var items_arr: Array = dai2.get("_all_items")
-		_assert(not items_arr.is_empty() and str((items_arr[0] as Dictionary).get("kind", "")) == "power_card_fpv" and bool((items_arr[0] as Dictionary).get("pinned", false)), "DevAssetInspector pins SPEC_STORM 1st-person showcase at index 0")
+		_assert(not items_arr.is_empty() and str((items_arr[0] as Dictionary).get("kind", "")) == "power_card_fpv" and bool((items_arr[0] as Dictionary).get("pinned", false)), "DevAssetInspector pins 1st-person Power Card showcase at index 0")
 		var pinned_ids: Array[String] = []
-		for pi in range(mini(4, items_arr.size())):
+		for pi in range(mini(15, items_arr.size())):
 			var pit := items_arr[pi] as Dictionary
 			if str(pit.get("kind", "")) == "power_card_fpv" and bool(pit.get("pinned", false)):
 				pinned_ids.append(str(pit.get("card_id", "")))
-		_assert(pinned_ids == ["SPEC_STORM", "SPEC_VAMPIRE", "SPEC_PHOENIX", "SPEC_CHRONOS"], "DevAssetInspector pins all 4 hand-drawn Power Cards #0..#3")
+		_assert(pinned_ids.size() == 15 and ("SPEC_STORM" in pinned_ids) and ("SPEC_CROWN" in pinned_ids), "DevAssetInspector pins all 15 hand-drawn Power Cards (%d)" % pinned_ids.size())
 		dai2.queue_free()
 	print("  OK 11: v0.194 13-Point Overhaul & 4x Power Card 1st-person showcases verified")
 
@@ -369,7 +369,7 @@ func _run_all() -> void:
 	_assert(not ("LIALO" in fi_src), "FujiraStudioIntro contains zero LIALO-specific strings")
 
 	_assert(DeckBuilderPanelScript.CARD_BACKS.size() == 5, "DeckBuilderPanel trims CARD_BACKS to 5 decks")
-	_assert(DeckBuilderPanelScript.CLASS_CYCLE_RANKS.size() == 4, "DeckBuilderPanel restricts class infusion to 4 ranks above 10 (D,H,K,E)")
+	_assert(DeckBuilderPanelScript.CLASS_CYCLE_RANKS.size() == 8, "DeckBuilderPanel allows KNIGHT/class infusion on all 32 cards (8 ranks)")
 	var dbp_v195 := DeckBuilderPanelScript.new() as Control
 	_assert(dbp_v195.has_signal("explain_card_requested"), "DeckBuilderPanel exposes explain_card_requested signal")
 	dbp_v195.free()
@@ -399,6 +399,50 @@ func _run_all() -> void:
 	_assert(bool(mpl_room.get("_in_match_room")), "MpLobbyOverlay enters native Match Room on mode selection")
 	mpl_room.queue_free()
 	print("  OK 12: v0.195 Universal Fujira Intro, 4x Power VFX, 5 Decks, Spirko/Explain, Relics, Battle HUD, Settings & MP Match Room verified")
+
+	# 13. v0.196 Complete To-Do Overhaul Checks
+	if RelicMeshScript != null:
+		for tr_v196 in Catalog.TABLE_RELICS:
+			var tr_id := str(tr_v196["id"])
+			var tr_node: Node3D = RelicMeshScript.call("build_relic_3d_mesh", tr_id, tr_v196.get("col", Color.GOLD))
+			_assert(tr_node != null and bool(tr_node.get_meta("handdrawn_3d", false)), "Hand-drawn 3D GLB active for %s" % tr_id)
+			var fx_ch: Node = tr_node.find_child("TankardBubblesFx", true, false)
+			if fx_ch == null:
+				fx_ch = tr_node.find_child("RelicLivingFx", true, false)
+			_assert(fx_ch != null, "Living 3D FX mounted on %s" % tr_id)
+			if tr_node != null:
+				tr_node.free()
+
+	_assert(int(Catalog.CARD_CLASSES.get("NORMAL", {}).get("gold_bonus", 0)) >= 5, "NORMAL card gold bonus buffed to >= 5g")
+	var hp_aegis := HeartbeatHpDisplay.new()
+	root.add_child(hp_aegis)
+	hp_aegis.call("set_shield_charge", 2)
+	_assert(int(hp_aegis.call("get_shield_charge")) == 2, "HeartbeatHpDisplay tracks 3-part Knight Aegis Shield charge")
+	hp_aegis.queue_free()
+
+	var ArsenalBgScript = load("res://scripts/ui/arsenal_forge_bg.gd")
+	_assert(ArsenalBgScript != null, "ArsenalForgeBg script compiles cleanly")
+	if ArsenalBgScript != null:
+		var afb := ArsenalBgScript.new() as Control
+		root.add_child(afb)
+		afb.call("trigger_magic_pulse", Color.GOLD)
+		afb.queue_free()
+
+	var StoryDataScript = load("res://scripts/campaign/campaign_story_data.gd")
+	var ComicPlayerScript = load("res://scripts/ui/comic_cutscene_player.gd")
+	_assert(StoryDataScript != null and StoryDataScript.COMIC_SCENES.size() == 12, "LialoStoryData defines all 12 motion-comic scenes")
+	_assert(StoryDataScript != null and StoryDataScript.ERA_MICRO_TUTORIALS.size() == 5, "LialoStoryData defines all 5 Era Micro-Tutorials")
+	_assert(StoryDataScript != null and StoryDataScript.BOSS_PHASES.size() == 5, "LialoStoryData defines all 5 Multi-Phase Boss configs")
+	if ComicPlayerScript != null:
+		var cp_test := ComicPlayerScript.new() as Control
+		root.add_child(cp_test)
+		cp_test.call("play_scene", "COMIC_PROLOGUE_INTRO", "en", true, true)
+		cp_test.call("stop_scene")
+		cp_test.queue_free()
+
+	var Showcase196 = load("res://scripts/battle/power_card_vfx_showcase.gd")
+	_assert(Showcase196 != null and Showcase196.CARD_META.size() == 15, "PowerCardVfxShowcase supports all 15 SPEC Power Cards")
+	print("  OK 13: v0.196 10x Hand-Drawn Relics, Hybrid 2.5D VFX, Knight 3/3 Shield, Normal +6g, Animated Backgrounds, 12x Comics, 5x Boss Phases & 15x Power Cards verified")
 
 	if _failures.is_empty():
 		print("=== VERIFY PROGRESSION & MP: ALL CHECKS PASSED ===")

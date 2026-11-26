@@ -16,6 +16,8 @@ const RELIC_INSPECT_PATH := "res://scripts/ui/relic_inspect_3d.gd"
 const DevAssetInspectorScript := preload("res://scripts/ui/dev_asset_inspector.gd")
 const LialoIcons := preload("res://scripts/ui/lialo_icons.gd")
 const FujiraStudioIntroScript := preload("res://scripts/ui/fujira_studio_intro.gd")
+const StoryData := preload("res://scripts/campaign/campaign_story_data.gd")
+const ComicCutscenePlayerScript := preload("res://scripts/ui/comic_cutscene_player.gd")
 
 enum ScreenState { SPLASH, MAIN_MENU, WORLD_3D, MATCH_3D }
 
@@ -61,6 +63,9 @@ var lobby_options_btn: Button
 var lobby_dev_btn: Button
 var dev_inspector_layer: CanvasLayer
 var dev_inspector: DevAssetInspectorScript
+var comic_layer: CanvasLayer
+var comic_player: ComicCutscenePlayerScript
+var _pending_win_comic_id: String = ""
 var collection_close_btn: Button
 var collection_det_close_btn: Button
 var _explain_back_btn: Button
@@ -155,6 +160,7 @@ var lobby_dark_veil: ColorRect
 var transition_curtain: ColorRect
 var lobby_fx_canvas: Control
 var arsenal_layer: CanvasLayer
+var arsenal_forge_bg: ArsenalForgeBg
 var deck_modal: PanelContainer
 var selected_deck_idx: int = 0
 var collection_tab_idx: int = 0
@@ -1029,6 +1035,13 @@ func _ready() -> void:
 	transition_curtain.visible = false
 	ui_layer.add_child(transition_curtain)
 
+	comic_layer = CanvasLayer.new()
+	comic_layer.layer = 28
+	add_child(comic_layer)
+	comic_player = ComicCutscenePlayerScript.new()
+	comic_layer.add_child(comic_player)
+	comic_player.sfx_requested.connect(func(sk: String): _play_sfx(sk))
+
 	_apply_audio_state()
 	# Startup opens directly with the Fujira Studios intro + Fujira Studios sound
 	_switch_to(ScreenState.SPLASH)
@@ -1114,7 +1127,15 @@ func _switch_to(next_state: ScreenState) -> void:
 		_refresh_map_roguelite_hud()
 		_update_campaign_card(selected_era_idx)
 		_play_map_opening_animations()
-		if pending_post_match_shop:
+		if _pending_win_comic_id != "":
+			var w_cid := _pending_win_comic_id
+			_pending_win_comic_id = ""
+			_play_story_comic_once(w_cid, func():
+				if pending_post_match_shop:
+					pending_post_match_shop = false
+					_open_shop_modal(true)
+			)
+		elif pending_post_match_shop:
 			pending_post_match_shop = false
 			_open_shop_modal(true)
 
@@ -1254,6 +1275,14 @@ func _on_match_won_details(details: Dictionary) -> void:
 		var st_map: Dictionary = run_profile.get("era_stage", {})
 		var cur_st := int(st_map.get(e_id, 0))
 		if cur_st >= 2:
+			const ERA_WIN_COMICS := {
+				"antika": "COMIC_ERA1_WIN",
+				"rim": "COMIC_ERA2_WIN",
+				"stredovek": "COMIC_ERA3_WIN",
+				"objavy": "COMIC_ERA4_WIN",
+				"prohibicia": "COMIC_EPILOGUE_FINALE",
+			}
+			_pending_win_comic_id = str(ERA_WIN_COMICS.get(e_id, ""))
 			var clr: Dictionary = run_profile.get("era_cleared", {})
 			clr[e_id] = true
 			run_profile["era_cleared"] = clr
@@ -1348,19 +1377,58 @@ func show_ouroboros_loading(title: String, on_mid: Callable = Callable(), durati
 	add_child(loader)
 
 
+func _play_story_comic_once(scene_id: String, on_done: Callable = Callable()) -> void:
+	if scene_id == "":
+		if on_done.is_valid():
+			on_done.call()
+		return
+	var is_headless_run := (DisplayServer.get_name() == "headless") or ("--script" in OS.get_cmdline_args())
+	if is_headless_run or Catalog.has_seen_comic(run_profile, scene_id) or not is_instance_valid(comic_player):
+		Catalog.mark_comic_seen(run_profile, scene_id)
+		Catalog.save_profile(run_profile)
+		if on_done.is_valid():
+			on_done.call()
+		return
+	Catalog.mark_comic_seen(run_profile, scene_id)
+	Catalog.save_profile(run_profile)
+	var cb := [on_done]
+	var conn_arr: Array[Callable] = []
+	var handler := func(_sid: String):
+		if not conn_arr.is_empty() and comic_player.scene_finished.is_connected(conn_arr[0]):
+			comic_player.scene_finished.disconnect(conn_arr[0])
+		var fn: Callable = cb[0]
+		if fn.is_valid():
+			fn.call()
+	conn_arr.append(handler)
+	comic_player.scene_finished.connect(handler)
+	comic_player.play_scene(scene_id, str(game_options.get("language", "en")), true, false)
+
+
 func _launch_era_battle(era_idx: int, force_tutorial: bool = false) -> void:
 	var idx := clampi(era_idx, 0, ERAS_DATA.size() - 1)
 	var era: Dictionary = ERAS_DATA[idx]
+	var e_id: String = str(era.get("id", "antika"))
 	var run_tut := force_tutorial or not first_battle_tutorial_done
 	first_battle_tutorial_done = true
 	var loadout := {} if run_tut else _build_roguelite_loadout_for_era(era, false)
 	if not run_tut:
 		loadout["profile"] = run_profile
+	var st_idx := int((run_profile.get("era_stage", {}) as Dictionary).get(e_id, 0))
+	const ERA_INTRO_COMICS := {
+		"antika": "COMIC_ERA1_INTRO",
+		"rim": "COMIC_ERA2_INTRO",
+		"stredovek": "COMIC_ERA3_INTRO",
+		"objavy": "COMIC_ERA4_INTRO",
+		"prohibicia": "COMIC_ERA5_INTRO",
+	}
+	var story_cid := "COMIC_PROLOGUE_INTRO" if run_tut else (str(ERA_INTRO_COMICS.get(e_id, "")) if st_idx == 0 else "")
 	var era_title := _tr("ENTERING DUEL — %s" % str(era.get("name", "TAVERN")).to_upper(), "NAČÍTÁNÍ DUELU — %s" % str(era.get("name_cs", "KRČMA")).to_upper())
-	show_ouroboros_loading(era_title, func():
-		battle_3d.start_3d_battle(era, PLAYER_DECKS[selected_deck_idx], run_tut, loadout)
-		_switch_to(ScreenState.MATCH_3D)
-	, 2.8)
+	_play_story_comic_once(story_cid, func():
+		show_ouroboros_loading(era_title, func():
+			battle_3d.start_3d_battle(era, PLAYER_DECKS[selected_deck_idx], run_tut, loadout)
+			_switch_to(ScreenState.MATCH_3D)
+		, 2.8)
+	)
 
 # ============================================================================
 # 1. EPICKÉ INTRO: FUJIRA STUDIOS (Vystúpi hora -> Zasneží -> Kamzíky & iskry)
@@ -2122,6 +2190,11 @@ func _build_deck_selector_modal() -> void:
 	arsenal_layer.layer = 11
 	add_child(arsenal_layer)
 
+	arsenal_forge_bg = ArsenalForgeBg.new()
+	arsenal_forge_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	arsenal_forge_bg.visible = false
+	arsenal_layer.add_child(arsenal_forge_bg)
+
 	deck_modal = PanelContainer.new()
 	deck_modal.set_anchors_preset(Control.PRESET_FULL_RECT)
 	deck_modal.offset_left = 0
@@ -2130,7 +2203,7 @@ func _build_deck_selector_modal() -> void:
 	deck_modal.offset_bottom = 0
 	deck_modal.visible = false
 	var ars_sb := StyleBoxFlat.new()
-	ars_sb.bg_color = Color(0.032, 0.025, 0.022, 1.0)
+	ars_sb.bg_color = Color(0.032, 0.024, 0.020, 0.72)
 	ars_sb.border_color = Color(0.84, 0.64, 0.24, 0.96)
 	ars_sb.set_border_width_all(3)
 	ars_sb.content_margin_left = 40
@@ -3005,9 +3078,17 @@ func _rebuild_collection_view() -> void:
 	if deck_modal and not deck_modal.has_meta("_hover_clear_bound"):
 		deck_modal.set_meta("_hover_clear_bound", true)
 		deck_modal.visibility_changed.connect(func():
+			if is_instance_valid(arsenal_forge_bg):
+				arsenal_forge_bg.visible = deck_modal.visible
+				if deck_modal.visible:
+					arsenal_forge_bg.trigger_magic_pulse(Color(1.0, 0.72, 0.28))
 			if not deck_modal.visible:
 				_clear_active_collection_hover()
 		)
+	if is_instance_valid(arsenal_forge_bg):
+		arsenal_forge_bg.visible = deck_modal.visible if is_instance_valid(deck_modal) else false
+		if arsenal_forge_bg.visible:
+			arsenal_forge_bg.trigger_magic_pulse(Color(0.38, 0.88, 1.0))
 	var cs := _is_cs()
 	var lang := "cs" if cs else "en"
 	if collection_title_lbl:
@@ -5951,8 +6032,8 @@ func _build_roguelite_modals() -> void:
 
 	var vis_rel_cnt := Catalog.get_visible_relics().size()
 	var pwr_cnt := Catalog.POWER_CARDS.size()
-	var t_names_en := ["%d Power Cards" % pwr_cnt, "%d Relics" % vis_rel_cnt, "5 Classes", "6 Runeforge", "5 Swords"]
-	var t_names_cs := ["%d Mocných" % pwr_cnt, "%d Relikvií" % vis_rel_cnt, "5 Tříd", "6 Kovárna", "5 Čepelí"]
+	var t_names_en := ["%d Power Cards" % pwr_cnt, "%d Relics" % vis_rel_cnt, "5 Classes", "6 Runeforge", "5 Swords", "Story"]
+	var t_names_cs := ["%d Mocných" % pwr_cnt, "%d Relikvií" % vis_rel_cnt, "5 Tříd", "6 Kovárna", "5 Čepelí", "Příběh"]
 	almanac_tab_btns.clear()
 	for ti in range(t_names_en.size()):
 		var tbtn := Button.new()
@@ -6660,7 +6741,7 @@ func _rebuild_almanac_ui() -> void:
 			lbl.add_theme_color_override("font_color", alc["col"].lightened(0.20))
 			row.add_child(lbl)
 			almanac_list_box.add_child(row)
-	else:
+	elif almanac_tab_idx == 4:
 		var owned_sw: Array = run_profile.get("unlocked_swords", ["SWORD_IRON"])
 		var eq_sw: String = str(run_profile.get("equipped_sword", "SWORD_IRON"))
 		for sw_raw in Catalog.SWORD_SKINS:
@@ -6691,6 +6772,39 @@ func _rebuild_almanac_ui() -> void:
 					_rebuild_almanac_ui()
 				)
 				hb.add_child(eq_btn)
+			almanac_list_box.add_child(row)
+	else:
+		# Chronicle / Story Comic Replay Gallery (all 12 scenes)
+		for cid_v in StoryData.COMIC_ORDER:
+			var cid: String = str(cid_v)
+			var sc: Dictionary = StoryData.get_comic_scene(cid)
+			var seen := Catalog.has_seen_comic(run_profile, cid)
+			var pal: Dictionary = sc.get("palette", {})
+			var ac: Color = pal.get("accent", Color(0.95, 0.78, 0.34))
+			var row := PanelContainer.new()
+			row.add_theme_stylebox_override("panel", _make_modal_card_style(Color(0.11, 0.08, 0.06, 0.94) if seen else Color(0.08, 0.07, 0.08, 0.90), ac if seen else Color(0.36, 0.34, 0.36)))
+			var hb := HBoxContainer.new()
+			hb.add_theme_constant_override("separation", 12)
+			row.add_child(hb)
+			var lbl := Label.new()
+			lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var s_title := str(sc.get("title_cs" if lang_code == "cs" else "title_en", cid))
+			var tag_s := _tr("[SEEN • REPLAY READY]", "[SHLÉDNUTO • PŘEHRÁT]") if seen else _tr("[LOCKED IN CAMPAIGN]", "[ZAMČENO V KAMPANI]")
+			lbl.text = "✦ %s  %s" % [s_title, tag_s]
+			lbl.add_theme_font_size_override("font_size", 15)
+			lbl.add_theme_color_override("font_color", ac.lightened(0.22) if seen else Color(0.68, 0.64, 0.62))
+			hb.add_child(lbl)
+			if seen and is_instance_valid(comic_player):
+				var rbtn := Button.new()
+				rbtn.text = _tr("REPLAY COMIC", "PŘEHRÁT KOMIKS")
+				rbtn.custom_minimum_size = Vector2(150, 36)
+				var cid_cap: String = cid
+				rbtn.pressed.connect(func():
+					_play_sfx("ui_click")
+					_close_animated_modal(almanac_modal)
+					comic_player.play_scene(cid_cap, lang_code, true, false)
+				)
+				hb.add_child(rbtn)
 			almanac_list_box.add_child(row)
 
 func _refresh_map_roguelite_hud() -> void:

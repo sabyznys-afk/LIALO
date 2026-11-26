@@ -16,6 +16,8 @@ const BankaiFxScript = preload("res://scripts/battle/bankai_fx.gd")
 const SnakeLoadingScript = preload("res://scripts/ui/snake_loading_screen.gd")
 const PowerCardShowcaseScript = preload("res://scripts/battle/power_card_vfx_showcase.gd")
 const FujiraIntroScript = preload("res://scripts/ui/fujira_studio_intro.gd")
+const StoryDataScript = preload("res://scripts/campaign/campaign_story_data.gd")
+const ComicPlayerScript = preload("res://scripts/ui/comic_cutscene_player.gd")
 
 const RELIC_MESH_FACTORY_PATH := "res://scripts/relic_mesh_factory.gd"
 const BLENDER_VFX_PATHS := [
@@ -125,6 +127,7 @@ var _fpv_vp: SubViewport
 var _fpv_cam: Camera3D
 var _fpv_overlay: Control
 var _fpv_showcase: PowerCardShowcaseScript = null
+var _comic_preview_node: ComicPlayerScript = null
 
 
 func _ready() -> void:
@@ -847,11 +850,12 @@ func _scan_dir_items(cat: String, dir_path: String, exts: PackedStringArray, kin
 func _catalog_all_items() -> void:
 	_all_items.clear()
 
-	# 1. Animations & VFX (Pinned 1st-Person Hand-Drawn 4.2s Power Card Showcases #0..#3)
-	_add_item(CAT_ANIM, "PINNED [1ST-PERSON] Power Card: SPEC_STORM (Thunder Strike • 4.2s)", "power_card_fpv", "res://scripts/battle/power_card_vfx_showcase.gd", {"card_id": "SPEC_STORM", "pinned": true})
-	_add_item(CAT_ANIM, "PINNED [1ST-PERSON] Power Card: SPEC_VAMPIRE (Crimson Pact • 4.2s)", "power_card_fpv", "res://scripts/battle/power_card_vfx_showcase.gd", {"card_id": "SPEC_VAMPIRE", "pinned": true})
-	_add_item(CAT_ANIM, "PINNED [1ST-PERSON] Power Card: SPEC_PHOENIX (Rebirth Blaze • 4.2s)", "power_card_fpv", "res://scripts/battle/power_card_vfx_showcase.gd", {"card_id": "SPEC_PHOENIX", "pinned": true})
-	_add_item(CAT_ANIM, "PINNED [1ST-PERSON] Power Card: SPEC_CHRONOS (Sandglass Warp • 4.2s)", "power_card_fpv", "res://scripts/battle/power_card_vfx_showcase.gd", {"card_id": "SPEC_CHRONOS", "pinned": true})
+	# 1. Animations & VFX (Pinned 1st-Person Hand-Drawn 4.2s Power Card Showcases #0..#14)
+	for p_card in Catalog.POWER_CARDS:
+		var p_id := str(p_card.get("id", ""))
+		if PowerCardShowcaseScript.CARD_META.has(p_id):
+			var p_meta: Dictionary = PowerCardShowcaseScript.CARD_META[p_id]
+			_add_item(CAT_ANIM, "PINNED [1ST-PERSON] Power Card: %s (%s • 4.2s)" % [p_id, str(p_meta.get("title", p_id))], "power_card_fpv", "res://scripts/battle/power_card_vfx_showcase.gd", {"card_id": p_id, "pinned": true})
 	for bid in ["GUILLOTINE_ACES", "MIRROR_MONARCH", "CHAOS_JESTER", "MISTBLADE_DUELIST"]:
 		_add_item(CAT_ANIM, "Grand Seal: " + bid, "bankai", "res://scripts/battle/bankai_fx.gd", {"build_id": bid})
 	_add_item(CAT_ANIM, "SwordCardAnimator (3D Slash & Blade)", "sword_anim", SWORD_ANIM_PATH)
@@ -863,6 +867,10 @@ func _catalog_all_items() -> void:
 		_add_item(CAT_ANIM, "Cinematic Profile: " + cp, "cinematic", "res://scripts/cinematic_profiles.gd", {"profile_id": cp})
 	_add_item(CAT_ANIM, "Fujira Studios Intro", "fujira_intro", "res://scripts/downpour_root.gd")
 	_add_item(CAT_ANIM, "SnakeLoadingScreen (Ouroboros)", "snake_loading", "res://scripts/ui/snake_loading_screen.gd")
+	for sc_id_v in StoryDataScript.COMIC_ORDER:
+		var sc_id: String = str(sc_id_v)
+		var sc_d: Dictionary = StoryDataScript.get_comic_scene(sc_id)
+		_add_item(CAT_ANIM, "Story Comic: %s (%s)" % [str(sc_d.get("title_en", sc_id)), sc_id], "comic_scene", "res://scripts/ui/comic_cutscene_player.gd", {"scene_id": sc_id})
 	for mult in [1, 2, 3, 4]:
 		_add_item(CAT_ANIM, "Combo Banner: %dx%s" % [mult, "+" if mult >= 4 else ""], "combo_banner", "", {"mult": mult})
 
@@ -961,6 +969,9 @@ func _stop_all_previews() -> void:
 	if is_instance_valid(_fujira_intro_node):
 		_fujira_intro_node.queue_free()
 		_fujira_intro_node = null
+	if is_instance_valid(_comic_preview_node):
+		_comic_preview_node.queue_free()
+		_comic_preview_node = null
 	if is_instance_valid(_pivot_3d):
 		for c in _pivot_3d.get_children():
 			c.queue_free()
@@ -1046,6 +1057,15 @@ func _trigger_selected_preview() -> void:
 				_stage_anim_2d.visible = true
 				_anim_2d_kind = "fujira_intro"
 				_anim_2d_t = 0.0
+		"comic_scene":
+			_comic_preview_node = ComicPlayerScript.new()
+			_stage_stack.add_child(_comic_preview_node)
+			var sc_cap: String = str(it.get("scene_id", "COMIC_PROLOGUE_INTRO"))
+			_comic_preview_node.play_scene(sc_cap, "en", true, true)
+			_comic_preview_node.scene_finished.connect(func(_sid: String):
+				if _loop_enabled and is_instance_valid(_comic_preview_node) and visible:
+					_comic_preview_node.play_scene(sc_cap, "en", true, true)
+			)
 		"combo_banner":
 			_stage_anim_2d.visible = true
 			_anim_2d_kind = "combo_banner"

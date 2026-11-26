@@ -24,7 +24,7 @@ const SUITS := [
 	{"id": "GULA",   "icon": "bell",   "en": "Bells",  "cs": "Kule",    "col": Color(0.98, 0.64, 0.24)},
 ]
 const RANKS := ["7", "8", "9", "10", "D", "H", "K", "E"]
-const CLASS_CYCLE_RANKS := ["D", "H", "K", "E"]
+const CLASS_CYCLE_RANKS := ["7", "8", "9", "10", "D", "H", "K", "E"]
 const CLASS_CYCLE := ["NORMAL", "KNIGHT", "MAGE", "THIEF", "MERCHANT"]
 
 const CARD_BACKS := [
@@ -160,7 +160,7 @@ func _get_spirko_dialogue() -> String:
 		return _tr("Spirko: Magnificent! All 5 forging rites are complete — your deck is battle-ready!", "Spirko: Skvělé! Všech 5 kroků kovárny je hotovo — balíček je připraven do boje!")
 	match _tut_step:
 		0:
-			return _tr("Spirko: Step 1 — 7–10 stay pure classics. Click any D, H, K or E card above 10 to infuse Mage, Thief or Knight, or tap ? to learn!", "Spirko: Krok 1 — 7–10 jsou čisté základy. Klikni na D, H, K nebo E nad 10 pro výběr třídy, nebo na ? pro vysvětlení!")
+			return _tr("Spirko: Step 1 — Click ANY of the 32 cards to infuse Knight (+1/3 Shield), Mage, Thief or keep Normal (+6g Florins)! Tap ? to learn!", "Spirko: Krok 1 — Klikni na JAKOUKOLI ze 32 karet pro výběr třídy (Rytíř = +1/3 Štítu, Klasika = +6 Zlatých) nebo na ? pro detail!")
 		1:
 			return _tr("Spirko: Step 2 — Equip up to 3 Power Cards (max 1 Mythic). Tap ? on any card to inspect its Arsenal lore!", "Spirko: Krok 2 — Vybav až 3 Mocné karty (max 1 Mýtickou). Klikni na ? pro detail v Arzenálu!")
 		2:
@@ -264,22 +264,48 @@ func _draw_animated_bg() -> void:
 	var sz := _bg_fx.size
 	if sz.x < 20.0 or sz.y < 20.0:
 		return
-	_bg_fx.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.048, 0.034, 0.025, 0.90))
-	var center := Vector2(sz.x * 0.5, 300.0)
+	_bg_fx.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.042, 0.028, 0.022, 0.88))
+
+	# Warm breathing forge hearth glow at bottom & flanks
+	var breath := 0.86 + 0.14 * sin(_fx_time * 3.1)
+	for gx_f in [0.18, 0.50, 0.82]:
+		_bg_fx.draw_circle(Vector2(sz.x * gx_f, sz.y * 1.03), sz.x * 0.28, Color(0.86, 0.28, 0.06, 0.12 * breath))
+
+	# Dual counter-rotating arcane runic circles
+	var center := Vector2(sz.x * 0.5, sz.y * 0.44)
 	var r := minf(sz.x * 0.34, 240.0)
 	var warm_col := _fx_col.lerp(Color(0.92, 0.70, 0.30), 0.35)
-	_bg_fx.draw_arc(center, r, 0.0, TAU, 80, Color(warm_col.r, warm_col.g, warm_col.b, 0.14), 2.0)
-	_bg_fx.draw_arc(center, r * 0.78, 0.0, TAU, 64, Color(warm_col.r, warm_col.g, warm_col.b, 0.09), 1.4)
+	var rune_col := Color(0.36, 0.88, 1.0, 0.14)
+	_bg_fx.draw_arc(center, r, 0.0, TAU, 80, Color(warm_col.r, warm_col.g, warm_col.b, 0.16), 2.2)
+	_bg_fx.draw_arc(center, r * 0.78, 0.0, TAU, 64, rune_col, 1.6)
 	for ti in range(16):
 		var a := float(ti) * (TAU / 16.0) + _fx_time * 0.18
 		var p1 := center + Vector2(cos(a), sin(a)) * (r * 0.94)
-		var p2 := center + Vector2(cos(a), sin(a)) * (r * 1.04)
-		_bg_fx.draw_line(p1, p2, Color(warm_col.r, warm_col.g, warm_col.b, 0.18), 1.6)
-	for m in _motes:
+		var p2 := center + Vector2(cos(a), sin(a)) * (r * 1.05)
+		_bg_fx.draw_line(p1, p2, Color(warm_col.r, warm_col.g, warm_col.b, 0.20) if ti % 2 == 0 else rune_col, 1.6)
+	var tri_pts := PackedVector2Array()
+	for vi in range(4):
+		var va := -_fx_time * 0.22 + float(vi % 3) * (TAU / 3.0)
+		tri_pts.append(center + Vector2(cos(va), sin(va)) * (r * 0.78))
+	_bg_fx.draw_polyline(tri_pts, rune_col, 1.4, true)
+
+	# Stylized flickering forge flames along the bottom edge
+	for fi in range(20):
+		var fx := (float(fi) + 0.5) / 20.0 * sz.x
+		var fh := 22.0 + 22.0 * absf(sin(_fx_time * 4.4 + float(fi) * 1.4))
+		var sway := sin(_fx_time * 5.6 + float(fi)) * 8.0
+		var fw := sz.x / 26.0
+		_bg_fx.draw_colored_polygon(PackedVector2Array([
+			Vector2(fx - fw, sz.y + 2.0), Vector2(fx + sway, sz.y - fh), Vector2(fx + fw, sz.y + 2.0)
+		]), Color(0.90, 0.30, 0.06, 0.22))
+
+	for mi in range(_motes.size()):
+		var m := _motes[mi]
 		var mx := float(m["x"]) * sz.x + sin(_fx_time * 1.6 + float(m["ph"])) * 14.0
 		var my := float(m["y"]) * sz.y
-		var a := 0.18 + 0.18 * sin(_fx_time * 2.8 + float(m["ph"]))
-		_bg_fx.draw_circle(Vector2(mx, my), float(m["sz"]), Color(1.0, 0.76, 0.34, a))
+		var a := 0.20 + 0.20 * sin(_fx_time * 2.8 + float(m["ph"]))
+		var mc := Color(0.42, 0.92, 1.0, a) if (mi % 3 == 0) else Color(1.0, 0.72, 0.30, a)
+		_bg_fx.draw_circle(Vector2(mx, my), float(m["sz"]), mc)
 
 
 func _make_box_style(bg: Color, border: Color, rad: int = 10, pad: int = 10) -> StyleBoxFlat:
@@ -800,7 +826,7 @@ func _build_step_1_base_cards(parent: VBoxContainer, _sel_build_id: String) -> v
 	base_vb.add_child(hdr_row)
 	hdr_row.add_child(LialoIcons.make_icon_label_row(
 		"cards",
-		_tr("7–10 ARE PURE BASE CARDS  •  INFUSE CLASS ON CARDS ABOVE 10 (D, H, K, E)", "7–10 JSOU ZÁKLAD  •  TŘÍDU VYBÍREJ NA KARTÁCH NAD 10 (D, H, K, E)"),
+		_tr("ALL 32 BASE CARDS CAN BE INFUSED  •  NORMAL = +6g FLORINS  •  KNIGHT = 1/3 SHIELD (3/3 BLOCKS 1 DMG)", "VŠECH 32 KARET LZE UPRAVIT  •  KLASIKA = +6 ZLATÝCH  •  RYTÍŘ = 1/3 ŠTÍTU (3/3 BLOKUJE 1 DMG)"),
 		18, 14, COL_GOLD_TEXT
 	))
 

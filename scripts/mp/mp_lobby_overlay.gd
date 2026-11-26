@@ -43,6 +43,7 @@ var _bg_fx_canvas: Control
 var _fx_t: float = 0.0
 var _embers: Array[Dictionary] = []
 var _bg_cards: Array[Dictionary] = []
+var _smoke_wisps: Array[Dictionary] = []
 
 var _conn_dot_lbl: Label
 var _conn_dot_icon: TextureRect
@@ -183,6 +184,11 @@ func _process(delta: float) -> void:
 		bc["y"] = float(bc["y"]) - float(bc["spd"]) * delta
 		if float(bc["y"]) < -0.15:
 			bc["y"] = 1.15
+	for sm in _smoke_wisps:
+		sm["y"] = float(sm["y"]) - float(sm["spd"]) * delta
+		if float(sm["y"]) < -0.10:
+			sm["y"] = 1.08
+			sm["x"] = randf()
 	if is_instance_valid(_bg_fx_canvas):
 		_bg_fx_canvas.queue_redraw()
 	if is_instance_valid(_hdr_title_lbl):
@@ -355,25 +361,35 @@ func _apply_choice_btn_style(btn: Button, is_selected: bool, accent: Color) -> v
 
 func _init_bg_fx_particles() -> void:
 	_embers.clear()
-	for _i in range(28):
+	for _i in range(36):
 		_embers.append({
 			"x": randf(),
 			"y": randf(),
 			"r": randf_range(1.6, 4.2),
-			"spd": randf_range(0.025, 0.075),
+			"spd": randf_range(0.028, 0.085),
 			"phase": randf_range(0.0, TAU),
-			"alpha": randf_range(0.28, 0.72),
+			"alpha": randf_range(0.30, 0.78),
+		})
+	_smoke_wisps.clear()
+	for _s in range(16):
+		_smoke_wisps.append({
+			"x": randf(),
+			"y": randf(),
+			"rad": randf_range(28.0, 62.0),
+			"spd": randf_range(0.014, 0.032),
+			"phase": randf_range(0.0, TAU),
+			"alpha": randf_range(0.035, 0.075),
 		})
 	_bg_cards.clear()
-	var card_x := [0.06, 0.94, 0.11, 0.89, 0.04, 0.96]
-	for i in range(6):
+	var card_x := [0.05, 0.95, 0.09, 0.91, 0.03, 0.97, 0.14, 0.86]
+	for i in range(card_x.size()):
 		_bg_cards.append({
 			"x": card_x[i],
 			"y": randf(),
-			"rot": randf_range(-0.4, 0.4),
+			"rot": randf_range(-0.45, 0.45),
 			"rspd": randf_range(-0.18, 0.18),
 			"spd": randf_range(0.012, 0.028),
-			"w": randf_range(38.0, 56.0),
+			"w": randf_range(34.0, 54.0),
 		})
 
 
@@ -383,26 +399,70 @@ func _draw_bg_fx() -> void:
 	var sz := _bg_fx_canvas.size
 	if sz.x < 10.0 or sz.y < 10.0:
 		return
+
+	# Flickering twin side wall torches & distant arena brazier halos
+	for tx_v in [0.028, 0.972]:
+		var tx_f: float = float(tx_v)
+		var flick := 0.82 + 0.18 * sin(_fx_t * 7.4 + tx_f * 13.0) + 0.08 * cos(_fx_t * 14.2)
+		var torch_pos := Vector2(sz.x * tx_f, sz.y * 0.42)
+		_bg_fx_canvas.draw_circle(torch_pos, 110.0 * flick, Color(0.95, 0.36, 0.12, 0.14 * flick))
+		_bg_fx_canvas.draw_circle(torch_pos, 46.0 * flick, Color(1.0, 0.72, 0.24, 0.22 * flick))
+		var sway_x := sin(_fx_t * 9.5 + tx_f * 9.0) * 5.0
+		var flame := PackedVector2Array([
+			torch_pos + Vector2(-9.0, 8.0),
+			torch_pos + Vector2(sway_x, -22.0 * flick),
+			torch_pos + Vector2(9.0, 8.0),
+		])
+		_bg_fx_canvas.draw_colored_polygon(flame, Color(1.0, 0.56, 0.14, 0.48))
+
+	# Gently swaying left & right duel banners in depth
+	for side_v in [0.015, 0.985]:
+		var side_f: float = float(side_v)
+		var dir_s: float = 1.0 if side_f < 0.5 else -1.0
+		var bx: float = sz.x * side_f
+		var wave: float = sin(_fx_t * 1.6 + side_f * 4.0) * 8.0
+		var b_pts := PackedVector2Array([
+			Vector2(bx, sz.y * 0.12),
+			Vector2(bx + dir_s * 24.0, sz.y * 0.12),
+			Vector2(bx + dir_s * 22.0 + wave, sz.y * 0.48),
+			Vector2(bx + dir_s * 11.0 + wave * 1.2, sz.y * 0.54),
+			Vector2(bx + wave * 0.6, sz.y * 0.48),
+		])
+		_bg_fx_canvas.draw_colored_polygon(b_pts, Color(0.44, 0.10, 0.12, 0.26))
+		_bg_fx_canvas.draw_polyline(PackedVector2Array([b_pts[0], b_pts[1], b_pts[2], b_pts[3], b_pts[4], b_pts[0]]), Color(0.84, 0.64, 0.28, 0.18), 1.4, true)
+
 	var glow_p := 0.11 + 0.045 * sin(_fx_t * 1.9)
-	_bg_fx_canvas.draw_circle(Vector2(sz.x * 0.5, sz.y * 0.10), sz.x * 0.36, Color(0.96, 0.42, 0.18, glow_p))
+	_bg_fx_canvas.draw_circle(Vector2(sz.x * 0.5, sz.y * 0.10), sz.x * 0.36, Color(0.96, 0.34, 0.18, glow_p))
+
+	# Slowly rising tavern smoke wisps
+	for sm in _smoke_wisps:
+		var sx := float(sm["x"]) * sz.x + sin(_fx_t * 0.8 + float(sm["phase"])) * 22.0
+		var sy := float(sm["y"]) * sz.y
+		_bg_fx_canvas.draw_circle(Vector2(sx, sy), float(sm["rad"]), Color(0.62, 0.56, 0.58, float(sm["alpha"])))
+
+	# Subtle crossed-blade silhouette emblems & inked card motes
 	for bc in _bg_cards:
 		var cx := float(bc["x"]) * sz.x
 		var cy := float(bc["y"]) * sz.y
 		var w := float(bc["w"])
 		var h := w * 1.45
 		_bg_fx_canvas.draw_set_transform(Vector2(cx, cy), float(bc["rot"]), Vector2.ONE)
-		_bg_fx_canvas.draw_rect(Rect2(-w * 0.5, -h * 0.5, w, h), Color(0.85, 0.68, 0.36, 0.055), false, 1.5)
-		_bg_fx_canvas.draw_rect(Rect2(-w * 0.5 + 4, -h * 0.5 + 4, w - 8, h - 8), Color(0.18, 0.12, 0.08, 0.10), true)
+		_bg_fx_canvas.draw_rect(Rect2(-w * 0.5, -h * 0.5, w, h), Color(0.85, 0.68, 0.36, 0.075), false, 1.5)
+		_bg_fx_canvas.draw_rect(Rect2(-w * 0.5 + 4, -h * 0.5 + 4, w - 8, h - 8), Color(0.18, 0.12, 0.08, 0.12), true)
+		_bg_fx_canvas.draw_line(Vector2(-w * 0.22, -h * 0.22), Vector2(w * 0.22, h * 0.22), Color(0.88, 0.72, 0.38, 0.06), 1.4)
+		_bg_fx_canvas.draw_line(Vector2(w * 0.22, -h * 0.22), Vector2(-w * 0.22, h * 0.22), Color(0.88, 0.72, 0.38, 0.06), 1.4)
 	_bg_fx_canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	for em in _embers:
 		var ex := float(em["x"]) * sz.x + sin(_fx_t * 2.1 + float(em["phase"])) * 16.0
 		var ey := float(em["y"]) * sz.y
 		var ea := float(em["alpha"]) * (0.65 + 0.35 * sin(_fx_t * 3.4 + float(em["phase"])))
-		_bg_fx_canvas.draw_circle(Vector2(ex, ey), float(em["r"]), Color(1.0, 0.68, 0.26, ea))
+		_bg_fx_canvas.draw_circle(Vector2(ex, ey), float(em["r"]), Color(1.0, 0.64, 0.24, ea))
 
 
 func _build_ui() -> void:
-	var bg_tex := Toon.tex("res://assets/ui/lobby_tavern_handdrawn.png")
+	var bg_tex := Toon.tex("res://assets/ui/mp_arena_bg.png")
+	if bg_tex == null:
+		bg_tex = Toon.tex("res://assets/ui/lobby_tavern_handdrawn.png")
 	if bg_tex == null:
 		bg_tex = Toon.tex("res://assets/lobby/menu_bg_stredovek.png")
 	if bg_tex != null:
@@ -411,13 +471,13 @@ func _build_ui() -> void:
 		bg_rect.texture = bg_tex
 		bg_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		bg_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		bg_rect.modulate = Color(0.38, 0.31, 0.25, 1.0)
+		bg_rect.modulate = Color(0.56, 0.46, 0.44, 1.0)
 		bg_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(bg_rect)
 
 	var dim := ColorRect.new()
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.03, 0.022, 0.018, 0.78)
+	dim.color = Color(0.025, 0.018, 0.024, 0.64)
 	add_child(dim)
 
 	_bg_fx_canvas = Control.new()
@@ -427,10 +487,10 @@ func _build_ui() -> void:
 	add_child(_bg_fx_canvas)
 
 	_main_panel = PanelContainer.new()
-	_main_panel.anchor_left = 0.03; _main_panel.anchor_right = 0.97
-	_main_panel.anchor_top = 0.03; _main_panel.anchor_bottom = 0.97
+	_main_panel.anchor_left = 0.035; _main_panel.anchor_right = 0.965
+	_main_panel.anchor_top = 0.035; _main_panel.anchor_bottom = 0.965
 	_main_panel.clip_contents = true
-	_main_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.075, 0.055, 0.042, 0.96), Color(0.84, 0.64, 0.26, 0.94), 3, 14, 16))
+	_main_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.072, 0.052, 0.044, 0.88), Color(0.84, 0.64, 0.26, 0.94), 3, 14, 16))
 	add_child(_main_panel)
 
 	var root_vb := VBoxContainer.new()

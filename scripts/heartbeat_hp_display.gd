@@ -27,6 +27,7 @@ var _boss_accent_col: Color = Color(1.0, 0.72, 0.24)
 var _cur_hp: int = 10
 var _max_hp: int = 10
 var _shields: int = 0
+var _shield_charge: int = 0
 var _status_tag: String = ""
 var _has_initialized_hp: bool = false
 
@@ -57,6 +58,7 @@ var _beat_phase: float = 0.0
 var _shake_intensity: float = 0.0
 var _damage_flash: float = 0.0
 var _heal_swell: float = 0.0
+var _shield_pulse: float = 0.0
 var _pulse_thump: float = 0.0
 var _motes: Array[Dictionary] = []
 
@@ -130,13 +132,33 @@ func set_shields(shield_count: int) -> void:
 	queue_redraw()
 
 
+func set_shield_charge(charge: int) -> void:
+	_shield_charge = clampi(charge, 0, 2)
+	_refresh_labels()
+	queue_redraw()
+
+
+func get_shield_charge() -> int:
+	return _shield_charge
+
+
+func trigger_shield_charge_pulse(new_charge: int, forged_full: bool = false) -> void:
+	_shield_charge = clampi(new_charge, 0, 2)
+	_shield_pulse = 1.0 if forged_full else 0.72
+	_spawn_burst_motes(10 if forged_full else 5, Color(0.45, 0.94, 1.0) if not forged_full else Color(1.0, 0.88, 0.36))
+	_refresh_labels()
+	queue_redraw()
+
+
 func set_status_tag(status_text: String) -> void:
 	_status_tag = status_text.strip_edges()
 	_refresh_labels()
 
 
-func set_hp_with_status(cur_hp: int, max_hp: int, shields: int = 0, status_text: String = "", animate_change: bool = true) -> void:
+func set_hp_with_status(cur_hp: int, max_hp: int, shields: int = 0, status_text: String = "", animate_change: bool = true, shield_charge: int = -1) -> void:
 	_shields = maxi(0, shields)
+	if shield_charge >= 0:
+		_shield_charge = clampi(shield_charge, 0, 2)
 	_status_tag = status_text.strip_edges()
 	set_hp(cur_hp, max_hp, animate_change)
 
@@ -472,9 +494,16 @@ func _refresh_labels() -> void:
 		txt += " " + _status_tag
 	_hp_lbl.text = txt
 	if is_instance_valid(_shield_box):
-		_shield_box.visible = (_shields > 0)
+		_shield_box.visible = (_shields > 0 or _shield_charge > 0)
 	if is_instance_valid(_shield_lbl):
-		_shield_lbl.text = "%d" % _shields
+		if _shields > 0 and _shield_charge > 0:
+			_shield_lbl.text = "%d (+%d/3)" % [_shields, _shield_charge]
+		elif _shields > 0:
+			_shield_lbl.text = "%d" % _shields
+		elif _shield_charge > 0:
+			_shield_lbl.text = "%d/3" % _shield_charge
+		else:
+			_shield_lbl.text = "0"
 
 	var ratio := get_hp_ratio()
 	var col := Color(1.0, 0.94, 0.84)
@@ -501,6 +530,8 @@ func _process(delta: float) -> void:
 		_damage_flash = maxf(0.0, _damage_flash - delta * 2.8)
 	if _heal_swell > 0.001:
 		_heal_swell = maxf(0.0, _heal_swell - delta * 2.1)
+	if _shield_pulse > 0.001:
+		_shield_pulse = maxf(0.0, _shield_pulse - delta * 1.9)
 	if _shake_intensity > 0.01:
 		_shake_intensity = maxf(0.0, _shake_intensity - delta * 22.0)
 
@@ -571,9 +602,26 @@ func _draw() -> void:
 	var base_rad := minf(sz.x, sz.y) * (0.44 if _is_boss else 0.42)
 	var ratio := get_hp_ratio()
 
-	# Medieval crest ring & localized low-HP crimson heartbeat aura around this heart emblem
+	# Medieval crest ring + 3-Part Integrated Knight Aegis Shield Ring (1/3 -> 2/3 -> 3/3 -> Full Shield)
 	draw_circle(center, base_rad * 0.94, Color(0.08, 0.03, 0.04, 0.56))
 	draw_arc(center, base_rad * 0.94, 0.0, TAU, 36, _boss_accent_col if _is_boss else Color(0.76, 0.56, 0.24, 0.72), 2.0, true)
+	var aegis_rad := base_rad * 1.03
+	var show_aegis := (_shields > 0 or _shield_charge > 0 or _shield_pulse > 0.01)
+	if show_aegis:
+		var seg_span := TAU / 3.0
+		var gap := 0.14
+		var start_base := -PI * 0.5 + gap * 0.5
+		for si in range(3):
+			var a0 := start_base + float(si) * seg_span
+			var a1 := a0 + seg_span - gap
+			var is_lit := (si < _shield_charge) or (_shields > 0 and _shield_charge == 0)
+			# Dark woodcut ink backing track
+			draw_arc(center, aegis_rad, a0 - 0.02, a1 + 0.02, 18, Color(0.04, 0.025, 0.02, 0.85), 6.2, true)
+			if is_lit:
+				var seg_col := Color(0.42, 0.92, 1.0, 0.94).lerp(Color(1.0, 0.88, 0.36, 1.0), _shield_pulse * 0.75 + (0.28 if _shields > 0 else 0.0))
+				draw_arc(center, aegis_rad, a0, a1, 18, seg_col, 3.6 + _shield_pulse * 1.4, true)
+			else:
+				draw_arc(center, aegis_rad, a0, a1, 18, Color(0.28, 0.32, 0.38, 0.55), 2.8, true)
 	if _cur_hp > 0 and ratio < 0.75:
 		var low_hp_t := clampf((0.75 - ratio) / 0.75, 0.0, 1.0)
 		var aura_alpha := _pulse_thump * lerpf(0.24, 0.58, low_hp_t)
