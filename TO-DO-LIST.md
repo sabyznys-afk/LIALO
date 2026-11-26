@@ -71,6 +71,19 @@ Sdílený seznam úkolů a poznámek mezi námi v repozitáři.
 
 ---
 
+### 5. Kampaň — Živý příběh, progresivní tutoriály, vícefázoví Bossové & krátké komiksové cutscény
+- **Kompletní návrh a scénář (12 komiksových scén + boss fáze + tutoriály):** [`docs/CAMPAIGN_STORY_PLAN.md`](docs/CAMPAIGN_STORY_PLAN.md)
+- **Dotčené soubory:**
+  - Nové: `scripts/campaign/campaign_story_data.gd`, `scripts/ui/comic_cutscene_player.gd`, vrstvy v `assets/story/comics/` (s procedurálním ink fallbackem pro okamžité testování)
+  - Integrace: `scripts/lialo_catalog.gd` (`seen_comics`, `completed_micro_tutorials`), `scripts/downpour_root.gd`, `scripts/battle_table_3d.gd`, `scripts/ui/dev_asset_inspector.gd`
+- **Co udělat:**
+  - **Hlavní příběh (*Pět pečetí Krčmy Úroboru*):** 5-aktový příběh s **Spirko – duchem krčmáře** napříč epochami (`antika` -> `rim` -> `stredovek` s mid-game twistem o Spirkově prokletí -> `objavy` -> `prohibicia` finále proti Al Caponovi a odemčení Endless režimu).
+  - **Progresivní tutoriály přímo v kampani:** Zachovat úvodní 7-krokový Prologue duel (`battle_table_3d.gd`) pro základy + přidat **5 krátkých Spirkových mikro-tutoriálů** v `Stage 0/1` každé éry (Era 1: modifikátory & `NORMAL` zlaťáky/Bazar; Era 2: `KNIGHT` 3dílný štít & Deck Builder; Era 3: Grand Seal & Shield-Pierce Critical; Era 4: 3D Relikvie & `SHIFTING_WINDS`; Era 5: taktické finále bez držení za ruku).
+  - **5 vícefázových Story Bossů (nad `Catalog.ERA_STAGES`):** Každý ze 5 bossů (Ramesse, Caesar, Karel IV., Královna Anna, Al Capone) má vlastní stolní rekvizitu a **Phase 2 probuzení při `<= 50 %` HP nebo `>= 60 %` Kalicha** (Capone navíc Phase 3 Climax s červeným reflektorem a nouzovým nabitím Grand Sealu).
+  - **Animované krátké komiksové cutscény (`ComicCutscenePlayer`):** 3–4 woodcut-ink panely na scénu (`8–15 s`, přeskočitelné přes `SPACE`/`ESC`/klik) s **2.5D Ken Burns paralaxem**, sekvenčním inkoustovým zobrazením panelů, bublinami s písmem `LialoQuill`/`LialoBody`, komiksovými výbuchy (`CRACK!`, `SHING!`, `SLAM!`) a vrstvou počasí (písek, jiskry, déšť, blesky, doutníkový kouř) + **Chronicle Replay** galerie a náhled všech 12 scén v **`F9` Dev Inspectoru**.
+
+---
+
 ## ★ HLAVNÍ PRIORITA #0: Hand-Drawn ~4.2s animace pro zbývající Power Cards (4 / 15 hotovo)
 
 > Poznámka: Všech zbývajících **11 Power Cards** už tvořit v jednotném **hybridním 2.5D woodcut-ink stylu** podle úkolu #1 výše (kompromis mezi epickou siluetou a ruční kresbou, bez laciného „plastického 3D“ vzhledu).
