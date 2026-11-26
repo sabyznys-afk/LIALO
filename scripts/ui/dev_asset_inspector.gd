@@ -114,7 +114,6 @@ var _sfx_pool_idx: int = 0
 var _bgm_calm_player: AudioStreamPlayer
 var _bgm_epic_player: AudioStreamPlayer
 var _bgm_climax_player: AudioStreamPlayer
-var _bgm_boss_player: AudioStreamPlayer
 var _bgm_amb_player: AudioStreamPlayer
 var _bgm_mix_active := false
 var _bgm_intensity := 0.0
@@ -728,19 +727,6 @@ func _build_stage_audio() -> void:
 	start_mix_btn.custom_minimum_size = Vector2(160, 34)
 	mix_btns.add_child(start_mix_btn)
 
-	var boss_btn := _make_ctrl_btn("Play Boss Awakening", "skull", func():
-		_stop_audio_players()
-		if not _is_headless and is_instance_valid(_bgm_boss_player):
-			var st := _load_audio_stream("res://assets/audio/bgm_boss_awakening.mp3")
-			if st != null:
-				_bgm_boss_player.stream = st
-				_bgm_boss_player.volume_db = -5.5
-				_bgm_boss_player.play(0.0)
-				_audio_info_lbl.text = "Playing: res://assets/audio/bgm_boss_awakening.mp3"
-	)
-	boss_btn.custom_minimum_size = Vector2(178, 34)
-	mix_btns.add_child(boss_btn)
-
 	var stop_mix_btn := _make_ctrl_btn("Stop Audio", "cross", func():
 		_stop_audio_players()
 	)
@@ -761,15 +747,13 @@ func _build_audio_players() -> void:
 	add_child(_bgm_epic_player)
 	_bgm_climax_player = AudioStreamPlayer.new()
 	add_child(_bgm_climax_player)
-	_bgm_boss_player = AudioStreamPlayer.new()
-	add_child(_bgm_boss_player)
 	_bgm_amb_player = AudioStreamPlayer.new()
 	add_child(_bgm_amb_player)
 
 
 func _stop_audio_players() -> void:
 	_bgm_mix_active = false
-	for p in [_audio_player, _bgm_calm_player, _bgm_epic_player, _bgm_climax_player, _bgm_boss_player, _bgm_amb_player]:
+	for p in [_audio_player, _bgm_calm_player, _bgm_epic_player, _bgm_climax_player, _bgm_amb_player]:
 		if is_instance_valid(p):
 			p.stop()
 	for sp in _sfx_pool:

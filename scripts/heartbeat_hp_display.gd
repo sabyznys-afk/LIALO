@@ -10,13 +10,16 @@ signal heartbeat_pulsed(bpm: float, hp_ratio: float, is_boss: bool)
 signal hp_depleted(is_rival: bool, is_boss: bool)
 
 const HEART_2D_SHADER := preload("res://shaders/heart_2d_living.gdshader")
+const KNIGHT_SHIELD_SHADER := preload("res://shaders/knight_shield_3part.gdshader")
 const LialoIcons := preload("res://scripts/ui/lialo_icons.gd")
 const PATH_HEART_PLAYER_PNG := "res://assets/ui/heart_2d_player.png"
 const PATH_HEART_BOSS_PNG := "res://assets/ui/heart_2d_boss.png"
 const PATH_HEART_CRACKS_PNG := "res://assets/ui/heart_2d_cracks.png"
+const PATH_KNIGHT_SHIELD_PNG := "res://assets/ui/knight_shield_3part_2d.png"
 const PATH_PILL_3D_PNG := "res://assets/ui/blender/ui_status_pill_3d.png"
 
 const SIZE_STANDARD := Vector2(96.0, 96.0)
+const SIZE_PLAYER := Vector2(148.0, 96.0)
 const SIZE_BOSS := Vector2(118.0, 118.0)
 
 var _disp_font: Font
@@ -39,11 +42,12 @@ var _crack_emit_energy: float = 0.16
 var _heart_tex_player: Texture2D
 var _heart_tex_boss: Texture2D
 var _crack_tex: Texture2D
+var _shield_tex_3part: Texture2D
 var _pill_tex_3d: Texture2D
 var _heart_rect: TextureRect
 var _heart_mat: ShaderMaterial
 
-# 2D Diegetic Overlay (Crown Plaque + Lower Crest HP Readout + Hit Flash)
+# 2D Diegetic Overlay (Crown Plaque + Lower Crest HP Readout + Foreground Knight Aegis + Hit Flash)
 var _crown_plaque: PanelContainer
 var _crown_lbl: Label
 var _hp_plaque: PanelContainer
@@ -51,6 +55,10 @@ var _hp_lbl: Label
 var _shield_box: HBoxContainer
 var _shield_lbl: Label
 var _flash_overlay: ColorRect
+var _aegis_overlay: Control
+var _shield_rect: TextureRect
+var _shield_mat: ShaderMaterial
+var _aegis_fg: Control
 
 # Runtime animation / pulse / mote particle state
 var _time_acc: float = 0.0
@@ -84,6 +92,8 @@ func setup(display_font: Font, is_rival: bool = false, is_boss: bool = false) ->
 	_recompute_heartbeat_state()
 	_refresh_labels()
 	queue_redraw()
+	if is_instance_valid(_aegis_overlay):
+		_aegis_overlay.queue_redraw()
 
 
 func set_boss_mode(is_boss: bool, accent_col: Color = Color(1.0, 0.72, 0.24)) -> void:
@@ -97,6 +107,8 @@ func set_boss_mode(is_boss: bool, accent_col: Color = Color(1.0, 0.72, 0.24)) ->
 	_recompute_heartbeat_state()
 	_refresh_labels()
 	queue_redraw()
+	if is_instance_valid(_aegis_overlay):
+		_aegis_overlay.queue_redraw()
 
 
 func set_hp(cur_hp: int, max_hp: int, animate_change: bool = true) -> void:
@@ -124,18 +136,24 @@ func set_hp(cur_hp: int, max_hp: int, animate_change: bool = true) -> void:
 	if clean_cur == 0 and prev_hp > 0 and was_init:
 		emit_signal("hp_depleted", _is_rival, _is_boss)
 	queue_redraw()
+	if is_instance_valid(_aegis_overlay):
+		_aegis_overlay.queue_redraw()
 
 
 func set_shields(shield_count: int) -> void:
 	_shields = maxi(0, shield_count)
 	_refresh_labels()
 	queue_redraw()
+	if is_instance_valid(_aegis_overlay):
+		_aegis_overlay.queue_redraw()
 
 
 func set_shield_charge(charge: int) -> void:
 	_shield_charge = clampi(charge, 0, 2)
 	_refresh_labels()
 	queue_redraw()
+	if is_instance_valid(_aegis_overlay):
+		_aegis_overlay.queue_redraw()
 
 
 func get_shield_charge() -> int:
@@ -148,6 +166,8 @@ func trigger_shield_charge_pulse(new_charge: int, forged_full: bool = false) -> 
 	_spawn_burst_motes(10 if forged_full else 5, Color(0.45, 0.94, 1.0) if not forged_full else Color(1.0, 0.88, 0.36))
 	_refresh_labels()
 	queue_redraw()
+	if is_instance_valid(_aegis_overlay):
+		_aegis_overlay.queue_redraw()
 
 
 func set_status_tag(status_text: String) -> void:
@@ -243,6 +263,8 @@ func _load_2d_textures() -> void:
 		_heart_tex_boss = _load_png_tex(PATH_HEART_BOSS_PNG)
 	if _crack_tex == null:
 		_crack_tex = _load_png_tex(PATH_HEART_CRACKS_PNG)
+	if _shield_tex_3part == null:
+		_shield_tex_3part = _load_png_tex(PATH_KNIGHT_SHIELD_PNG)
 	if _pill_tex_3d == null:
 		_pill_tex_3d = _load_png_tex(PATH_PILL_3D_PNG)
 
@@ -347,16 +369,51 @@ func _build_2d_overlay() -> void:
 	_shield_box.add_child(_shield_lbl)
 	hp_hb.add_child(_shield_box)
 
+	_aegis_overlay = Control.new()
+	_aegis_overlay.name = "KnightAegisOverlay"
+	_aegis_overlay.z_index = 6
+	_aegis_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_aegis_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_aegis_overlay.draw.connect(_draw_aegis_overlay)
+	add_child(_aegis_overlay)
+
+	_shield_mat = ShaderMaterial.new()
+	_shield_mat.shader = KNIGHT_SHIELD_SHADER
+	_shield_rect = TextureRect.new()
+	_shield_rect.name = "KnightShieldSprite2D"
+	_shield_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_shield_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_shield_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_shield_rect.texture = _shield_tex_3part
+	_shield_rect.material = _shield_mat
+	_shield_rect.position = Vector2(96.0, 10.0)
+	_shield_rect.size = Vector2(52.0, 58.0)
+	_shield_rect.visible = not _is_rival
+	_aegis_overlay.add_child(_shield_rect)
+
+	_aegis_fg = Control.new()
+	_aegis_fg.name = "KnightAegisBadgeFg"
+	_aegis_fg.z_index = 2
+	_aegis_fg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_aegis_fg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_aegis_fg.draw.connect(_draw_aegis_fg)
+	_aegis_overlay.add_child(_aegis_fg)
+
+
+func _heart_zone_width() -> float:
+	return SIZE_BOSS.x if _is_boss else SIZE_STANDARD.x
+
 
 func _apply_frame_metrics() -> void:
-	var target_sz := SIZE_BOSS if _is_boss else SIZE_STANDARD
+	var target_sz := SIZE_BOSS if _is_boss else (SIZE_STANDARD if _is_rival else SIZE_PLAYER)
+	var heart_w := _heart_zone_width()
 	custom_minimum_size = target_sz
 	size = target_sz
 
 	if is_instance_valid(_heart_rect):
 		var pad_x := 3.0 if not _is_boss else 2.0
 		var pad_top := 10.0 if _is_boss else 0.0
-		var sprite_w := target_sz.x - pad_x * 2.0
+		var sprite_w := heart_w - pad_x * 2.0
 		var sprite_h := target_sz.y - (20.0 if _is_boss else 14.0)
 		_heart_rect.position = Vector2(pad_x, pad_top)
 		_heart_rect.size = Vector2(sprite_w, sprite_h)
@@ -386,7 +443,7 @@ func _apply_frame_metrics() -> void:
 			_crown_plaque.add_theme_stylebox_override("panel", cr_sb)
 		var cr_w := 58.0
 		var cr_h := 14.0
-		_crown_plaque.position = Vector2((target_sz.x - cr_w) * 0.5, 0.0)
+		_crown_plaque.position = Vector2((heart_w - cr_w) * 0.5, 0.0)
 		_crown_plaque.size = Vector2(cr_w, cr_h)
 		if is_instance_valid(_crown_lbl):
 			_crown_lbl.add_theme_font_size_override("font_size", 9)
@@ -415,9 +472,9 @@ func _apply_frame_metrics() -> void:
 			hp_sb.content_margin_bottom = 1
 			_hp_plaque.add_theme_stylebox_override("panel", hp_sb)
 
-		var plaque_w := 86.0 if _is_boss else 72.0
-		var plaque_h := 20.0 if _is_boss else 18.0
-		_hp_plaque.position = Vector2((target_sz.x - plaque_w) * 0.5, target_sz.y - plaque_h)
+		var plaque_w := 96.0 if _is_boss else (84.0 if not _is_rival else 78.0)
+		var plaque_h := 20.0 if _is_boss else 19.0
+		_hp_plaque.position = Vector2((heart_w - plaque_w) * 0.5, target_sz.y - plaque_h)
 		_hp_plaque.size = Vector2(plaque_w, plaque_h)
 		if is_instance_valid(_hp_lbl):
 			_hp_lbl.add_theme_font_size_override("font_size", 12 if _is_boss else 11)
@@ -457,23 +514,33 @@ func _recompute_heartbeat_state() -> void:
 
 
 func _sync_shader_uniforms() -> void:
-	if _heart_mat == null:
-		return
-	var ratio := get_hp_ratio()
-	var is_dead_f := 1.0 if (_cur_hp <= 0 or ratio <= 0.0) else 0.0
-	_heart_mat.set_shader_parameter("beat_phase", _beat_phase)
-	_heart_mat.set_shader_parameter("beat_amp", (0.055 if _is_boss else 0.042) * (1.0 + (1.0 - ratio) * 0.45))
-	_heart_mat.set_shader_parameter("hp_ratio", ratio)
-	_heart_mat.set_shader_parameter("crack_energy", _crack_emit_energy)
-	_heart_mat.set_shader_parameter("damage_flash", _damage_flash)
-	_heart_mat.set_shader_parameter("heal_flash", _heal_swell)
-	_heart_mat.set_shader_parameter("is_dead", is_dead_f)
-	_heart_mat.set_shader_parameter("time_sec", _time_acc)
+	if _heart_mat != null:
+		var ratio := get_hp_ratio()
+		var is_dead_f := 1.0 if (_cur_hp <= 0 or ratio <= 0.0) else 0.0
+		_heart_mat.set_shader_parameter("beat_phase", _beat_phase)
+		_heart_mat.set_shader_parameter("beat_amp", (0.055 if _is_boss else 0.042) * (1.0 + (1.0 - ratio) * 0.45))
+		_heart_mat.set_shader_parameter("hp_ratio", ratio)
+		_heart_mat.set_shader_parameter("crack_energy", _crack_emit_energy)
+		_heart_mat.set_shader_parameter("damage_flash", _damage_flash)
+		_heart_mat.set_shader_parameter("heal_flash", _heal_swell)
+		_heart_mat.set_shader_parameter("is_dead", is_dead_f)
+		_heart_mat.set_shader_parameter("time_sec", _time_acc)
+	if _shield_mat != null:
+		var chg_f := 3.0 if (_shields > 0 and _shield_charge == 0) else float(_shield_charge)
+		_shield_mat.set_shader_parameter("charge_level", chg_f)
+		_shield_mat.set_shader_parameter("pulse_energy", _shield_pulse)
+		_shield_mat.set_shader_parameter("time_sec", _time_acc)
+	if is_instance_valid(_shield_rect):
+		_shield_rect.texture = _shield_tex_3part
+		_shield_rect.visible = not _is_rival and _shield_tex_3part != null
+		var s_sc := 1.0 + _shield_pulse * 0.14
+		_shield_rect.pivot_offset = _shield_rect.size * 0.5
+		_shield_rect.scale = Vector2(s_sc, s_sc)
 
 
 func _spawn_burst_motes(count: int, col: Color) -> void:
 	var sz := size if size.x > 4.0 else (SIZE_BOSS if _is_boss else SIZE_STANDARD)
-	var center := Vector2(sz.x * 0.5, sz.y * 0.46)
+	var center := Vector2(_heart_zone_width() * 0.5, sz.y * 0.46)
 	for _i in range(count):
 		var a := randf_range(0.0, TAU)
 		_motes.append({
@@ -494,7 +561,8 @@ func _refresh_labels() -> void:
 		txt += " " + _status_tag
 	_hp_lbl.text = txt
 	if is_instance_valid(_shield_box):
-		_shield_box.visible = (_shields > 0 or _shield_charge > 0)
+		# Player heart renders the dedicated 3-Part Knight Aegis Crest right beside the heart; rival uses compact badge
+		_shield_box.visible = _is_rival and (_shields > 0 or _shield_charge > 0)
 	if is_instance_valid(_shield_lbl):
 		if _shields > 0 and _shield_charge > 0:
 			_shield_lbl.text = "%d (+%d/3)" % [_shields, _shield_charge]
@@ -537,12 +605,13 @@ func _process(delta: float) -> void:
 
 	# Ambient rising crimson/gold vitality motes
 	var ratio := get_hp_ratio()
+	var heart_w := _heart_zone_width()
 	if _cur_hp > 0 and _motes.size() < 7 and randf() < delta * (3.2 + (1.0 - ratio) * 4.5):
 		var sz := size if size.x > 4.0 else (SIZE_BOSS if _is_boss else SIZE_STANDARD)
 		var healthy_m := Color(1.0, 0.80, 0.34) if _is_boss else Color(0.98, 0.28, 0.24)
 		var m_col := Color(0.56, 0.54, 0.58).lerp(healthy_m, clampf(ratio, 0.08, 1.0))
 		_motes.append({
-			"pos": Vector2(sz.x * 0.5 + randf_range(-20.0, 20.0), sz.y * 0.56 + randf_range(-6.0, 8.0)),
+			"pos": Vector2(heart_w * 0.5 + randf_range(-20.0, 20.0), sz.y * 0.56 + randf_range(-6.0, 8.0)),
 			"vel": Vector2(randf_range(-8.0, 8.0), randf_range(-26.0, -14.0)),
 			"t": 0.0,
 			"max_t": randf_range(0.65, 1.15),
@@ -593,35 +662,22 @@ func _process(delta: float) -> void:
 	_sync_shader_uniforms()
 	if _current_bpm > 0.0 or not _motes.is_empty() or _damage_flash > 0.0 or _heal_swell > 0.0:
 		queue_redraw()
+	if is_instance_valid(_aegis_overlay) and (not _is_rival or _shields > 0 or _shield_charge > 0 or _shield_pulse > 0.005):
+		_aegis_overlay.queue_redraw()
+		if is_instance_valid(_aegis_fg):
+			_aegis_fg.queue_redraw()
 
 
 func _draw() -> void:
-	# Bare, standalone 2D Illuminated Heart (NO circular medallion or outer rings around it!).
+	# Bare, standalone 2D Illuminated Heart (anchored in the left heart zone; Knight Aegis draws in foreground _aegis_overlay).
 	var sz := size if size.x > 4.0 else (SIZE_BOSS if _is_boss else SIZE_STANDARD)
-	var center := Vector2(sz.x * 0.5, sz.y * 0.45)
-	var base_rad := minf(sz.x, sz.y) * (0.44 if _is_boss else 0.42)
+	var heart_w := _heart_zone_width()
+	var center := Vector2(heart_w * 0.5, sz.y * 0.45)
+	var base_rad := minf(heart_w, sz.y) * (0.44 if _is_boss else 0.42)
 	var ratio := get_hp_ratio()
 
-	# Medieval crest ring + 3-Part Integrated Knight Aegis Shield Ring (1/3 -> 2/3 -> 3/3 -> Full Shield)
 	draw_circle(center, base_rad * 0.94, Color(0.08, 0.03, 0.04, 0.56))
 	draw_arc(center, base_rad * 0.94, 0.0, TAU, 36, _boss_accent_col if _is_boss else Color(0.76, 0.56, 0.24, 0.72), 2.0, true)
-	var aegis_rad := base_rad * 1.03
-	var show_aegis := (_shields > 0 or _shield_charge > 0 or _shield_pulse > 0.01)
-	if show_aegis:
-		var seg_span := TAU / 3.0
-		var gap := 0.14
-		var start_base := -PI * 0.5 + gap * 0.5
-		for si in range(3):
-			var a0 := start_base + float(si) * seg_span
-			var a1 := a0 + seg_span - gap
-			var is_lit := (si < _shield_charge) or (_shields > 0 and _shield_charge == 0)
-			# Dark woodcut ink backing track
-			draw_arc(center, aegis_rad, a0 - 0.02, a1 + 0.02, 18, Color(0.04, 0.025, 0.02, 0.85), 6.2, true)
-			if is_lit:
-				var seg_col := Color(0.42, 0.92, 1.0, 0.94).lerp(Color(1.0, 0.88, 0.36, 1.0), _shield_pulse * 0.75 + (0.28 if _shields > 0 else 0.0))
-				draw_arc(center, aegis_rad, a0, a1, 18, seg_col, 3.6 + _shield_pulse * 1.4, true)
-			else:
-				draw_arc(center, aegis_rad, a0, a1, 18, Color(0.28, 0.32, 0.38, 0.55), 2.8, true)
 	if _cur_hp > 0 and ratio < 0.75:
 		var low_hp_t := clampf((0.75 - ratio) / 0.75, 0.0, 1.0)
 		var aura_alpha := _pulse_thump * lerpf(0.24, 0.58, low_hp_t)
@@ -650,3 +706,83 @@ func _draw() -> void:
 		var mr: float = float(m["r"])
 		draw_circle(mp, mr * 1.6, Color(mc.r, mc.g, mc.b, lf * 0.24))
 		draw_circle(mp, mr, Color(1.0, 0.96, 0.82, lf * 0.86))
+
+
+func _draw_aegis_overlay() -> void:
+	if not is_instance_valid(_aegis_overlay):
+		return
+	var show_aegis := (not _is_rival) or (_shields > 0 or _shield_charge > 0 or _shield_pulse > 0.01)
+	if not show_aegis:
+		return
+
+	var is_forged := _shields > 0
+	var idle_breathe := 0.5 + 0.5 * sin(_time_acc * 3.1)
+
+	# 1. Foreground 3-Segment Golden Gilded Aura Arc around the Heart rim (above _heart_rect)
+	if _shields > 0 or _shield_charge > 0 or _shield_pulse > 0.01:
+		var sz := size if size.x > 4.0 else SIZE_STANDARD
+		var heart_w := _heart_zone_width()
+		var h_center := Vector2(heart_w * 0.5, sz.y * 0.45)
+		var arc_rad := minf(heart_w, sz.y) * (0.46 if _is_boss else 0.43)
+		var seg_span := TAU / 3.0
+		var gap := 0.18
+		var start_base := -PI * 0.5 + gap * 0.5
+		for si in range(3):
+			var a0 := start_base + float(si) * seg_span
+			var a1 := a0 + seg_span - gap
+			var is_lit := (si < _shield_charge) or (is_forged and _shield_charge == 0)
+			if is_lit:
+				var arc_col := Color(0.96, 0.78, 0.28, 0.88).lerp(Color(1.0, 0.94, 0.58, 0.98), _shield_pulse * 0.65 + (0.30 if is_forged and _shield_charge == 0 else 0.0))
+				_aegis_overlay.draw_arc(h_center, arc_rad, a0, a1, 16, arc_col, 2.6 + _shield_pulse * 1.4, true)
+			else:
+				_aegis_overlay.draw_arc(h_center, arc_rad, a0, a1, 16, Color(0.32, 0.26, 0.18, 0.45), 1.6, true)
+
+	if _is_rival:
+		return
+
+	# 2. Warm Antique-Gold Halo Glow behind the High-Detail Hand-Drawn Golden Knight Shield Texture
+	var cx := 122.0
+	var cy := 39.0
+	if _shield_pulse > 0.01 or is_forged or _shield_charge > 0:
+		var base_a := 0.20 if is_forged else 0.10
+		var glow_a := base_a + _shield_pulse * 0.36 + (idle_breathe * 0.10 if is_forged else 0.0)
+		var glow_col := Color(1.0, 0.80, 0.26, glow_a)
+		_aegis_overlay.draw_circle(Vector2(cx, cy), 26.0 + _shield_pulse * 8.0, glow_col)
+
+	if is_instance_valid(_aegis_fg):
+		_aegis_fg.queue_redraw()
+
+
+func _draw_aegis_fg() -> void:
+	if _is_rival or not is_instance_valid(_aegis_fg):
+		return
+	var font := _disp_font if _disp_font != null else ThemeDB.fallback_font
+	var is_forged := _shields > 0
+	var cx := 122.0
+	var cy := 39.0
+
+	# Ornate Dark-Gold Medallion centered OVER the hand-drawn 3-part shield showing active Full Shield count
+	if is_forged:
+		_aegis_fg.draw_circle(Vector2(cx, cy), 10.5, Color(0.08, 0.045, 0.02, 0.92))
+		_aegis_fg.draw_arc(Vector2(cx, cy), 10.5, 0.0, TAU, 22, Color(1.0, 0.86, 0.34, 0.98), 1.8, true)
+		var sh_str := "%d" % _shields
+		var s_pos := Vector2(cx - 9.0, cy + 5.0)
+		_aegis_fg.draw_string_outline(font, s_pos, sh_str, HORIZONTAL_ALIGNMENT_CENTER, 18.0, 14, 4, Color(0.03, 0.015, 0.01, 1.0))
+		_aegis_fg.draw_string(font, s_pos, sh_str, HORIZONTAL_ALIGNMENT_CENTER, 18.0, 14, Color(1.0, 0.95, 0.66, 1.0))
+
+	# Cohesive Parchment-Gold Plaque directly beneath the Knight Shield (matches Heart HP plaque!)
+	var badge_rect := Rect2(cx - 24.0, 74.0, 48.0, 19.0)
+	var border_col := Color(1.0, 0.84, 0.32, 0.96) if (is_forged or _shield_charge > 0) else Color(0.68, 0.52, 0.24, 0.85)
+	_aegis_fg.draw_rect(badge_rect, Color(0.08, 0.035, 0.025, 0.95), true)
+	_aegis_fg.draw_rect(badge_rect, border_col, false, 1.4)
+	var lbl_txt := "%d/3" % _shield_charge
+	var lbl_col := Color(1.0, 0.88, 0.42) if _shield_charge > 0 else Color(0.84, 0.76, 0.60)
+	if is_forged and _shield_charge == 0:
+		lbl_txt = "FULL"
+		lbl_col = Color(1.0, 0.92, 0.54)
+	elif is_forged and _shield_charge > 0:
+		lbl_txt = "%d+%d/3" % [_shields, _shield_charge]
+		lbl_col = Color(1.0, 0.92, 0.56)
+	var txt_pos := Vector2(badge_rect.position.x, badge_rect.position.y + 14.0)
+	_aegis_fg.draw_string_outline(font, txt_pos, lbl_txt, HORIZONTAL_ALIGNMENT_CENTER, badge_rect.size.x, 11, 4, Color(0.02, 0.01, 0.01, 1.0))
+	_aegis_fg.draw_string(font, txt_pos, lbl_txt, HORIZONTAL_ALIGNMENT_CENTER, badge_rect.size.x, 11, lbl_col)

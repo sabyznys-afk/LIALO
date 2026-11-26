@@ -1090,21 +1090,33 @@ class _SwordVfxRig extends Node3D:
 					_sword_pivot.position.y += 0.0005
 
 	func _update_slashes(t: float) -> void:
-		# Primary slash: starts at t = 0.15s -> 0.86s across 24 cel frames
+		var sgn := 1.0 if _attacker_is_player else -1.0
+		var face_y := 34.0 if _attacker_is_player else -146.0
+		var skim_y := 16.0 if _attacker_is_player else 196.0
+		var cross_y := -38.0 if _attacker_is_player else 142.0
+
+		# Primary slash: starts at t = 0.15s -> 0.92s across 24 cel frames + dynamic 3D swing sweep
 		if t >= 0.15 and t < 0.92:
 			_slash_canopy.visible = true
 			var u := clampf((t - 0.15) / 0.72, 0.0, 1.0)
+			var swing_u := 1.0 - pow(1.0 - u, 2.6)
 			# Ease fast through smear frames (4..15) so strike snaps cleanly
 			var frame_curve := pow(u, 0.78) * 23.0
 			_slash_canopy_mat.set_shader_parameter("frame_index", frame_curve)
 			_slash_canopy_mat.set_shader_parameter("dissolve", clampf((u - 0.72) / 0.28, 0.0, 1.0) * 0.75)
 			_slash_canopy_mat.set_shader_parameter("flash_white", maxf(0.0, 0.45 - absf(u - 0.28) * 2.5))
-			_slash_canopy.scale = Vector3.ONE * lerpf(0.84, 1.18, minf(1.0, u * 2.2))
+			_slash_canopy.scale = Vector3.ONE * lerpf(0.84, 1.22, minf(1.0, u * 2.2))
+			_slash_canopy.rotation_degrees = Vector3(
+				lerpf(-36.0, -20.0, swing_u) * sgn,
+				face_y + lerpf(-44.0, 46.0, swing_u) * sgn,
+				lerpf(-28.0, 22.0, swing_u)
+			)
 
 			_slash_skim.visible = true
 			_slash_skim_mat.set_shader_parameter("frame_index", clampf(frame_curve * 1.04, 0.0, 23.0))
 			_slash_skim_mat.set_shader_parameter("dissolve", clampf((u - 0.70) / 0.30, 0.0, 1.0) * 0.8)
-			_slash_skim.scale = Vector3.ONE * lerpf(0.82, 1.24, minf(1.0, u * 2.0))
+			_slash_skim.scale = Vector3.ONE * lerpf(0.82, 1.28, minf(1.0, u * 2.0))
+			_slash_skim.rotation_degrees = Vector3(-88.0, skim_y + lerpf(-38.0, 58.0, swing_u) * sgn, 0.0)
 		else:
 			_slash_canopy.visible = false
 			_slash_skim.visible = false
@@ -1113,11 +1125,17 @@ class _SwordVfxRig extends Node3D:
 		if t >= 0.23 and t < 0.98:
 			_slash_cross.visible = true
 			var u2 := clampf((t - 0.23) / 0.70, 0.0, 1.0)
+			var swing_u2 := 1.0 - pow(1.0 - u2, 2.5)
 			var f2 := pow(u2, 0.82) * 23.0
 			_slash_cross_mat.set_shader_parameter("frame_index", f2)
 			_slash_cross_mat.set_shader_parameter("dissolve", clampf((u2 - 0.68) / 0.32, 0.0, 1.0) * 0.82)
 			_slash_cross_mat.set_shader_parameter("opacity", 0.92 if _is_knight_mist else 0.78)
-			_slash_cross.scale = Vector3.ONE * lerpf(0.82, 1.12, minf(1.0, u2 * 2.2))
+			_slash_cross.scale = Vector3.ONE * lerpf(0.82, 1.18, minf(1.0, u2 * 2.2))
+			_slash_cross.rotation_degrees = Vector3(
+				lerpf(-30.0, -14.0, swing_u2) * sgn,
+				cross_y + lerpf(42.0, -48.0, swing_u2) * sgn,
+				lerpf(28.0, -18.0, swing_u2)
+			)
 		else:
 			_slash_cross.visible = false
 

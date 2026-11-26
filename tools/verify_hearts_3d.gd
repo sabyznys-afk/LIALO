@@ -77,9 +77,9 @@ func _run_checks() -> void:
 
 	# 3. Test HeartbeatHpDisplay across Player, Rival, and Boss modes
 	var modes := [
-		{"name": "Player", "is_rival": false, "is_boss": false, "expected_size": Vector2(148.0, 148.0)},
-		{"name": "Rival",  "is_rival": true,  "is_boss": false, "expected_size": Vector2(148.0, 148.0)},
-		{"name": "Boss",   "is_rival": true,  "is_boss": true,  "expected_size": Vector2(180.0, 180.0)},
+		{"name": "Player", "is_rival": false, "is_boss": false, "expected_size": Vector2(148.0, 96.0)},
+		{"name": "Rival",  "is_rival": true,  "is_boss": false, "expected_size": Vector2(96.0, 96.0)},
+		{"name": "Boss",   "is_rival": true,  "is_boss": true,  "expected_size": Vector2(118.0, 118.0)},
 	]
 
 	for m_cfg in modes:
@@ -154,14 +154,19 @@ func _run_checks() -> void:
 		if not depleted_fired[0]:
 			_fail("[%s] hp_depleted signal did not fire when reaching 0 HP" % m_name)
 
-		# Test heal pulse, damage pulse, shield readout, and status tag readout
+		# Test heal pulse, damage pulse, Knight Aegis overlay & charge tracking, and status tag readout
 		widget.set_hp_with_status(8, 10, 2, "🔥1", true)
 		widget.trigger_damage_pulse(1)
 		widget.trigger_heal_pulse(3)
+		widget.set_shield_charge(2)
 		widget._process(0.05)
 		var hp_txt: String = widget.get_hp_text()
-		if not (hp_txt.contains("8 / 10") and hp_txt.contains("🛡2") and hp_txt.contains("🔥1")):
-			_fail("[%s] Expected HP text with shield & status, got '%s'" % [m_name, hp_txt])
+		if not (hp_txt.contains("8 / 10") and hp_txt.contains("🔥1")):
+			_fail("[%s] Expected HP text with status, got '%s'" % [m_name, hp_txt])
+		if widget.get_node_or_null("KnightAegisOverlay") == null:
+			_fail("[%s] Missing foreground KnightAegisOverlay node" % m_name)
+		if int(widget.get_shield_charge()) != 2:
+			_fail("[%s] Expected shield_charge == 2, got %d" % [m_name, int(widget.get_shield_charge())])
 
 		widget.queue_free()
 

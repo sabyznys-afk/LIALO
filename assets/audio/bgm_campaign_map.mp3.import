@@ -2,7 +2,7 @@
 
 importer="mp3"
 type="AudioStreamMP3"
-uid="uid://wag8b8i73e1j"
+uid="uid://cfosoe6e3vxpt"
 path="res://.godot/imported/bgm_campaign_map.mp3-cad2dcb3dc221620a5fd18138ea50857.mp3str"
 
 [deps]
@@ -12,7 +12,7 @@ dest_files=["res://.godot/imported/bgm_campaign_map.mp3-cad2dcb3dc221620a5fd1813
 
 [params]
 
-loop=false
+loop=true
 loop_offset=0
 bpm=0
 beat_count=0

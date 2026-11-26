@@ -7411,11 +7411,11 @@ func _setup_minimal_overlay_hud() -> void:
 	player_hp_heart.anchor_bottom = 0.0
 	player_hp_heart.offset_left = 18
 	player_hp_heart.offset_top = 182
-	player_hp_heart.offset_right = 114
+	player_hp_heart.offset_right = 166
 	player_hp_heart.offset_bottom = 278
 	hud_root.add_child(player_hp_heart)
 	player_hp_heart.call("setup", _get_font(true), false, false)
-	player_hp_heart.call("set_hp_with_status", player_hp, player_max_hp, player_shields, "", false)
+	player_hp_heart.call("set_hp_with_status", player_hp, player_max_hp, player_shields, "", false, player_knight_shield_charge)
 
 	# Disjoint Row beside Player Heart & beneath Score Ledger (x: 166..660, y: 182..218): Cards/Coins + Carry-Out + Cancel
 	bottom_left_status_pill = PanelContainer.new()
@@ -13400,7 +13400,7 @@ func _play_player_cards_3d(play_indices: Array, chosen_suit: String) -> void:
 		var normal_gold_cnt := 0
 		var knight_charge_cnt := 0
 		for cc_cls in chosen_cards:
-			var n_cls := Catalog.normalize_card_class(str(cc_cls.get("edition", "NORMAL")))
+			var n_cls := Catalog.normalize_card_class(str(cc_cls.get("edition", cc_cls.get("card_class", "NORMAL"))))
 			if n_cls == "NORMAL" and str(cc_cls.get("power_id", "")) == "":
 				normal_gold_cnt += 1
 			elif n_cls == "KNIGHT":
@@ -13410,7 +13410,7 @@ func _play_player_cards_3d(play_indices: Array, chosen_suit: String) -> void:
 			match_bonus_gold += n_gold_bonus
 			duel_gold_delta += n_gold_bonus
 			Fx.float_number(self, discard_pile_root.global_position + Vector3(0.0, 0.24, 0.0), "+%dg NORMAL" % n_gold_bonus, Color(1.0, 0.86, 0.28), 52, 0.24, 0.9, 1.35)
-		if knight_charge_cnt > 0 and not tutorial_mode:
+		if knight_charge_cnt > 0:
 			for _ki in range(knight_charge_cnt):
 				player_knight_shield_charge += 1
 				if player_knight_shield_charge >= 3:
@@ -13419,10 +13419,12 @@ func _play_player_cards_3d(play_indices: Array, chosen_suit: String) -> void:
 					if is_instance_valid(player_hp_heart):
 						player_hp_heart.call("trigger_shield_charge_pulse", player_knight_shield_charge, true)
 						player_hp_heart.call("set_shields", player_shields)
+					play_sfx_requested.emit("card_shield_guard")
 					_spawn_score_popup(_tr("AEGIS FORGED! +1 FULL SHIELD (3/3)", "ŠTÍT UKOVÁN! +1 CELÝ ŠTÍT (3/3)"), Color(1.0, 0.88, 0.34), true)
 				else:
 					if is_instance_valid(player_hp_heart):
 						player_hp_heart.call("trigger_shield_charge_pulse", player_knight_shield_charge, false)
+					play_sfx_requested.emit("anim_parry_clang")
 					_spawn_score_popup(_tr("KNIGHT SHIELD: %d/3" % player_knight_shield_charge, "RYTÍŘSKÝ ŠTÍT: %d/3" % player_knight_shield_charge), Color(0.45, 0.94, 1.0), true)
 		if float(score_res["seven_grimoire_delta"]) > 0.0:
 			match_relic_scales["REL_SEVEN_GRIMOIRE"] = float(score_res["seven_grimoire_new"])

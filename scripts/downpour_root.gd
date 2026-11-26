@@ -120,6 +120,8 @@ var amb_player: AudioStreamPlayer
 var splash_sfx_player: AudioStreamPlayer
 var battle_bgm_players: Dictionary = {}
 var battle_music_intensity: float = 0.0
+var battle_active_tier: String = "calm"
+var battle_layer_gains: Dictionary = {"calm": 1.0, "epic": 0.0, "climax": 0.0}
 var bgm_duck_timer: float = 0.0
 var bgm_duck_db: float = 0.0
 var sfx_pool: Array[AudioStreamPlayer] = []
@@ -523,17 +525,15 @@ func _setup_audio_engine() -> void:
 	bgm_cache["map"] = _load_audio("res://assets/audio/bgm_campaign_map", true)
 	bgm_cache["battle_calm"] = _load_audio("res://assets/audio/bgm_battle_calm", true)
 	bgm_cache["battle_epic"] = _load_audio("res://assets/audio/bgm_battle_epic", true)
-	# Intense-battle theme drives the climax layer & boss fights (no simple repeating WAV loop!)
+	# Original intense-battle theme drives the climax layer & boss fights
 	bgm_cache["battle_climax"] = _load_audio("res://assets/audio/bgm_battle_intense", true)
 	if bgm_cache["battle_climax"] == null:
 		bgm_cache["battle_climax"] = bgm_cache["battle_epic"]
-	bgm_cache["battle_boss"] = _load_audio("res://assets/audio/bgm_boss_awakening", true)
-	if bgm_cache["battle_boss"] == null:
-		bgm_cache["battle_boss"] = bgm_cache["battle_climax"]
+	bgm_cache["battle_boss"] = bgm_cache["battle_climax"]
 	bgm_cache["battle"] = bgm_cache["battle_epic"] if bgm_cache["battle_epic"] != null else bgm_cache["battle_climax"]
 	bgm_cache["amb_tavern"] = _load_audio("res://assets/audio/amb_tavern", true)
 
-	# Only rich foley/studio SFX (removed simple single-tone/repetitive beeps: turn_player, error, btn_card_tick)
+	# Only rich foley/studio SFX (keep pure ElevenLabs SFX stems; no external BGM/music stingers over original soundtrack)
 	for sfx_key in [
 		"splash_fujara", "ui_hover", "ui_click", "card_hover",
 		"card_shuffle", "card_deal", "card_throw_whoosh", "card_slam",
@@ -543,8 +543,7 @@ func _setup_audio_engine() -> void:
 		"anim_parry_clang", "anim_combo_slam",
 		"btn_wooden_slam", "btn_ghost_curse",
 		"power_vampire_master", "power_vampire_cast", "power_vampire_shift", "power_vampire_impact", "power_vampire_tail",
-		"power_storm_master", "power_storm_cast", "power_storm_shift", "power_storm_impact", "power_storm_tail",
-		"music_power_vampire", "music_power_storm", "music_power_mirror", "music_power_alchemist"
+		"power_storm_master", "power_storm_cast", "power_storm_shift", "power_storm_impact", "power_storm_tail"
 	]:
 		var st := _load_audio("res://assets/audio/sfx_%s" % sfx_key, false)
 		if st:
@@ -578,6 +577,10 @@ func _load_audio(stem_or_path: String, loop: bool) -> AudioStream:
 	if ResourceLoader.exists(mp3_path):
 		var st_mp3 := load(mp3_path)
 		if st_mp3 is AudioStreamMP3:
+			var dup := (st_mp3 as AudioStreamMP3).duplicate() as AudioStreamMP3
+			if dup:
+				dup.loop = loop
+				return dup
 			(st_mp3 as AudioStreamMP3).loop = loop
 			return st_mp3
 	if FileAccess.file_exists(mp3_path):
@@ -686,64 +689,45 @@ func _toggle_audio_drawer() -> void:
 	_apply_audio_state()
 
 func _stop_battle_bgm_layers() -> void:
+	bgm_duck_timer = 0.0
+	bgm_duck_db = 0.0
 	for k in battle_bgm_players.keys():
 		var bp: AudioStreamPlayer = battle_bgm_players[k]
 		if is_instance_valid(bp):
 			bp.stop()
+			bp.volume_db = -80.0
 
 func _has_layered_battle_bgm() -> bool:
-	return (bgm_cache.get("battle_calm", null) != null) or (bgm_cache.get("battle_epic", null) != null)
+	return (bgm_cache.get("battle_calm", null) != null) or (bgm_cache.get("battle_epic", null) != null) or (bgm_cache.get("battle_climax", null) != null)
 
 func _apply_battle_layer_volumes() -> void:
-	var has_calm: bool = bgm_cache.get("battle_calm", null) != null
-	var has_epic: bool = bgm_cache.get("battle_epic", null) != null
-	var has_climax: bool = bgm_cache.get("battle_climax", null) != null or bgm_cache.get("battle_boss", null) != null
-	var x := clampf(battle_music_intensity, 0.0, 1.0)
-
-	var w_calm := 0.0
-	var w_epic := 0.0
-	var w_climax := 0.0
-
-	if has_calm and has_epic:
-		if x < 0.48:
-			var u := clampf(x / 0.48, 0.0, 1.0)
-			w_calm = lerpf(1.0, 0.25, u)
-			w_epic = lerpf(0.0, 0.85, u)
-		elif x < 0.80 or not has_climax:
-			var u := clampf((x - 0.48) / 0.32, 0.0, 1.0)
-			w_calm = lerpf(0.25, 0.0, u)
-			w_epic = lerpf(0.85, 1.0, u)
-		else:
-			var u := clampf((x - 0.80) / 0.20, 0.0, 1.0)
-			w_epic = lerpf(1.0, 0.32, u)
-			w_climax = lerpf(0.0, 1.0, u)
-	elif has_epic:
-		w_epic = 1.0
-	elif has_calm:
-		w_calm = 1.0
-
-	var weights := {"calm": w_calm, "epic": w_epic, "climax": w_climax}
+	var mus_pct := clampi(int(game_options.get("music_volume", 75)), 0, 100)
 	for k in battle_bgm_players.keys():
 		var bp: AudioStreamPlayer = battle_bgm_players[k]
 		if not is_instance_valid(bp):
 			continue
-		var w := float(weights.get(k, 0.0))
-		bp.volume_db = _calc_vol_db(-6.5 + linear_to_db(w) + bgm_duck_db) if w > 0.015 else -80.0
+		var w := clampf(float(battle_layer_gains.get(k, 0.0)), 0.0, 1.0)
+		bp.volume_db = _calc_vol_db(-6.5 + linear_to_db(w) + bgm_duck_db, mus_pct) if w > 0.008 else -80.0
 
 func _update_battle_music_mix(delta: float) -> void:
 	if active_bgm_key != "battle" or not _has_layered_battle_bgm():
 		return
 	bgm_duck_timer = maxf(0.0, bgm_duck_timer - delta)
-	var target_duck := -11.5 if bgm_duck_timer > 0.0 else 0.0
-	bgm_duck_db = lerpf(bgm_duck_db, target_duck, clampf(delta * (6.5 if bgm_duck_timer > 0.0 else 2.2), 0.0, 1.0))
+	var target_duck := -5.5 if bgm_duck_timer > 0.0 else 0.0
+	bgm_duck_db = lerpf(bgm_duck_db, target_duck, clampf(delta * (5.5 if bgm_duck_timer > 0.0 else 2.6), 0.0, 1.0))
 	var target_int := 0.0
+	var is_boss_stage := false
 	if battle_3d and is_instance_valid(battle_3d):
+		is_boss_stage = str(battle_3d.active_boss_mod) != "" or int(battle_3d.active_endless_ante) > 0
 		var t_sc := maxf(1.0, float(battle_3d.target_score))
 		var p_sc := float(battle_3d.player_score)
 		var a_sc := float(battle_3d.ai_score)
-		var progress := maxf(p_sc, a_sc) / t_sc
+		var score_prog := maxf(p_sc, a_sc) / t_sc
+		var p_hp_ratio := clampf(float(battle_3d.player_hp) / maxf(1.0, float(battle_3d.player_max_hp)), 0.0, 1.0)
+		var a_hp_ratio := clampf(float(battle_3d.ai_hp) / maxf(1.0, float(battle_3d.ai_max_hp)), 0.0, 1.0)
+		var hp_prog := 1.0 - minf(p_hp_ratio, a_hp_ratio)
 		var deficit_pressure := clampf((a_sc - p_sc) / (t_sc * 0.45), 0.0, 0.22)
-		target_int = clampf(progress + deficit_pressure, 0.0, 1.0)
+		target_int = clampf(maxf(score_prog, hp_prog * 0.95) + deficit_pressure, 0.0, 1.0)
 	elif is_instance_valid(mp_entry):
 		var mp_arena: Node = mp_entry.get("_arena") as Node
 		if is_instance_valid(mp_arena):
@@ -776,10 +760,48 @@ func _update_battle_music_mix(delta: float) -> void:
 					seal_boost = maxf(seal_boost, 0.24)
 				target_int = clampf(hp_pressure * 0.78 + turn_prog + seal_boost, 0.0, 1.0)
 	battle_music_intensity = lerpf(battle_music_intensity, target_int, clampf(delta * 1.4, 0.0, 1.0))
+
+	# Hysteresis tier selection: only one independent BGM track owns the mix (clean 0.7s crossfade, no clashing dual songs).
+	var has_calm: bool = bgm_cache.get("battle_calm", null) != null
+	var has_epic: bool = bgm_cache.get("battle_epic", null) != null
+	var has_climax: bool = bgm_cache.get("battle_climax", null) != null or bgm_cache.get("battle_boss", null) != null
+	if battle_active_tier == "calm":
+		if battle_music_intensity >= 0.45:
+			if has_epic:
+				battle_active_tier = "epic"
+			elif has_climax:
+				battle_active_tier = "climax"
+	elif battle_active_tier == "epic":
+		if battle_music_intensity >= 0.78 and has_climax:
+			battle_active_tier = "climax"
+		elif battle_music_intensity <= 0.25 and has_calm and not is_boss_stage:
+			battle_active_tier = "calm"
+	elif battle_active_tier == "climax":
+		if battle_music_intensity <= 0.62 and has_epic:
+			battle_active_tier = "epic"
+		elif battle_music_intensity <= 0.25 and has_calm and not is_boss_stage:
+			battle_active_tier = "calm"
+
+	var fade_step := clampf(delta * 1.5, 0.0, 1.0)
+	for k in battle_bgm_players.keys():
+		var target_w := 1.0 if k == battle_active_tier else 0.0
+		var new_w := lerpf(float(battle_layer_gains.get(k, 0.0)), target_w, fade_step)
+		battle_layer_gains[k] = new_w
+		var bp: AudioStreamPlayer = battle_bgm_players[k]
+		if is_instance_valid(bp) and bp.stream != null:
+			if new_w > 0.01 and not bp.playing:
+				bp.volume_db = -80.0
+				bp.stream_paused = not window_focused
+				bp.play(0.0)
+			elif new_w <= 0.005 and bp.playing:
+				bp.stop()
+				bp.volume_db = -80.0
 	_apply_battle_layer_volumes()
 
 func _play_bgm(key: String, with_tavern_amb: bool = false) -> void:
 	active_bgm_key = key
+	bgm_duck_timer = 0.0
+	bgm_duck_db = 0.0
 	if not music_enabled:
 		if bgm_player:
 			bgm_player.stop()
@@ -787,6 +809,8 @@ func _play_bgm(key: String, with_tavern_amb: bool = false) -> void:
 			amb_player.stop()
 		_stop_battle_bgm_layers()
 		return
+	var mus_pct := clampi(int(game_options.get("music_volume", 75)), 0, 100)
+	var amb_pct := clampi(int(game_options.get("ambient_volume", 70)), 0, 100)
 	if key == "":
 		bgm_player.stop()
 		_stop_battle_bgm_layers()
@@ -805,25 +829,43 @@ func _play_bgm(key: String, with_tavern_amb: bool = false) -> void:
 			"epic": bgm_cache.get("battle_epic", null),
 			"climax": climax_stream,
 		}
+		if is_boss_stage and streams["epic"] != null:
+			battle_active_tier = "epic"
+		elif streams["calm"] != null:
+			battle_active_tier = "calm"
+		elif streams["epic"] != null:
+			battle_active_tier = "epic"
+		else:
+			battle_active_tier = "climax"
+		battle_layer_gains = {
+			"calm": 1.0 if battle_active_tier == "calm" else 0.0,
+			"epic": 1.0 if battle_active_tier == "epic" else 0.0,
+			"climax": 1.0 if battle_active_tier == "climax" else 0.0,
+		}
 		for k in battle_bgm_players.keys():
 			var bp: AudioStreamPlayer = battle_bgm_players[k]
 			var st: AudioStream = streams.get(k, null)
-			if is_instance_valid(bp) and st != null:
+			if is_instance_valid(bp):
+				bp.volume_db = -80.0
 				bp.stream = st
 				bp.stream_paused = not window_focused
-				bp.play(0.0)
 		_apply_battle_layer_volumes()
+		var active_bp: AudioStreamPlayer = battle_bgm_players.get(battle_active_tier, null)
+		if is_instance_valid(active_bp) and active_bp.stream != null:
+			active_bp.play(0.0)
 	elif bgm_cache.has(key) and bgm_cache[key]:
 		_stop_battle_bgm_layers()
-		bgm_player.stream = bgm_cache[key]
-		bgm_player.volume_db = _calc_vol_db(-5.5 if key == "lobby" else -6.5)
+		var target_stream: AudioStream = bgm_cache[key]
+		bgm_player.volume_db = _calc_vol_db(-5.5 if key == "lobby" else -6.5, mus_pct)
 		bgm_player.stream_paused = not window_focused
-		bgm_player.play()
+		if not bgm_player.playing or bgm_player.stream != target_stream:
+			bgm_player.stream = target_stream
+			bgm_player.play()
 	if with_tavern_amb and bgm_cache.has("amb_tavern") and bgm_cache["amb_tavern"]:
+		amb_player.volume_db = _calc_vol_db(-12.5, amb_pct)
+		amb_player.stream_paused = not window_focused
 		if not amb_player.playing or amb_player.stream != bgm_cache["amb_tavern"]:
 			amb_player.stream = bgm_cache["amb_tavern"]
-			amb_player.volume_db = _calc_vol_db(-12.5)
-			amb_player.stream_paused = not window_focused
 			amb_player.play()
 	elif not with_tavern_amb:
 		amb_player.stop()
@@ -836,20 +878,14 @@ func _play_sfx(key: String, vol_db: float = -5.5, pitch: float = 1.0) -> void:
 		var q_cand := "quill_scratch_%d" % (randi() % 3)
 		if sfx_cache.has(q_cand):
 			resolved_key = q_cand
-	var is_music_stinger := resolved_key.begins_with("music_power_")
 	var is_power_studio := resolved_key.begins_with("power_")
-	if is_music_stinger and not music_enabled:
-		return
 	if not window_focused or audio_muted or audio_volume_pct <= 0 or not sfx_cache.has(resolved_key) or sfx_pool.is_empty():
 		return
-	if is_music_stinger:
-		bgm_duck_timer = maxf(bgm_duck_timer, 6.0)
-		bgm_duck_db = minf(bgm_duck_db, -11.5)
-		_apply_battle_layer_volumes()
-	elif is_power_studio and resolved_key.ends_with("_master"):
-		bgm_duck_timer = maxf(bgm_duck_timer, 5.8)
-	var eff_vol := maxf(vol_db, -2.0) if (is_music_stinger or is_power_studio) else vol_db
-	var eff_pitch := 1.0 if (is_music_stinger or is_power_studio) else pitch
+	if is_power_studio and resolved_key.ends_with("_master"):
+		bgm_duck_timer = maxf(bgm_duck_timer, 2.2)
+		bgm_duck_db = minf(bgm_duck_db, -5.5)
+	var eff_vol := maxf(vol_db, -2.0) if is_power_studio else vol_db
+	var eff_pitch := 1.0 if is_power_studio else pitch
 	var p: AudioStreamPlayer = sfx_pool[sfx_pool_idx]
 	sfx_pool_idx = (sfx_pool_idx + 1) % sfx_pool.size()
 	p.stream = sfx_cache[resolved_key]
@@ -1017,7 +1053,7 @@ func _ready() -> void:
 		battle_3d.play_sfx_requested.connect(func(sname: String):
 			var v := -5.0
 			var p := randf_range(0.96, 1.04)
-			if sname.begins_with("music_power_") or sname.begins_with("power_"):
+			if sname.begins_with("power_"):
 				v = -2.0
 				p = 1.0
 			else:
@@ -1034,7 +1070,7 @@ func _ready() -> void:
 		)
 	if battle_3d.has_signal("play_sfx_pitched_requested"):
 		battle_3d.play_sfx_pitched_requested.connect(func(sname: String, pitch_val: float):
-			var v := -2.0 if (sname.begins_with("music_power_") or sname.begins_with("power_")) else -4.5
+			var v := -2.0 if sname.begins_with("power_") else -4.5
 			_play_sfx(sname, v, pitch_val)
 		)
 	if battle_3d.has_signal("toggle_mute_requested"):

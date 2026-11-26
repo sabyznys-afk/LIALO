@@ -16,6 +16,8 @@ signal sequence_finished()
 
 const Toon := preload("res://scripts/toon_style.gd")
 const OUTLINE_SHADER := preload("res://shaders/outline.gdshader")
+const SHADER_CEL := preload("res://shaders/sword_cel_sprite.gdshader")
+const SHADER_BLADE := preload("res://shaders/sword_blade_cutout.gdshader")
 
 const DURATION: float = 4.20
 const CARD_BACK_TEX := "res://assets/table/deck_back_klasic.png"
@@ -23,6 +25,13 @@ const WOOD_TEX := "res://assets/table/wood.png"
 const OPP_MODEL_PATH := "res://assets/models/opp_stredovek.glb"
 const FONT_DISP_PATH := "res://assets/fonts/LialoDisplay.ttf"
 const FONT_BODY_PATH := "res://assets/fonts/LialoUI.ttf"
+const TEX_SLASH_SHEET := "res://assets/vfx/sword_card/slash_cel_sheet.png"
+const TEX_MIST_SHEET := "res://assets/vfx/sword_card/mist_veil_sheet.png"
+const TEX_IMPACT_SHEET := "res://assets/vfx/sword_card/impact_sigil_sheet.png"
+const TEX_PHOENIX_25D := "res://assets/vfx/power_25d/phoenix_hero_2d.png"
+const TEX_MIRROR_25D := "res://assets/vfx/power_25d/mirror_gate_2d.png"
+const TEX_VAMPIRE_25D := "res://assets/vfx/power_25d/vampire_eclipse_2d.png"
+const TEX_STORM_25D := "res://assets/vfx/power_25d/storm_tempest_2d.png"
 
 const CARD_META := {
 	"SPEC_STORM": {
@@ -153,12 +162,23 @@ var _rival_base_pos: Vector3 = Vector3(0.0, 0.80, -1.24)
 var _rival_eye_mats: Array[StandardMaterial3D] = []
 var _hand_fan_root: Node3D = null
 
-# Shared Card + Table Seal
+# Shared Card + Hand-Drawn 2.5D Cel Seals & Hero Cutout Diorama
 var _fx_root: Node3D = null
 var _hero_card: Node3D = null
 var _card_orbit_rings: Array[MeshInstance3D] = []
 var _rune_seal_root: Node3D = null
 var _rune_seal_mat: StandardMaterial3D = null
+var _seal_cel_outer: MeshInstance3D = null
+var _seal_cel_outer_mat: ShaderMaterial = null
+var _seal_cel_mist: MeshInstance3D = null
+var _seal_cel_mist_mat: ShaderMaterial = null
+var _hero_25d_root: Node3D = null
+var _hero_25d_mat: ShaderMaterial = null
+var _hero_25d_shadow_mat: ShaderMaterial = null
+var _cel_slash_a: MeshInstance3D = null
+var _cel_slash_a_mat: ShaderMaterial = null
+var _cel_slash_b: MeshInstance3D = null
+var _cel_slash_b_mat: ShaderMaterial = null
 var _shock_rings: Array[Dictionary] = []
 
 # SPEC_STORM Nodes
@@ -501,12 +521,102 @@ func _create_card_quad_node(front_path: String, back_path: String, rim_col: Colo
 	return card_root
 
 
+func _load_tex_25d(path: String) -> Texture2D:
+	var t := Toon.tex(path)
+	if t != null:
+		return t
+	var abs_p := ProjectSettings.globalize_path(path)
+	if FileAccess.file_exists(abs_p):
+		var img := Image.load_from_file(abs_p)
+		if img != null and not img.is_empty():
+			return ImageTexture.create_from_image(img)
+	return null
+
+
+func _make_25d_diorama(tex_path: String, w: float, h: float, glow_col: Color, tint_col: Color, out_mats: Dictionary) -> Node3D:
+	var root := Node3D.new()
+	var tex := _load_tex_25d(tex_path)
+	if tex != null and tex.get_size().y > 1.0:
+		var aspect := tex.get_size().x / tex.get_size().y
+		w = h * aspect
+
+	var front_mat := ShaderMaterial.new()
+	front_mat.shader = SHADER_BLADE
+	front_mat.set_shader_parameter("blade_tex", tex)
+	front_mat.set_shader_parameter("tint_col", tint_col)
+	front_mat.set_shader_parameter("glow_col", glow_col)
+	front_mat.set_shader_parameter("rune_glow", 2.0)
+	front_mat.set_shader_parameter("sheen_pos", -0.5)
+	front_mat.set_shader_parameter("opacity", 1.0)
+
+	var shadow_mat := ShaderMaterial.new()
+	shadow_mat.shader = SHADER_BLADE
+	shadow_mat.set_shader_parameter("blade_tex", tex)
+	shadow_mat.set_shader_parameter("tint_col", Color(0.05, 0.04, 0.05, 0.88))
+	shadow_mat.set_shader_parameter("glow_col", Color(0.03, 0.02, 0.03, 1.0))
+	shadow_mat.set_shader_parameter("rune_glow", 0.0)
+	shadow_mat.set_shader_parameter("sheen_strength", 0.0)
+	shadow_mat.set_shader_parameter("opacity", 0.85)
+
+	var qm := QuadMesh.new()
+	qm.size = Vector2(w, h)
+
+	var front_mi := MeshInstance3D.new()
+	front_mi.mesh = qm
+	front_mi.material_override = front_mat
+	front_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	front_mi.sorting_offset = 0.14
+	root.add_child(front_mi)
+
+	var shadow_mi := MeshInstance3D.new()
+	shadow_mi.mesh = qm
+	shadow_mi.position = Vector3(0.014, -0.012, -0.026)
+	shadow_mi.material_override = shadow_mat
+	shadow_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	shadow_mi.sorting_offset = 0.08
+	root.add_child(shadow_mi)
+
+	out_mats["front"] = front_mat
+	out_mats["shadow"] = shadow_mat
+	return root
+
+
+func _make_cel_quad(tex_path: String, grid: Vector2, w: float, h: float, glow_col: Color, tint_col: Color, glow_str: float, boil_seed: float, sort_idx: int) -> Dictionary:
+	var mat := ShaderMaterial.new()
+	mat.shader = SHADER_CEL
+	mat.set_shader_parameter("sprite_sheet", _load_tex_25d(tex_path))
+	mat.set_shader_parameter("grid_size", grid)
+	mat.set_shader_parameter("frame_index", 0.0)
+	mat.set_shader_parameter("tint_col", tint_col)
+	mat.set_shader_parameter("glow_col", glow_col)
+	mat.set_shader_parameter("glow_strength", glow_str)
+	mat.set_shader_parameter("royal_shift", 0.0)
+	mat.set_shader_parameter("boil_seed", boil_seed)
+	mat.set_shader_parameter("opacity", 1.0)
+
+	var mi := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(w, h)
+	mi.mesh = qm
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.sorting_offset = float(sort_idx) * 0.04
+	return {"node": mi, "mat": mat}
+
+
 func _build_fx_rig() -> void:
 	if is_instance_valid(_fx_root):
 		_fx_root.queue_free()
 	_fx_root = Node3D.new()
 	_fx_root.name = "PowerCardFxRig_" + _card_id
 	add_child(_fx_root)
+	_hero_25d_root = null
+	_hero_25d_mat = null
+	_hero_25d_shadow_mat = null
+	_cel_slash_a = null
+	_cel_slash_a_mat = null
+	_cel_slash_b = null
+	_cel_slash_b_mat = null
 
 	var meta: Dictionary = CARD_META[_card_id]
 	var tex_path: String = str(meta["tex"])
@@ -535,7 +645,7 @@ func _build_fx_rig() -> void:
 		_hero_card.add_child(orb)
 		_card_orbit_rings.append(orb)
 
-	# Shared Etched Woodcut Table Rune Seal + 3 Shockwave Rings
+	# Shared Hand-Drawn 2.5D Table Sigil & Swirl Mist Seal (replaces flat vector spokes/torus!)
 	_rune_seal_root = Node3D.new()
 	_rune_seal_root.position = _impact_pos + Vector3(0.0, 0.014, 0.0)
 	_fx_root.add_child(_rune_seal_root)
@@ -545,26 +655,20 @@ func _build_fx_rig() -> void:
 	_rune_seal_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_rune_seal_mat.albedo_color = Color(_accent.r, _accent.g, _accent.b, 0.0)
 
-	var outer_seal := MeshInstance3D.new()
-	var osm := TorusMesh.new()
-	osm.inner_radius = 0.36
-	osm.outer_radius = 0.405
-	osm.rings = 48
-	osm.ring_segments = 8
-	outer_seal.mesh = osm
-	outer_seal.material_override = _rune_seal_mat
-	_apply_ink_outline(outer_seal, 0.011)
-	_rune_seal_root.add_child(outer_seal)
+	var sigil_cfg := _make_cel_quad(TEX_IMPACT_SHEET, Vector2(4.0, 4.0), 1.48, 1.48, _accent.lightened(0.15), Color(0.98, 0.99, 1.0, 1.0), 2.15, 2.7, 1)
+	_seal_cel_outer = sigil_cfg["node"] as MeshInstance3D
+	_seal_cel_outer_mat = sigil_cfg["mat"] as ShaderMaterial
+	_seal_cel_outer.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	_rune_seal_root.add_child(_seal_cel_outer)
 
-	for bi in range(8):
-		var spoke := MeshInstance3D.new()
-		var sm := BoxMesh.new()
-		sm.size = Vector3(0.024, 0.009, 0.74)
-		spoke.mesh = sm
-		spoke.rotation_degrees.y = float(bi) * 45.0
-		spoke.material_override = _rune_seal_mat
-		_apply_ink_outline(spoke, 0.013)
-		_rune_seal_root.add_child(spoke)
+	var mist_cfg := _make_cel_quad(TEX_MIST_SHEET, Vector2(4.0, 4.0), 1.72, 1.72, _accent, Color(_accent.r, _accent.g, _accent.b, 0.72), 0.95, 5.1, 0)
+	_seal_cel_mist = mist_cfg["node"] as MeshInstance3D
+	_seal_cel_mist_mat = mist_cfg["mat"] as ShaderMaterial
+	_seal_cel_mist_mat.set_shader_parameter("loop_sheet", 1.0)
+	_seal_cel_mist_mat.set_shader_parameter("blend_next", 0.55)
+	_seal_cel_mist.position = Vector3(0.0, 0.005, 0.0)
+	_seal_cel_mist.rotation_degrees = Vector3(-90.0, 18.0, 0.0)
+	_rune_seal_root.add_child(_seal_cel_mist)
 
 	_shock_rings.clear()
 	for si in range(3):
@@ -628,6 +732,34 @@ func _build_storm_specific_rig(tex_path: String) -> void:
 		_vortex_root.add_child(vr)
 		_vortex_layers.append(vr)
 
+	# Hand-Drawn 2.5D Celestial Tempest Spear Diorama + Dual Cel Storm-Slash Canopies
+	var s_mats := {}
+	_hero_25d_root = _make_25d_diorama(TEX_STORM_25D, 0.78, 0.92, Color(0.28, 0.94, 1.0, 1.0), Color(0.96, 0.99, 1.0, 1.0), s_mats)
+	_hero_25d_mat = s_mats.get("front", null) as ShaderMaterial
+	_hero_25d_shadow_mat = s_mats.get("shadow", null) as ShaderMaterial
+	_hero_25d_root.position = _impact_pos + Vector3(0.0, 0.42, -0.06)
+	_hero_25d_root.visible = false
+	_fx_root.add_child(_hero_25d_root)
+
+	var sa := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.32, 1.32, Color(0.32, 0.94, 1.0, 1.0), Color(0.65, 0.95, 1.0, 1.0), 2.55, 3.3, 4)
+	_cel_slash_a = sa["node"] as MeshInstance3D
+	_cel_slash_a_mat = sa["mat"] as ShaderMaterial
+	_cel_slash_a_mat.set_shader_parameter("royal_shift", 1.0)
+	_cel_slash_a.position = _impact_pos + Vector3(0.0, 0.12, 0.06)
+	_cel_slash_a.rotation_degrees = Vector3(-74.0, 26.0, -14.0)
+	_cel_slash_a.visible = false
+	_fx_root.add_child(_cel_slash_a)
+
+	var sb := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.20, 1.20, Color(0.42, 0.96, 1.0, 1.0), Color(0.65, 0.95, 1.0, 1.0), 2.35, 7.9, 5)
+	_cel_slash_b = sb["node"] as MeshInstance3D
+	_cel_slash_b_mat = sb["mat"] as ShaderMaterial
+	_cel_slash_b_mat.set_shader_parameter("flip_x", 1.0)
+	_cel_slash_b_mat.set_shader_parameter("royal_shift", 1.0)
+	_cel_slash_b.position = _impact_pos + Vector3(0.0, 0.14, 0.08)
+	_cel_slash_b.rotation_degrees = Vector3(-70.0, -32.0, 16.0)
+	_cel_slash_b.visible = false
+	_fx_root.add_child(_cel_slash_b)
+
 	_pillar_root = Node3D.new()
 	_pillar_root.position = _impact_pos
 	_fx_root.add_child(_pillar_root)
@@ -638,28 +770,18 @@ func _build_storm_specific_rig(tex_path: String) -> void:
 	_pillar_core_mat.albedo_color = Color(0.95, 1.0, 1.0, 0.0)
 	var core := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
-	cm.top_radius = 0.08
-	cm.bottom_radius = 0.06
+	cm.top_radius = 0.032
+	cm.bottom_radius = 0.024
 	cm.height = 1.48
 	core.mesh = cm
-	core.position = Vector3(0.0, 0.74, 0.0)
+	core.position = Vector3(0.0, 0.74, -0.14)
 	core.material_override = _pillar_core_mat
-	_apply_ink_outline(core, 0.015)
 	_pillar_root.add_child(core)
 
 	_pillar_sheath_mat = StandardMaterial3D.new()
 	_pillar_sheath_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_pillar_sheath_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_pillar_sheath_mat.albedo_color = Color(0.24, 0.86, 1.0, 0.0)
-	var sheath := MeshInstance3D.new()
-	var shm := CylinderMesh.new()
-	shm.top_radius = 0.22
-	shm.bottom_radius = 0.16
-	shm.height = 1.48
-	sheath.mesh = shm
-	sheath.position = Vector3(0.0, 0.74, 0.0)
-	sheath.material_override = _pillar_sheath_mat
-	_pillar_root.add_child(sheath)
 
 	_bolts_mesh = ImmediateMesh.new()
 	_bolts_mesh_inst = MeshInstance3D.new()
@@ -708,81 +830,36 @@ func _build_storm_specific_rig(tex_path: String) -> void:
 
 
 func _build_vampire_specific_rig() -> void:
-	# Ink-rimmed Rising Crimson Blood Moon Disc behind Rival
-	_blood_moon_mesh = MeshInstance3D.new()
-	var bm := CylinderMesh.new()
-	bm.top_radius = 0.56
-	bm.bottom_radius = 0.56
-	bm.height = 0.02
-	bm.radial_segments = 40
-	_blood_moon_mesh.mesh = bm
-	_blood_moon_mesh.position = _rival_pos + Vector3(0.0, 0.52, -0.58)
-	_blood_moon_mesh.rotation_degrees = Vector3(90.0, 0.0, 0.0)
-	var mmat := StandardMaterial3D.new()
-	mmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mmat.albedo_color = Color(0.86, 0.08, 0.16, 0.0)
-	_blood_moon_mesh.material_override = mmat
-	_apply_ink_outline(_blood_moon_mesh, 0.018)
-	_blood_moon_mesh.visible = false
-	_fx_root.add_child(_blood_moon_mesh)
+	# Hand-Drawn 2.5D Crimson Blood Eclipse & Gothic Vampire Chalice Diorama + Dual Cel Blood Slashes
+	var v_mats := {}
+	_hero_25d_root = _make_25d_diorama(TEX_VAMPIRE_25D, 0.88, 0.88, Color(0.96, 0.14, 0.24, 1.0), Color(1.0, 0.96, 0.94, 1.0), v_mats)
+	_hero_25d_mat = v_mats.get("front", null) as ShaderMaterial
+	_hero_25d_shadow_mat = v_mats.get("shadow", null) as ShaderMaterial
+	_hero_25d_root.position = _impact_pos + Vector3(0.0, 0.42, -0.18)
+	_hero_25d_root.visible = false
+	_fx_root.add_child(_hero_25d_root)
 
-	# 12 Articulated All-Black Woodcut Bat Silhouettes
-	_bats.clear()
-	var bat_mat := StandardMaterial3D.new()
-	bat_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bat_mat.albedo_color = Color(0.03, 0.02, 0.03, 1.0)
-	for bi in range(12):
-		var broot := Node3D.new()
-		broot.visible = false
-		var body := MeshInstance3D.new()
-		var b_s := SphereMesh.new()
-		b_s.radius = 0.026
-		b_s.height = 0.065
-		body.mesh = b_s
-		body.material_override = bat_mat
-		broot.add_child(body)
-		var wings: Array[MeshInstance3D] = []
-		for side in [-1.0, 1.0]:
-			var w := MeshInstance3D.new()
-			var wm := BoxMesh.new()
-			wm.size = Vector3(0.095, 0.006, 0.045)
-			w.mesh = wm
-			w.position = Vector3(side * 0.052, 0.0, 0.0)
-			w.rotation_degrees = Vector3(0.0, side * -18.0, 0.0)
-			w.material_override = bat_mat
-			_apply_ink_outline(w, 0.008, Color(0.85, 0.12, 0.22, 1.0))
-			broot.add_child(w)
-			wings.append(w)
-		_fx_root.add_child(broot)
-		_bats.append({
-			"node": broot,
-			"wings": wings,
-			"angle": float(bi) * (TAU / 12.0),
-			"phase": _rng.randf_range(0.0, TAU),
-			"rad": _rng.randf_range(0.28, 0.85),
-		})
+	var sa := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.32, 1.32, Color(0.98, 0.12, 0.22, 1.0), Color(1.0, 0.62, 0.64, 1.0), 2.50, 4.1, 4)
+	_cel_slash_a = sa["node"] as MeshInstance3D
+	_cel_slash_a_mat = sa["mat"] as ShaderMaterial
+	_cel_slash_a_mat.set_shader_parameter("royal_shift", 1.0)
+	_cel_slash_a.position = _impact_pos + Vector3(0.0, 0.12, 0.06)
+	_cel_slash_a.rotation_degrees = Vector3(-74.0, 34.0, -18.0)
+	_cel_slash_a.visible = false
+	_fx_root.add_child(_cel_slash_a)
 
-	# Crimson Crescent Ink Slash Arc
-	_crescent_slash = Node3D.new()
-	_crescent_slash.position = _impact_pos + Vector3(0.0, 0.22, -0.35)
-	_crescent_slash.visible = false
-	var c_mi := MeshInstance3D.new()
-	var c_tor := TorusMesh.new()
-	c_tor.inner_radius = 0.58
-	c_tor.outer_radius = 0.76
-	c_tor.rings = 32
-	c_tor.ring_segments = 8
-	c_mi.mesh = c_tor
-	c_mi.scale = Vector3(1.25, 0.22, 1.0)
-	var c_mat := StandardMaterial3D.new()
-	c_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	c_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	c_mat.albedo_color = Color(0.98, 0.10, 0.20, 0.95)
-	c_mi.material_override = c_mat
-	_apply_ink_outline(c_mi, 0.018)
-	_crescent_slash.add_child(c_mi)
-	_fx_root.add_child(_crescent_slash)
+	var sb := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.18, 1.18, Color(0.92, 0.16, 0.30, 1.0), Color(1.0, 0.62, 0.64, 1.0), 2.25, 8.7, 5)
+	_cel_slash_b = sb["node"] as MeshInstance3D
+	_cel_slash_b_mat = sb["mat"] as ShaderMaterial
+	_cel_slash_b_mat.set_shader_parameter("flip_x", 1.0)
+	_cel_slash_b_mat.set_shader_parameter("royal_shift", 1.0)
+	_cel_slash_b.position = _impact_pos + Vector3(0.0, 0.14, 0.08)
+	_cel_slash_b.rotation_degrees = Vector3(-70.0, -38.0, 18.0)
+	_cel_slash_b.visible = false
+	_fx_root.add_child(_cel_slash_b)
+
+	_blood_moon_mesh = null
+	_crescent_slash = null
 
 	# 16 Crimson Siphon Soul-Orbs + ImmediateMesh Ribbons
 	_siphon_orbs.clear()
@@ -835,70 +912,37 @@ func _build_phoenix_specific_rig() -> void:
 		_fx_root.add_child(ch)
 		_curse_chains.append({"node": ch, "dir": Vector3(cos(float(ci) * 1.57), 0.7, sin(float(ci) * 1.57))})
 
-	# Sculpted Ink-Outlined 3D Phoenix Crest & Unfurling Wings
-	_phoenix_bird_root = Node3D.new()
-	_phoenix_bird_root.position = _impact_pos + Vector3(0.0, 0.35, 0.0)
-	_phoenix_bird_root.visible = false
-	_fx_root.add_child(_phoenix_bird_root)
+	# Towering Hand-Drawn 2.5D Woodcut Ash Phoenix Diorama + Blazing Cel Flame-Slash Canopies
+	var p_mats := {}
+	_hero_25d_root = _make_25d_diorama(TEX_PHOENIX_25D, 0.88, 0.88, Color(1.0, 0.58, 0.16, 1.0), Color(1.0, 0.97, 0.92, 1.0), p_mats)
+	_hero_25d_mat = p_mats.get("front", null) as ShaderMaterial
+	_hero_25d_shadow_mat = p_mats.get("shadow", null) as ShaderMaterial
+	_hero_25d_root.position = _impact_pos + Vector3(0.0, 0.40, -0.16)
+	_hero_25d_root.visible = false
+	_fx_root.add_child(_hero_25d_root)
 
-	var gold_flame := StandardMaterial3D.new()
-	gold_flame.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	gold_flame.albedo_color = Color(1.0, 0.52, 0.12)
-	var sun_crest := StandardMaterial3D.new()
-	sun_crest.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	sun_crest.albedo_color = Color(1.0, 0.88, 0.32)
+	var pa := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.32, 1.32, Color(1.0, 0.56, 0.14, 1.0), Color(1.0, 0.78, 0.45, 1.0), 2.55, 3.8, 4)
+	_cel_slash_a = pa["node"] as MeshInstance3D
+	_cel_slash_a_mat = pa["mat"] as ShaderMaterial
+	_cel_slash_a_mat.set_shader_parameter("royal_shift", 1.0)
+	_cel_slash_a.position = _impact_pos + Vector3(0.0, 0.12, 0.06)
+	_cel_slash_a.rotation_degrees = Vector3(-74.0, 32.0, -14.0)
+	_cel_slash_a.visible = false
+	_fx_root.add_child(_cel_slash_a)
 
-	var pbody := MeshInstance3D.new()
-	var pbm := SphereMesh.new()
-	pbm.radius = 0.12
-	pbm.height = 0.42
-	pbody.mesh = pbm
-	pbody.material_override = gold_flame
-	_phoenix_bird_root.add_child(pbody)
+	var pb := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.18, 1.18, Color(1.0, 0.80, 0.24, 1.0), Color(1.0, 0.78, 0.45, 1.0), 2.35, 7.1, 5)
+	_cel_slash_b = pb["node"] as MeshInstance3D
+	_cel_slash_b_mat = pb["mat"] as ShaderMaterial
+	_cel_slash_b_mat.set_shader_parameter("flip_x", 1.0)
+	_cel_slash_b_mat.set_shader_parameter("royal_shift", 1.0)
+	_cel_slash_b.position = _impact_pos + Vector3(0.0, 0.14, 0.08)
+	_cel_slash_b.rotation_degrees = Vector3(-70.0, -34.0, 16.0)
+	_cel_slash_b.visible = false
+	_fx_root.add_child(_cel_slash_b)
 
-	var crest := MeshInstance3D.new()
-	var crm := PrismMesh.new()
-	crm.size = Vector3(0.14, 0.28, 0.08)
-	crest.mesh = crm
-	crest.position = Vector3(0.0, 0.28, 0.02)
-	crest.material_override = sun_crest
-	_phoenix_bird_root.add_child(crest)
-
-	for side in [-1.0, 1.0]:
-		var wpiv := Node3D.new()
-		wpiv.position = Vector3(side * 0.09, 0.06, 0.0)
-		_phoenix_bird_root.add_child(wpiv)
-		if side < 0.0:
-			_phoenix_wing_l = wpiv
-		else:
-			_phoenix_wing_r = wpiv
-		for fi in range(5):
-			var f := MeshInstance3D.new()
-			var fm := BoxMesh.new()
-			fm.size = Vector3(0.32 + float(fi) * 0.06, 0.02, 0.10)
-			f.mesh = fm
-			f.position = Vector3(side * (0.18 + float(fi) * 0.07), float(fi) * 0.04, -float(fi) * 0.03)
-			f.rotation_degrees = Vector3(12.0, side * -15.0, side * (14.0 + float(fi) * 5.0))
-			f.material_override = sun_crest if fi >= 3 else gold_flame
-			wpiv.add_child(f)
-	_apply_ink_outline(_phoenix_bird_root, 0.015)
-
-	# Golden Flame Pillar
-	_flame_pillar = MeshInstance3D.new()
-	var fpm := CylinderMesh.new()
-	fpm.top_radius = 0.28
-	fpm.bottom_radius = 0.14
-	fpm.height = 1.60
-	_flame_pillar.mesh = fpm
-	_flame_pillar.position = _impact_pos + Vector3(0.0, 0.80, 0.0)
-	_flame_pillar_mat = StandardMaterial3D.new()
-	_flame_pillar_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_flame_pillar_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_flame_pillar_mat.albedo_color = Color(1.0, 0.56, 0.14, 0.0)
-	_flame_pillar.material_override = _flame_pillar_mat
-	_apply_ink_outline(_flame_pillar, 0.014)
-	_flame_pillar.visible = false
-	_fx_root.add_child(_flame_pillar)
+	_phoenix_bird_root = null
+	_flame_pillar = null
+	_flame_pillar_mat = null
 
 	# 40 Swirling Inked Fire Feathers
 	_feathers.clear()
@@ -1042,15 +1086,9 @@ func _apply_animation_state(t: float) -> void:
 	var use_custom_studio := _with_stinger and (_card_id in ["SPEC_VAMPIRE", "SPEC_STORM"])
 	if _with_stinger:
 		if _card_id == "SPEC_VAMPIRE":
-			_fire_beat("stinger", 0.02, "music_power_vampire", -2.0, 1.0)
 			_fire_beat("studio_cast", 0.05, "power_vampire_cast", -2.5, 1.0)
 		elif _card_id == "SPEC_STORM":
-			_fire_beat("stinger", 0.02, "music_power_storm", -2.0, 1.0)
 			_fire_beat("studio_cast", 0.05, "power_storm_cast", -2.5, 1.0)
-		elif _card_id == "SPEC_MIRROR":
-			_fire_beat("stinger", 0.02, "music_power_mirror", -2.0, 1.0)
-		elif _card_id == "SPEC_ALCHEMIST":
-			_fire_beat("stinger", 0.02, "music_power_alchemist", -2.0, 1.0)
 
 	# Common 5-act beats tuned to 4.20s (fallback when card doesn't use bespoke multi-stem studio cues)
 	if not use_custom_studio:
@@ -1089,14 +1127,70 @@ func _apply_animation_state(t: float) -> void:
 				orb.visible = t >= 0.12 and t < 1.02
 				orb.rotation_degrees.y += 4.5 if ri == 0 else -5.5
 
-	# Shared Table Seal & Shockwaves
-	if is_instance_valid(_rune_seal_root) and _rune_seal_mat != null:
+	# Shared Hand-Drawn 2.5D Table Seal & Cel Animation
+	if is_instance_valid(_rune_seal_root):
 		var seal_a := 0.0
-		if t >= 0.85 and t < 3.50:
-			seal_a = 1.0 if t < 2.85 else clampf(1.0 - (t - 2.85) / 0.65, 0.0, 1.0)
+		if t >= 0.85 and t < 3.60:
+			seal_a = 1.0 if t < 2.95 else clampf(1.0 - (t - 2.95) / 0.65, 0.0, 1.0)
 		_rune_seal_root.visible = seal_a > 0.01
-		_rune_seal_root.rotation_degrees.y = t * 44.0
-		_rune_seal_mat.albedo_color = Color(_accent.r, _accent.g, _accent.b, seal_a * (0.80 + 0.20 * sin(t * 22.0)))
+		_rune_seal_root.rotation_degrees.y = t * 38.0
+		if _seal_cel_outer_mat != null:
+			_seal_cel_outer_mat.set_shader_parameter("frame_index", clampf((t - 0.85) * 9.5, 0.0, 15.0))
+			_seal_cel_outer_mat.set_shader_parameter("opacity", seal_a)
+			_seal_cel_outer_mat.set_shader_parameter("dissolve", clampf((t - 2.85) / 0.65, 0.0, 1.0))
+		if _seal_cel_mist_mat != null:
+			_seal_cel_mist_mat.set_shader_parameter("frame_index", fmod(t * 9.0, 16.0))
+			_seal_cel_mist_mat.set_shader_parameter("opacity", seal_a * 0.72)
+
+	if is_instance_valid(_hero_25d_root) and _card_id in ["SPEC_STORM", "SPEC_VAMPIRE", "SPEC_PHOENIX"]:
+		var hero_in := clampf((t - 1.28) / 0.34, 0.0, 1.0)
+		var hero_out := 1.0 if t < 3.30 else clampf(1.0 - (t - 3.30) / 0.75, 0.0, 1.0)
+		var hero_op := hero_in * hero_out
+		_hero_25d_root.visible = hero_op > 0.01
+		var ease_pop := ease(hero_in, 0.32)
+		if _card_id == "SPEC_PHOENIX":
+			_hero_25d_root.position = _impact_pos + Vector3(0.0, lerpf(0.18, 0.42, ease_pop) + sin(t * 6.5) * 0.025, -0.18)
+			var flap_sx := 1.0 + sin(t * 11.0) * 0.075
+			_hero_25d_root.scale = Vector3(flap_sx, 1.0 / sqrt(flap_sx), 1.0) * lerpf(0.55, 0.96, ease_pop)
+			_hero_25d_root.rotation_degrees = Vector3(-8.0, sin(t * 2.8) * 9.0, sin(t * 4.2) * 3.5)
+		elif _card_id == "SPEC_STORM":
+			var plunge := ease(clampf((t - 1.25) / 0.32, 0.0, 1.0), 2.2)
+			_hero_25d_root.position = _impact_pos + Vector3(0.0, lerpf(1.15, 0.44, plunge), -0.06)
+			_hero_25d_root.scale = Vector3.ONE * lerpf(0.75, 0.96, plunge)
+			_hero_25d_root.rotation_degrees = Vector3(-6.0, sin(t * 5.0) * 6.0, 0.0)
+		elif _card_id == "SPEC_VAMPIRE":
+			_hero_25d_root.position = _impact_pos + Vector3(0.0, lerpf(0.18, 0.42, ease_pop) + sin(t * 3.5) * 0.018, -0.20)
+			_hero_25d_root.scale = Vector3.ONE * lerpf(0.52, 0.96, ease_pop)
+			_hero_25d_root.rotation_degrees = Vector3(-6.0, sin(t * 2.2) * 6.0, 0.0)
+		var sheen_v := fmod(maxf(0.0, t - 1.35) * 0.95, 1.8) - 0.3
+		if _hero_25d_mat != null:
+			_hero_25d_mat.set_shader_parameter("opacity", hero_op)
+			_hero_25d_mat.set_shader_parameter("sheen_pos", sheen_v)
+			_hero_25d_mat.set_shader_parameter("flash_white", maxf(0.0, 0.55 - absf(t - 1.62) * 3.5))
+		if _hero_25d_shadow_mat != null:
+			_hero_25d_shadow_mat.set_shader_parameter("opacity", hero_op * 0.85)
+
+	if is_instance_valid(_cel_slash_a) and is_instance_valid(_cel_slash_b) and _card_id in ["SPEC_STORM", "SPEC_VAMPIRE", "SPEC_PHOENIX"]:
+		if t >= 1.44 and t <= 2.95:
+			var su := clampf((t - 1.44) / 1.45, 0.0, 1.0)
+			var swing_a := 1.0 - pow(1.0 - su, 2.4)
+			_cel_slash_a.visible = true
+			_cel_slash_a.scale = Vector3.ONE * lerpf(0.82, 1.18, minf(1.0, su * 2.2))
+			_cel_slash_a.rotation_degrees = Vector3(-74.0, lerpf(-34.0, 42.0, swing_a), lerpf(-18.0, 14.0, swing_a))
+			if _cel_slash_a_mat != null:
+				_cel_slash_a_mat.set_shader_parameter("frame_index", pow(su, 0.72) * 23.0)
+				_cel_slash_a_mat.set_shader_parameter("dissolve", clampf((su - 0.68) / 0.32, 0.0, 1.0) * 0.80)
+			_cel_slash_b.visible = su >= 0.12
+			var su2 := clampf((su - 0.12) / 0.88, 0.0, 1.0)
+			var swing_b := 1.0 - pow(1.0 - su2, 2.3)
+			_cel_slash_b.scale = Vector3.ONE * lerpf(0.78, 1.14, minf(1.0, su2 * 2.2))
+			_cel_slash_b.rotation_degrees = Vector3(-70.0, lerpf(38.0, -40.0, swing_b), lerpf(16.0, -14.0, swing_b))
+			if _cel_slash_b_mat != null:
+				_cel_slash_b_mat.set_shader_parameter("frame_index", pow(su2, 0.78) * 23.0)
+				_cel_slash_b_mat.set_shader_parameter("dissolve", clampf((su2 - 0.66) / 0.34, 0.0, 1.0) * 0.80)
+		else:
+			_cel_slash_a.visible = false
+			_cel_slash_b.visible = false
 
 	for si in range(_shock_rings.size()):
 		var sd: Dictionary = _shock_rings[si]
@@ -1324,7 +1418,7 @@ func _animate_vampire(t: float) -> void:
 			_siphon_ribbons_mesh.clear_surfaces()
 			_siphon_ribbons_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
 			for ri in range(4):
-				_emit_bolt_ribbon(_rival_pos + Vector3(0.0, 0.12, 0.1), _hand_pos, 8, 0.16, 0.024, Color(0.96, 0.14, 0.24, 0.90))
+				_emit_bolt_ribbon(_rival_pos + Vector3(0.0, 0.12, 0.1), _hand_pos, 8, 0.16, 0.024, Color(0.96, 0.14, 0.24, 0.90), _siphon_ribbons_mesh)
 			_siphon_ribbons_mesh.surface_end()
 
 
@@ -1451,7 +1545,10 @@ func _rebuild_dynamic_bolts(t: float) -> void:
 	_bolts_mesh.surface_end()
 
 
-func _emit_bolt_ribbon(p_start: Vector3, p_end: Vector3, segs: int, jitter: float, width: float, col: Color) -> void:
+func _emit_bolt_ribbon(p_start: Vector3, p_end: Vector3, segs: int, jitter: float, width: float, col: Color, target_mesh: ImmediateMesh = null) -> void:
+	var mesh_out := target_mesh if target_mesh != null else _bolts_mesh
+	if mesh_out == null:
+		return
 	var pts: Array[Vector3] = [p_start]
 	for si in range(1, segs):
 		var frac := float(si) / float(segs)
@@ -1470,19 +1567,19 @@ func _emit_bolt_ribbon(p_start: Vector3, p_end: Vector3, segs: int, jitter: floa
 		var side := dir.cross(to_cam).normalized() * width
 		if side.length_squared() < 0.00001:
 			side = Vector3.RIGHT * width
-		_bolts_mesh.surface_set_color(col)
-		_bolts_mesh.surface_add_vertex(a - side)
-		_bolts_mesh.surface_set_color(col)
-		_bolts_mesh.surface_add_vertex(a + side)
-		_bolts_mesh.surface_set_color(col)
-		_bolts_mesh.surface_add_vertex(b + side)
+		mesh_out.surface_set_color(col)
+		mesh_out.surface_add_vertex(a - side)
+		mesh_out.surface_set_color(col)
+		mesh_out.surface_add_vertex(a + side)
+		mesh_out.surface_set_color(col)
+		mesh_out.surface_add_vertex(b + side)
 
-		_bolts_mesh.surface_set_color(col)
-		_bolts_mesh.surface_add_vertex(a - side)
-		_bolts_mesh.surface_set_color(col)
-		_bolts_mesh.surface_add_vertex(b + side)
-		_bolts_mesh.surface_set_color(col)
-		_bolts_mesh.surface_add_vertex(b - side)
+		mesh_out.surface_set_color(col)
+		mesh_out.surface_add_vertex(a - side)
+		mesh_out.surface_set_color(col)
+		mesh_out.surface_add_vertex(b + side)
+		mesh_out.surface_set_color(col)
+		mesh_out.surface_add_vertex(b - side)
 
 
 func _draw_overlay() -> void:
@@ -1529,30 +1626,30 @@ func _draw_overlay() -> void:
 		var fz_a := sin(clampf((_t - 1.60) / 1.35, 0.0, 1.0) * PI) * 0.26
 		_overlay.draw_rect(Rect2(Vector2.ZERO, vs), Color(0.18, 0.34, 0.56, fz_a))
 
-	# Calligraphic Hand-Drawn Banner (1.62s - 3.65s)
+	# Calligraphic Hand-Drawn Banner (1.62s - 3.65s) — placed near upper edge so 2.5D hero art stays unobscured
 	if _t >= 1.62 and _t <= 3.65 and _font_disp != null:
 		var bu := clampf((_t - 1.62) / 0.22, 0.0, 1.0)
 		var out_a := 1.0 if _t < 3.10 else clampf(1.0 - (_t - 3.10) / 0.55, 0.0, 1.0)
-		var slam_sc := lerpf(1.42, 1.0, ease(bu, 0.35))
-		var banner_y := vs.y * 0.19
-		var f_sz := int(round(44.0 * slam_sc))
+		var slam_sc := lerpf(1.36, 1.0, ease(bu, 0.35))
+		var banner_y := vs.y * 0.13
+		var f_sz := int(round(36.0 * slam_sc))
 
 		var slash_w := vs.x * 0.44 * bu
 		var slash_pts := PackedVector2Array([
-			Vector2(cx - slash_w, banner_y - 22.0),
-			Vector2(cx + slash_w * 0.94, banner_y - 28.0),
-			Vector2(cx + slash_w, banner_y + 20.0),
-			Vector2(cx - slash_w * 0.92, banner_y + 26.0),
+			Vector2(cx - slash_w, banner_y - 20.0),
+			Vector2(cx + slash_w * 0.94, banner_y - 24.0),
+			Vector2(cx + slash_w, banner_y + 18.0),
+			Vector2(cx - slash_w * 0.92, banner_y + 22.0),
 		])
 		_overlay.draw_colored_polygon(slash_pts, Color(0.03, 0.03, 0.04, 0.88 * out_a))
-		_overlay.draw_polyline(slash_pts, Color(_accent.r, _accent.g, _accent.b, 0.95 * out_a), 2.6, true)
+		_overlay.draw_polyline(slash_pts, Color(_accent.r, _accent.g, _accent.b, 0.95 * out_a), 2.4, true)
 
-		var text_pos := Vector2(cx - 320.0, banner_y + 12.0)
+		var text_pos := Vector2(cx - 320.0, banner_y + 10.0)
 		_overlay.draw_string(_font_disp, text_pos + Vector2(3.0, 3.0), title_txt, HORIZONTAL_ALIGNMENT_CENTER, 640, f_sz, Color(0.02, 0.02, 0.02, 0.96 * out_a))
 		_overlay.draw_string(_font_disp, text_pos, title_txt, HORIZONTAL_ALIGNMENT_CENTER, 640, f_sz, Color(_accent.r, _accent.g, _accent.b, out_a))
 
 		if _font_body != null:
-			_overlay.draw_string(_font_body, Vector2(cx - 280.0, banner_y + 44.0), sub_txt, HORIZONTAL_ALIGNMENT_CENTER, 560, 16, Color(0.98, 0.88, 0.48, out_a))
+			_overlay.draw_string(_font_body, Vector2(cx - 280.0, banner_y + 38.0), sub_txt, HORIZONTAL_ALIGNMENT_CENTER, 560, 15, Color(0.98, 0.88, 0.48, out_a))
 
 
 func _make_hybrid_mat(col: Color, alpha: float = 0.94) -> StandardMaterial3D:
@@ -1578,23 +1675,40 @@ func _build_hybrid_power_rig(card_id: String, tex_path: String) -> void:
 
 	match card_id:
 		"SPEC_MIRROR":
-			# Octagonal Cracking Mirror Gate + Echo Card Clones
-			var frame := MeshInstance3D.new()
-			var fm := TorusMesh.new()
-			fm.inner_radius = 0.34; fm.outer_radius = 0.40; fm.rings = 8; fm.ring_segments = 8
-			frame.mesh = fm
-			frame.position = Vector3(0.0, 0.44, -0.18)
-			frame.rotation_degrees = Vector3(90.0, 0.0, 0.0)
-			frame.material_override = trim_mat
-			_apply_ink_outline(frame, 0.015)
-			_hybrid_stage_root.add_child(frame)
-			_hybrid_spinners.append({"node": frame, "spin_z": 42.0, "bob": 0.05})
+			# Towering Hand-Drawn 2.5D Gothic Twin Mirror Gate Diorama + Shatter Cel Slashes + Reflected Cards
+			var m_mats := {}
+			_hero_25d_root = _make_25d_diorama(TEX_MIRROR_25D, 0.88, 0.92, Color(0.42, 0.90, 1.0, 1.0), Color(0.96, 0.99, 1.0, 1.0), m_mats)
+			_hero_25d_mat = m_mats.get("front", null) as ShaderMaterial
+			_hero_25d_shadow_mat = m_mats.get("shadow", null) as ShaderMaterial
+			_hero_25d_root.position = Vector3(0.0, 0.42, -0.18)
+			_hybrid_stage_root.add_child(_hero_25d_root)
+			_hybrid_spinners.append({"node": _hero_25d_root, "spin_y": 14.0, "bob": 0.04})
+
+			var ma := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.28, 1.28, Color(0.45, 0.92, 1.0, 1.0), Color(0.68, 0.94, 1.0, 1.0), 2.35, 2.9, 4)
+			_cel_slash_a = ma["node"] as MeshInstance3D
+			_cel_slash_a_mat = ma["mat"] as ShaderMaterial
+			_cel_slash_a_mat.set_shader_parameter("royal_shift", 1.0)
+			_cel_slash_a.position = _impact_pos + Vector3(0.0, 0.12, 0.06)
+			_cel_slash_a.rotation_degrees = Vector3(-74.0, 30.0, -16.0)
+			_cel_slash_a.visible = false
+			_fx_root.add_child(_cel_slash_a)
+
+			var mb := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.16, 1.16, Color(0.80, 0.96, 1.0, 1.0), Color(0.68, 0.94, 1.0, 1.0), 2.15, 6.4, 5)
+			_cel_slash_b = mb["node"] as MeshInstance3D
+			_cel_slash_b_mat = mb["mat"] as ShaderMaterial
+			_cel_slash_b_mat.set_shader_parameter("flip_x", 1.0)
+			_cel_slash_b_mat.set_shader_parameter("royal_shift", 1.0)
+			_cel_slash_b.position = _impact_pos + Vector3(0.0, 0.14, 0.08)
+			_cel_slash_b.rotation_degrees = Vector3(-70.0, -34.0, 16.0)
+			_cel_slash_b.visible = false
+			_fx_root.add_child(_cel_slash_b)
+
 			for mi in range(2):
 				var mc := _create_card_quad_node(tex_path, CARD_BACK_TEX, _accent, Vector2(0.18, 0.26))
-				mc.position = Vector3((-0.34 if mi == 0 else 0.34), 0.38, -0.05)
+				mc.position = Vector3((-0.44 if mi == 0 else 0.44), 0.36, 0.04)
 				_hybrid_stage_root.add_child(mc)
 				_hybrid_spinners.append({"node": mc, "spin_y": 140.0 if mi == 0 else -140.0, "bob": 0.08})
-			_spawn_hybrid_motes(24, PrismMesh.new(), Vector3(0.08, 0.14, 0.02), main_mat, "burst")
+			_spawn_hybrid_motes(20, PrismMesh.new(), Vector3(0.06, 0.12, 0.02), main_mat, "burst")
 
 		"SPEC_ALCHEMIST":
 			# Counter-rotating Golden Transmutation Rings + Central Crucible Orb + Elixir Sparks
@@ -1812,6 +1926,34 @@ func _animate_hybrid_power(t: float) -> void:
 	var out_u := 1.0 if t < 3.25 else clampf(1.0 - (t - 3.25) / 0.85, 0.0, 1.0)
 	var env := vis_u * out_u
 	_hybrid_stage_root.visible = env > 0.01
+
+	if _card_id == "SPEC_MIRROR":
+		var sheen_v := fmod(maxf(0.0, t - 1.25) * 0.95, 1.8) - 0.3
+		if _hero_25d_mat != null:
+			_hero_25d_mat.set_shader_parameter("opacity", env)
+			_hero_25d_mat.set_shader_parameter("sheen_pos", sheen_v)
+			_hero_25d_mat.set_shader_parameter("flash_white", maxf(0.0, 0.55 - absf(t - 1.62) * 3.5))
+		if _hero_25d_shadow_mat != null:
+			_hero_25d_shadow_mat.set_shader_parameter("opacity", env * 0.85)
+		if is_instance_valid(_cel_slash_a) and is_instance_valid(_cel_slash_b):
+			if t >= 1.44 and t <= 2.95:
+				var su := clampf((t - 1.44) / 1.45, 0.0, 1.0)
+				var sw_a := 1.0 - pow(1.0 - su, 2.4)
+				_cel_slash_a.visible = true
+				_cel_slash_a.rotation_degrees = Vector3(-74.0, lerpf(-32.0, 40.0, sw_a), lerpf(-16.0, 14.0, sw_a))
+				if _cel_slash_a_mat != null:
+					_cel_slash_a_mat.set_shader_parameter("frame_index", pow(su, 0.72) * 23.0)
+					_cel_slash_a_mat.set_shader_parameter("dissolve", clampf((su - 0.68) / 0.32, 0.0, 1.0) * 0.80)
+				_cel_slash_b.visible = su >= 0.12
+				var su2 := clampf((su - 0.12) / 0.88, 0.0, 1.0)
+				var sw_b := 1.0 - pow(1.0 - su2, 2.3)
+				_cel_slash_b.rotation_degrees = Vector3(-70.0, lerpf(36.0, -38.0, sw_b), lerpf(16.0, -14.0, sw_b))
+				if _cel_slash_b_mat != null:
+					_cel_slash_b_mat.set_shader_parameter("frame_index", pow(su2, 0.78) * 23.0)
+					_cel_slash_b_mat.set_shader_parameter("dissolve", clampf((su2 - 0.66) / 0.34, 0.0, 1.0) * 0.80)
+			else:
+				_cel_slash_a.visible = false
+				_cel_slash_b.visible = false
 
 	for sp in _hybrid_spinners:
 		var nd: Node3D = sp.get("node", null) as Node3D

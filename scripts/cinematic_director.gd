@@ -245,15 +245,9 @@ func _start_cinematic_from_profile(
 	if not _is_rival_turn:
 		match _active_profile_id:
 			"SPEC_VAMPIRE":
-				emit_signal("sfx_requested", "music_power_vampire", -2.0, 1.0)
 				emit_signal("sfx_requested", "power_vampire_cast", -2.5, 1.0)
 			"SPEC_STORM":
-				emit_signal("sfx_requested", "music_power_storm", -2.0, 1.0)
 				emit_signal("sfx_requested", "power_storm_cast", -2.5, 1.0)
-			"SPEC_MIRROR":
-				emit_signal("sfx_requested", "music_power_mirror", -2.0, 1.0)
-			"SPEC_ALCHEMIST":
-				emit_signal("sfx_requested", "music_power_alchemist", -2.0, 1.0)
 	emit_signal("cinematic_started", _active_profile_id)
 
 
