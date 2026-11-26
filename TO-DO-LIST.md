@@ -14,48 +14,6 @@ Sdílený seznam úkolů a poznámek mezi námi v repozitáři.
 
 ---
 
-### Priorita #1 — Overhaul 4 ručně kreslených 3D Relikvií (One-by-One na úroveň `TRELIC_WAR_HORN`)
-
-**Kvalitativní norma („Tankard Benchmark“):** `TRELIC_WAR_HORN` ([generate_tankard_relic.py](file:///D:/downpour-godot/tools/generate_tankard_relic.py) + [tankard_bubbles_fx.gd](file:///D:/downpour-godot/scripts/battle/tankard_bubbles_fx.gd)) je referenční standard — výrazná plastická silueta, samostatné ručně šrafované 1024×1024 ink textury s hlubokým kontaktním AO, sjednocený dřevorytový shader ([handdrawn_relic_3d.gdshader](file:///D:/downpour-godot/shaders/handdrawn_relic_3d.gdshader)) a organické živé částice.
-
-#### Společná nadstavba podstavce a částic
-- **Globální zákaz primitivních částic (`scripts/battle/relic_living_fx.gd`):**
-  - Zrušit všechny jednoduché `SphereMesh` a `PrismMesh` „kouličky“ v `_build_relic_particles()`.
-  - Vytvořit ručně tuší kreslený sprite atlas `assets/vfx/relic_ink_particles_atlas.png` (1024×1024 — kroutící se stuhy dýmu a duší, praskající bubliny, vyryté runy, plamenné jazyky, kapky vína, jemná zrnka zlatého písku, akustické vlnky).
-  - Vytvořit `shaders/relic_ink_particle.gdshader` (billboard / UV-atlas ink částice s erozí okrajů a ručně kreslenou konturou) a `shaders/relic_ribbon_wisp.gdshader` (proužkový 3D ribbon shader pro stoupající stuhy mlhy a páry).
-- **Vylepšení podstavce (`_apply_handdrawn_coaster` v `scripts/relic_mesh_factory.gd`):**
-  - Ztlumit příliš plochý oranžový lesk mosazného kruhu, přidat tmavší ořechovou kresbu dřeva a hlubší kontaktní AO stín pod každým objektem.
-
-#### Postup po jedné relikvii (každá se 3úhlovým GPU preview sheetem před dalším krokem)
-1. **`TRELIC_SOUL_BELL` — Graveyard Toll Bell (Hřbitovní zvonec)**
-   - *Soubory:* `tools/generate_all_handdrawn_relics.py`, `scripts/relic_mesh_factory.gd`, `scripts/battle/relic_living_fx.gd`.
-   - *Diagnostikované bugy:*
-     - `bell_rim_lip` má v `add_lathe()` klesající `+Y` profil (`0.035 -> 0.032 -> 0.031`), přičemž `add_lathe` počítá vnější normálu pro rostoucí `+Y` — vznikají obrácené normály; navíc `cap_bottom=True` uzavírá spodek zvonu plochým víkem přímo přes srdce (`SoulClapper`) a buguje spodní texturu.
-     - `GallowsPost` omylem používá šitou koženou texturu `_gen_leather_stitched_tex` (`gallows_timber_ink.png`) místo dřeva.
-     - Částice tvoří jen 9 modrých `SphereMesh` koulí.
-   - *Rework:* Pravý dutý otevřený zvon (spojitý uzavřený profil: vnější stěna -> zaoblený lem -> vnitřní klenba bez zaslepeného dna), plasticky vyřezaná prasklina se zářícím zelenomodrým jádrem, reliéfní gotické pásy, nová 1024×1024 ručně inkovaná textura ohořelého/mechového dubu pro šibenici (`assets/textures/relics/gallows_oak_ink.png`), kované ozdobné konzole + skutečné články řetězu.
-   - *Živé FX:* 3D zvlněné stuhy hřbitovní mlhy unikající z dutiny zvonu (`relic_ribbon_wisp.gdshader`), pulzující tušové zvukové kruhy při zhoupnutí a jemný prach kostí.
-   - *Sign-off:* Čistý pohled zpod zvonu na dutou klenbu a srdce bez artefaktů a plochého víka.
-
-2. **`TRELIC_BLOOD_SEAL` — Crimson Blood Goblet (Krvavý kalich)**
-   - *Soubory:* `tools/generate_all_handdrawn_relics.py`, `scripts/relic_mesh_factory.gd`, `scripts/battle/relic_living_fx.gd`.
-   - *Diagnostikované vady:* Příliš světlé jednolité stříbrné tělo bez hlubokého gotického kontrastu; rubíny působí jako nalepené elipsoidy; nad hladinou vína létá 8 červených `SphereMesh` koulí.
-   - *Rework:* Hluboce žebrovaný gotický kalich z patinovaného stříbra a tmavého zlata (vysoký kontrast crosshatchingu v drážkách), vyřezávané drápkové osazení 4 rubínů, plastické **přetékající kapky a stružky krvavého vína po okraji** (po vzoru pěny na korbelu `TRELIC_WAR_HORN`), animovaný vířící hladinový shader vína.
-   - *Živé FX:* Praskající bublinky přímo na hladině vína, stoupající tenké stuhy karmínové páry a pomalu skapávající lesklé kapky.
-
-3. **`TRELIC_STAR_BOW` — Arcane Slate Rune (Magická runa)**
-   - *Soubory:* `tools/generate_all_handdrawn_relics.py`, `scripts/relic_mesh_factory.gd`, `scripts/battle/relic_living_fx.gd`.
-   - *Diagnostikované vady:* Monolit působí jako prostý kvádr s nalepenými trubicemi (`add_swept_3d`) místo vyrytých kanálků; létající úlomky `RuneShard_*` jsou obdélníkové kvádry; částice jsou jen 10 trojúhelníků `PrismMesh`.
-   - *Rework:* Členitý štípaný břidlicový obelisk na stupňovitém mechovém soklu se skutečně **zahloubenými skosenými runovými drážkami** a vnitřní pulzující krystalickou energií (animovaný flow shader po drážkách), detailní 1024×1024 textura břidlicových zlomů a zlatých intarzií, ostré štípané levitující úlomky s mikro-runami.
-   - *Živé FX:* Kreslené runové glyfy vznášející se kolem + praskající tenké mikro-blesky přeskakující mezi úlomky a monolitem.
-
-4. **`TRELIC_ASH_GLASS` — Fate Hourglass (Přesýpací hodiny)** *(4. relikvie v `TABLE_RELICS`; v další vlně následuje `TRELIC_PHOENIX_BOX`)*
-   - *Soubory:* `tools/generate_all_handdrawn_relics.py`, `scripts/relic_mesh_factory.gd`, `scripts/battle/relic_living_fx.gd`.
-   - *Diagnostikované vady:* Skleněné baňky tvoří jen 8 tlustých modrých žeber bez průsvitného skla; písek je tuhý žlutý kužel; padající písek tvoří 10 žlutých `SphereMesh` kuliček.
-   - *Rework:* Zdobené mosazné zvěrokruhové plotny s nýtovanými ornamenty, kroucené barokní sloupky, dvouvrstvé průsvitné ručně tuší stínované skleněné baňky (Fresnel sklo + kvašový odlesk + časové rysky), plynulý shader proudu zlatého písku v hrdle + rozvířený jemný zlatý prach dopadající na špičku spodní hromádky + zářící časová runa v pase hodin.
-
----
-
 ### Priorita #2 — 4 Vlajkové Power Karty: 6s Multi-Camera „Domain / Awakening“ Spektákly + Oprava Bugů
 
 **Cílové první 4 Power karty (`Catalog.POWER_CARDS[0..3]`):**

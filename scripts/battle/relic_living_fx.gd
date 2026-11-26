@@ -8,6 +8,9 @@ extends Node3D
 
 const HANDDRAWN_RELIC_SHADER := preload("res://shaders/handdrawn_relic_3d.gdshader")
 const HANDDRAWN_OUTLINE_SHADER := preload("res://shaders/handdrawn_outline_3d.gdshader")
+const INK_PARTICLE_SHADER := preload("res://shaders/relic_ink_particle.gdshader")
+const RIBBON_WISP_SHADER := preload("res://shaders/relic_ribbon_wisp.gdshader")
+const INK_ATLAS_PATH := "res://assets/vfx/relic_ink_particles_atlas.png"
 
 var _rel_id: String = ""
 var _accent: Color = Color(0.96, 0.78, 0.34)
@@ -104,97 +107,142 @@ func _spawn_mote_pool(
 		})
 
 
-func _build_relic_particles() -> void:
-	var sph := SphereMesh.new()
-	sph.radius = 0.0024
-	sph.height = 0.0048
-	sph.radial_segments = 10
-	sph.rings = 6
+func _make_ink_atlas_mat(cell_idx: int, tint: Color, emission_boost: float = 0.7) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = INK_PARTICLE_SHADER
+	if ResourceLoader.exists(INK_ATLAS_PATH):
+		m.set_shader_parameter("atlas_tex", load(INK_ATLAS_PATH) as Texture2D)
+	m.set_shader_parameter("cell_idx", cell_idx)
+	m.set_shader_parameter("atlas_cols", 4)
+	m.set_shader_parameter("tint_color", tint)
+	m.set_shader_parameter("ink_color", Color(0.05, 0.03, 0.02, 1.0))
+	m.set_shader_parameter("emission_boost", emission_boost)
+	m.set_shader_parameter("fade_alpha", 0.94)
+	return m
 
-	var prism := PrismMesh.new()
-	prism.size = Vector3(0.0042, 0.0058, 0.0022)
+
+func _make_ribbon_wisp_mat(cell_idx: int, wisp_col: Color) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = RIBBON_WISP_SHADER
+	if ResourceLoader.exists(INK_ATLAS_PATH):
+		m.set_shader_parameter("atlas_tex", load(INK_ATLAS_PATH) as Texture2D)
+	m.set_shader_parameter("cell_idx", cell_idx)
+	m.set_shader_parameter("atlas_cols", 4)
+	m.set_shader_parameter("wisp_color", wisp_col)
+	m.set_shader_parameter("ink_color", Color(0.05, 0.03, 0.03, 1.0))
+	m.set_shader_parameter("wave_speed", 2.6)
+	m.set_shader_parameter("wave_amp", 0.0045)
+	m.set_shader_parameter("fade_alpha", 0.88)
+	return m
+
+
+func _build_relic_particles() -> void:
+	# Zero primitive SphereMesh/PrismMesh particles — use hand-inked quad sprites & 3D wisp ribbons (v0.197)
+	var quad_sm := QuadMesh.new()
+	quad_sm.size = Vector2(0.0085, 0.0085)
+	var quad_md := QuadMesh.new()
+	quad_md.size = Vector2(0.0125, 0.0125)
+	var ribbon_q := QuadMesh.new()
+	ribbon_q.size = Vector2(0.010, 0.032)
+	ribbon_q.subdivide_depth = 6
 
 	match _rel_id:
 		"TRELIC_HOLLOW_MASK":
-			var luck_mat := _make_ink_fx_mat(Color(1.0, 0.88, 0.36), Color(0.45, 0.28, 0.08), Color(0.55, 0.38, 0.08))
-			_spawn_mote_pool(9, prism, luck_mat, func(i: int) -> Vector3:
+			var luck_mat := _make_ink_atlas_mat(7, Color(1.0, 0.88, 0.36, 1.0), 0.95)
+			_spawn_mote_pool(9, quad_sm, luck_mat, func(i: int) -> Vector3:
 				var a := float(i) * (TAU / 9.0)
 				return Vector3(cos(a) * 0.022, _rng.randf_range(0.022, 0.062), sin(a) * 0.022)
 			, 0.016, 0.028, 1.1, 1.7, 0.0032, 0.9)
 
 		"TRELIC_STAR_BOW":
-			var rune_mat := _make_ink_fx_mat(Color(0.42, 0.92, 1.0), Color(0.10, 0.32, 0.56), Color(0.22, 0.68, 0.96))
-			_spawn_mote_pool(10, prism, rune_mat, func(i: int) -> Vector3:
+			var rune_mat := _make_ink_atlas_mat(2, Color(0.46, 0.94, 1.0, 1.0), 1.15)
+			var spark_mat := _make_ink_atlas_mat(7, Color(0.72, 0.96, 1.0, 1.0), 1.35)
+			_spawn_mote_pool(7, quad_md, rune_mat, func(i: int) -> Vector3:
 				var a := float(i) * 2.1
-				var rad := _rng.randf_range(0.010, 0.028)
+				var rad := _rng.randf_range(0.012, 0.030)
 				return Vector3(cos(a) * rad, _rng.randf_range(0.025, 0.070), sin(a) * rad)
-			, 0.020, 0.036, 1.3, 2.0, 0.0025, 0.85)
+			, 0.020, 0.036, 1.3, 2.0, 0.0025, 0.92)
+			_spawn_mote_pool(5, quad_sm, spark_mat, func(i: int) -> Vector3:
+				var a := float(i) * 1.4
+				return Vector3(cos(a) * 0.024, _rng.randf_range(0.032, 0.068), sin(a) * 0.024)
+			, 0.014, 0.026, 0.65, 1.1, 0.0045, 0.80)
 
 		"TRELIC_BLOOD_SEAL":
-			var wine_mat := _make_ink_fx_mat(Color(0.88, 0.14, 0.20), Color(0.30, 0.03, 0.05), Color(0.32, 0.04, 0.06))
-			_spawn_mote_pool(8, sph, wine_mat, func(i: int) -> Vector3:
-				var a := float(i) * (TAU / 8.0)
+			var bubble_mat := _make_ink_atlas_mat(1, Color(0.95, 0.18, 0.24, 1.0), 0.75)
+			var drop_mat := _make_ink_atlas_mat(4, Color(0.88, 0.10, 0.16, 1.0), 0.55)
+			var vapor_mat := _make_ribbon_wisp_mat(0, Color(0.86, 0.16, 0.24, 0.78))
+			_spawn_mote_pool(6, quad_sm, bubble_mat, func(i: int) -> Vector3:
+				var a := float(i) * (TAU / 6.0)
 				var rad := _rng.randf_range(0.005, 0.022)
-				return Vector3(cos(a) * rad, 0.091, sin(a) * rad)
-			, 0.012, 0.026, 1.2, 1.9, 0.0018, 0.95)
+				return Vector3(cos(a) * rad, 0.092, sin(a) * rad)
+			, 0.008, 0.016, 1.1, 1.7, 0.0014, 0.85)
+			_spawn_mote_pool(3, ribbon_q, vapor_mat, func(i: int) -> Vector3:
+				var a := float(i) * (TAU / 3.0)
+				return Vector3(cos(a) * 0.012, 0.098, sin(a) * 0.012)
+			, 0.018, 0.028, 1.6, 2.3, 0.0022, 0.88)
+			_spawn_mote_pool(3, quad_sm, drop_mat, func(i: int) -> Vector3:
+				var a := float(i) * (TAU / 3.0) + 0.4
+				return Vector3(cos(a) * 0.033, 0.084, sin(a) * 0.033)
+			, -0.026, -0.018, 0.9, 1.4, 0.0008, 0.75)
 
 		"TRELIC_IRON_CHAIN":
-			var spark_mat := _make_ink_fx_mat(Color(1.0, 0.72, 0.24), Color(0.48, 0.18, 0.04), Color(0.75, 0.34, 0.05))
-			_spawn_mote_pool(9, prism, spark_mat, func(_i: int) -> Vector3:
+			var spark_mat := _make_ink_atlas_mat(7, Color(1.0, 0.74, 0.26, 1.0), 1.25)
+			_spawn_mote_pool(9, quad_sm, spark_mat, func(_i: int) -> Vector3:
 				return Vector3(_rng.randf_range(-0.010, 0.010), _rng.randf_range(0.028, 0.044), _rng.randf_range(-0.006, 0.006))
-			, 0.018, 0.038, 0.55, 0.95, 0.0065, 0.75)
+			, 0.018, 0.038, 0.55, 0.95, 0.0065, 0.85)
 
 		"TRELIC_ASH_GLASS":
-			var sand_mat := _make_ink_fx_mat(Color(1.0, 0.84, 0.32), Color(0.46, 0.30, 0.08), Color(0.38, 0.26, 0.06))
-			_spawn_mote_pool(10, sph, sand_mat, func(i: int) -> Vector3:
-				if i < 6:
+			var sand_mat := _make_ink_atlas_mat(5, Color(1.0, 0.86, 0.36, 1.0), 0.75)
+			var rune_mat := _make_ink_atlas_mat(2, Color(0.98, 0.80, 0.32, 1.0), 1.05)
+			_spawn_mote_pool(8, quad_sm, sand_mat, func(i: int) -> Vector3:
+				if i < 5:
 					return Vector3(_rng.randf_range(-0.0014, 0.0014), 0.050, _rng.randf_range(-0.0014, 0.0014))
 				var a := float(i) * 1.9
-				return Vector3(cos(a) * 0.011, 0.014, sin(a) * 0.011)
-			, -0.022, -0.018, 0.75, 1.15, 0.0010, 0.58)
+				return Vector3(cos(a) * 0.010, 0.014, sin(a) * 0.010)
+			, -0.022, -0.018, 0.75, 1.15, 0.0010, 0.72)
+			_spawn_mote_pool(2, quad_md, rune_mat, func(i: int) -> Vector3:
+				return Vector3(-0.018 if i == 0 else 0.018, 0.049, 0.018)
+			, 0.004, 0.008, 1.8, 2.4, 0.0012, 0.70)
 
 		"TRELIC_GOLD_SCALES":
-			var glint_mat := _make_ink_fx_mat(Color(1.0, 0.90, 0.34), Color(0.46, 0.30, 0.06), Color(0.56, 0.38, 0.08))
-			_spawn_mote_pool(9, prism, glint_mat, func(i: int) -> Vector3:
+			var glint_mat := _make_ink_atlas_mat(7, Color(1.0, 0.90, 0.36, 1.0), 1.10)
+			_spawn_mote_pool(9, quad_sm, glint_mat, func(i: int) -> Vector3:
 				var a := float(i) * (TAU / 9.0)
 				return Vector3(0.014 + cos(a) * 0.018, _rng.randf_range(0.008, 0.030), sin(a) * 0.018)
-			, 0.014, 0.026, 1.0, 1.6, 0.0020, 0.80)
+			, 0.014, 0.026, 1.0, 1.6, 0.0020, 0.85)
 
 		"TRELIC_SOUL_BELL":
-			var wisp_mat := _make_ink_fx_mat(Color(0.44, 0.90, 1.0), Color(0.12, 0.34, 0.44), Color(0.24, 0.62, 0.76))
-			_spawn_mote_pool(9, sph, wisp_mat, func(i: int) -> Vector3:
-				var a := float(i) * (TAU / 9.0)
-				return Vector3(0.012 + cos(a) * 0.018, 0.032, sin(a) * 0.018)
-			, 0.022, 0.042, 1.4, 2.2, 0.0042, 0.92)
+			var wisp_mat := _make_ribbon_wisp_mat(0, Color(0.46, 0.92, 1.0, 0.86))
+			var ripple_mat := _make_ink_atlas_mat(6, Color(0.48, 0.92, 1.0, 1.0), 1.05)
+			var dust_mat := _make_ink_atlas_mat(5, Color(0.76, 0.92, 0.96, 1.0), 0.65)
+			_spawn_mote_pool(4, ribbon_q, wisp_mat, func(i: int) -> Vector3:
+				var a := float(i) * (TAU / 4.0)
+				return Vector3(0.012 + cos(a) * 0.012, 0.026, sin(a) * 0.012)
+			, 0.026, 0.044, 1.5, 2.2, 0.0038, 0.95)
+			_spawn_mote_pool(3, quad_md, ripple_mat, func(_i: int) -> Vector3:
+				return Vector3(0.012, 0.034, 0.016)
+			, 0.012, 0.022, 1.3, 1.9, 0.0020, 1.15)
+			_spawn_mote_pool(4, quad_sm, dust_mat, func(i: int) -> Vector3:
+				var a := float(i) * 1.6
+				return Vector3(0.012 + cos(a) * 0.018, 0.020, sin(a) * 0.018)
+			, 0.016, 0.028, 1.4, 2.0, 0.0028, 0.72)
 
 		"TRELIC_CENSER":
-			var smoke_mat := _make_ink_fx_mat(Color(0.84, 0.80, 0.76), Color(0.30, 0.26, 0.24), Color(0.12, 0.10, 0.10))
-			var coal_mat := _make_ink_fx_mat(Color(1.0, 0.56, 0.16), Color(0.42, 0.12, 0.04), Color(0.75, 0.26, 0.04))
-			for i in range(10):
-				var mi := MeshInstance3D.new()
-				mi.name = "IncenseMote_%d" % i
-				var is_spark := (i % 3 == 0)
-				mi.mesh = prism if is_spark else sph
-				mi.material_override = coal_mat if is_spark else smoke_mat
-				add_child(mi)
+			var smoke_mat := _make_ribbon_wisp_mat(0, Color(0.84, 0.80, 0.76, 0.82))
+			var coal_mat := _make_ink_atlas_mat(3, Color(1.0, 0.56, 0.16, 1.0), 1.25)
+			_spawn_mote_pool(5, ribbon_q, smoke_mat, func(i: int) -> Vector3:
+				var a := float(i) * 1.4
+				return Vector3(0.014 + cos(a) * 0.008, 0.064, sin(a) * 0.008)
+			, 0.026, 0.046, 1.5, 2.2, 0.0040, 1.05)
+			_spawn_mote_pool(4, quad_sm, coal_mat, func(i: int) -> Vector3:
 				var a := float(i) * 1.7
-				_motes.append({
-					"node": mi,
-					"age": float(i) / 10.0,
-					"life": _rng.randf_range(1.3, 2.1),
-					"base": Vector3(0.014 + cos(a) * 0.010, 0.064, sin(a) * 0.010),
-					"rise": _rng.randf_range(0.026, 0.048),
-					"wob": 0.0048,
-					"freq": _rng.randf_range(2.6, 4.4),
-					"ph": _rng.randf_range(0.0, TAU),
-					"sc": 0.72 if is_spark else 1.25,
-					"spin": _rng.randf_range(-1.8, 1.8),
-				})
+				return Vector3(0.014 + cos(a) * 0.010, 0.062, sin(a) * 0.010)
+			, 0.020, 0.038, 0.9, 1.5, 0.0045, 0.78)
 
 		"TRELIC_PHOENIX_BOX":
-			var ember_mat := _make_ink_fx_mat(Color(1.0, 0.54, 0.16), Color(0.48, 0.10, 0.04), Color(0.82, 0.28, 0.04))
-			_spawn_mote_pool(11, prism, ember_mat, func(i: int) -> Vector3:
-				var a := float(i) * (TAU / 11.0)
+			var ember_mat := _make_ink_atlas_mat(3, Color(1.0, 0.54, 0.16, 1.0), 1.25)
+			_spawn_mote_pool(10, quad_md, ember_mat, func(i: int) -> Vector3:
+				var a := float(i) * (TAU / 10.0)
 				return Vector3(cos(a) * 0.016, _rng.randf_range(0.028, 0.056), sin(a) * 0.012)
 			, 0.026, 0.050, 1.1, 1.8, 0.0052, 0.95)
 

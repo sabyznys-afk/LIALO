@@ -146,12 +146,12 @@ static func _apply_handdrawn_tankard_materials(glb_root: Node3D, accent_col: Col
 
 static func _apply_handdrawn_coaster(root: Node3D) -> void:
 	var oak_base := _make_handdrawn_mat(
-		"res://assets/table/wood.png", Color(0.45, 0.30, 0.20), Color(0.10, 0.06, 0.05),
-		0.85, 34.0, 0.12, 18.0, 0.24, 0.0009, Vector2(2.0, 2.0), 0.35
+		"res://assets/table/wood.png", Color(0.28, 0.18, 0.12), Color(0.06, 0.04, 0.03),
+		0.88, 38.0, 0.10, 16.0, 0.20, 0.0009, Vector2(2.0, 2.0), 0.72
 	)
 	var brass_trim := _make_handdrawn_mat(
-		"res://assets/textures/relics/tankard_brass_ink.png", Color(0.95, 0.85, 0.72), Color(0.20, 0.12, 0.06),
-		0.65, 46.0, 0.68, 26.0, 0.45, 0.0008, Vector2.ONE, 0.35
+		"res://assets/textures/relics/tankard_brass_ink.png", Color(0.76, 0.62, 0.42), Color(0.14, 0.09, 0.05),
+		0.70, 48.0, 0.48, 22.0, 0.34, 0.0008, Vector2.ONE, 0.62
 	)
 	var children := root.get_children()
 	if children.size() >= 2:
@@ -200,8 +200,8 @@ static func _apply_handdrawn_relic_materials(rel_id: String, glb_root: Node3D, a
 	)
 	var silver_mat := _make_handdrawn_mat(
 		"res://assets/textures/relics/goblet_silver_ink.png",
-		Color(1.02, 1.00, 0.96), Color(0.20, 0.18, 0.18),
-		0.62, 52.0, 0.78, 28.0, 0.58, 0.00085, Vector2.ONE, 0.82
+		Color(0.88, 0.84, 0.78), Color(0.10, 0.08, 0.09),
+		0.76, 54.0, 0.82, 28.0, 0.56, 0.00085, Vector2.ONE, 0.88
 	)
 	var ruby_mat := _make_handdrawn_mat(
 		"res://assets/textures/relics/blood_wine_ink.png",
@@ -230,12 +230,18 @@ static func _apply_handdrawn_relic_materials(rel_id: String, glb_root: Node3D, a
 		Color(1.02, 1.04, 1.08), Color(0.22, 0.24, 0.30),
 		0.54, 50.0, 0.90, 34.0, 0.62, 0.00075, Vector2.ONE, 0.76
 	)
-	var glass_mat := _make_handdrawn_mat(
-		"res://assets/textures/relics/hourglass_glass_ink.png",
-		Color(0.88, 0.96, 1.00), Color(0.22, 0.36, 0.44),
-		0.38, 36.0, 0.95, 38.0, 0.78, 0.00065, Vector2.ONE, 0.50,
-		Color(0.10, 0.22, 0.28)
-	)
+	var glass_mat := StandardMaterial3D.new()
+	glass_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	glass_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	glass_mat.albedo_color = Color(0.78, 0.92, 0.98, 0.28)
+	if ResourceLoader.exists("res://assets/textures/relics/hourglass_glass_ink.png"):
+		glass_mat.albedo_texture = load("res://assets/textures/relics/hourglass_glass_ink.png") as Texture2D
+	glass_mat.roughness = 0.08
+	glass_mat.metallic = 0.16
+	glass_mat.rim_enabled = true
+	glass_mat.rim = 0.85
+	glass_mat.rim_tint = 0.45
+	glass_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
 	var sand_mat := _make_handdrawn_mat(
 		"res://assets/textures/relics/gold_sand_ink.png",
 		Color(1.04, 0.94, 0.68), Color(0.38, 0.24, 0.08),
@@ -254,9 +260,9 @@ static func _apply_handdrawn_relic_materials(rel_id: String, glb_root: Node3D, a
 		Color(0.16, 0.11, 0.02)
 	)
 	var timber_mat := _make_handdrawn_mat(
-		"res://assets/textures/relics/gallows_timber_ink.png",
-		Color(0.96, 0.88, 0.78), Color(0.12, 0.08, 0.05),
-		0.90, 40.0, 0.14, 18.0, 0.30, 0.00095, Vector2.ONE, 0.84
+		"res://assets/textures/relics/gallows_oak_ink.png",
+		Color(0.92, 0.86, 0.78), Color(0.10, 0.07, 0.04),
+		0.90, 42.0, 0.12, 16.0, 0.28, 0.00095, Vector2.ONE, 0.86
 	)
 	var iron_mat := _make_handdrawn_mat(
 		"res://assets/textures/relics/forged_steel_ink.png",

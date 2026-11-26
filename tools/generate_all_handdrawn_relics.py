@@ -683,14 +683,19 @@ def build_trelic_star_bow() -> list[MeshData]:
     def sculpt_monolith(px: float, py: float, pz: float) -> tuple[float, float, float, float]:
         t = _clamp01((py + 0.044) / 0.088)
         taper = 1.0 - 0.34 * (t ** 1.45)
-        chisel = 0.0018 * math.sin(py * 130.0 + px * 90.0) + 0.0012 * math.cos(pz * 180.0 - py * 60.0)
-        # Chipped jagged diagonal shoulder on upper right
-        peak_cut = max(0.0, (t - 0.72) / 0.28) * (0.008 if px > 0.0 else 0.0)
-        ao = 0.46 + 0.54 * _clamp01(t * 0.8 + 0.2)
-        return (px * taper + chisel, py - peak_cut, pz * (1.0 - 0.25 * t) + chisel * 0.5, ao)
-    add_rounded_box(slate, (0.0, 0.044, 0.0), (0.022, 0.044, 0.011), bevel=0.0032, subdiv=8, rot_deg=(-4.0, 10.0, 2.0), sculpt_fn=sculpt_monolith)
-    # Chiseled stone plinth step
-    add_rounded_box(slate, (0.0, 0.007, 0.0), (0.029, 0.007, 0.019), bevel=0.0025, subdiv=5, ao_bot=0.35, ao_top=0.82)
+        chisel = 0.0020 * math.sin(py * 135.0 + px * 95.0) + 0.0014 * math.cos(pz * 180.0 - py * 65.0)
+        peak_cut = max(0.0, (t - 0.72) / 0.28) * (0.009 if px > 0.0 else 0.0)
+        # Carved beveled rune trench indentation on front & back faces
+        trench_d = 0.0
+        if abs(px) < 0.0026 and abs(py) < 0.028:
+            trench_d = 0.0024 * (1.0 - abs(px) / 0.0026)
+        ao = (0.44 + 0.56 * _clamp01(t * 0.8 + 0.2)) * (0.58 if trench_d > 0.0005 else 1.0)
+        pz_carved = pz * (1.0 - 0.25 * t) - (trench_d if pz > 0.0 else -trench_d)
+        return (px * taper + chisel, py - peak_cut, pz_carved + chisel * 0.5, ao)
+    add_rounded_box(slate, (0.0, 0.044, 0.0), (0.022, 0.044, 0.011), bevel=0.0032, subdiv=10, rot_deg=(-4.0, 10.0, 2.0), sculpt_fn=sculpt_monolith)
+    # Stepped mossy plinth
+    add_rounded_box(slate, (0.0, 0.006, 0.0), (0.031, 0.006, 0.021), bevel=0.0024, subdiv=5, ao_bot=0.30, ao_top=0.80)
+    add_rounded_box(slate, (0.0, 0.013, 0.0), (0.025, 0.004, 0.016), bevel=0.0018, subdiv=4, ao_bot=0.45, ao_top=0.86)
 
     glyphs = MeshData("RuneGlyphs")
     rmat = _rot_mat(-4.0, 10.0, 2.0)
@@ -735,7 +740,15 @@ def build_trelic_star_bow() -> list[MeshData]:
         sx = math.cos(a) * 0.032
         sz = math.sin(a) * 0.028
         sy = 0.056 + si * 0.012
-        add_rounded_box(sm, (sx, sy, sz), (0.0055, 0.011, 0.0042), bevel=0.0015, subdiv=4, rot_deg=(15.0 * si, math.degrees(a), -12.0))
+        # Sharp tapered chiseled crystal rock shard (not a box!)
+        shard_prof = [
+            (0.0010, -0.012, 0.45),
+            (0.0052, -0.004, 0.82),
+            (0.0062,  0.003, 0.96),
+            (0.0036,  0.010, 0.90),
+            (0.0006,  0.014, 1.00),
+        ]
+        add_lathe(sm, shard_prof, segs=5, offset=(sx, sy, sz), cap_bottom=True, cap_top=True)
         shards.append(finalize_mesh(sm))
 
     return [finalize_mesh(slate), finalize_mesh(glyphs), finalize_mesh(wire)] + shards
@@ -763,16 +776,37 @@ def build_trelic_blood_seal() -> list[MeshData]:
     rubies = MeshData("RubyGems")
     for gi in range(4):
         ang = gi * (math.pi * 0.5) + 0.39
-        gx, gz = math.cos(ang) * 0.0315, math.sin(ang) * 0.0315
-        add_ellipsoid(rubies, (gx, 0.072, gz), (0.0046, 0.0062, 0.0046), 10, 8, ao_bot=0.55, ao_top=1.0)
-        add_torus(body, (gx * 0.96, 0.072, gz * 0.96), 0.0052, 0.0014, 14, 8, rot_deg=(0.0, -math.degrees(ang), 90.0), ao_val=0.45)
+        gx, gz = math.cos(ang) * 0.0318, math.sin(ang) * 0.0318
+        add_ellipsoid(rubies, (gx, 0.072, gz), (0.0044, 0.0064, 0.0044), 10, 8, ao_bot=0.45, ao_top=1.0)
+        # Sculpted gothic bezel + 4 claw prongs cradling each ruby
+        add_torus(body, (gx * 0.96, 0.072, gz * 0.96), 0.0052, 0.0015, 14, 8, rot_deg=(0.0, -math.degrees(ang), 90.0), ao_val=0.40)
+        for ci in (-1.0, 1.0):
+            ca = ang + ci * 0.14
+            claw = [
+                (math.cos(ca) * 0.0295, 0.066, math.sin(ca) * 0.0295),
+                (math.cos(ca) * 0.0355, 0.072, math.sin(ca) * 0.0355),
+                (math.cos(ang) * 0.0342, 0.078, math.sin(ang) * 0.0342),
+            ]
+            add_swept_3d(body, claw, [0.0012, 0.0011, 0.0008], segs=6)
 
     wine = MeshData("WineDome")
     def wine_ripple(lx, ly, lz, uf, vf, th, ph):
         rad = math.sqrt(lx * lx + lz * lz)
-        dip = 0.0020 * math.cos(rad * 180.0) + 0.0012 * math.sin(th * 3.0) * (rad / 0.030)
-        return (lx, ly + dip, lz, 0.72 + 0.28 * vf)
-    add_ellipsoid(wine, (0.0, 0.0885, 0.0), (0.0295, 0.0052, 0.0295), 32, 12, mod_fn=wine_ripple)
+        dip = 0.0022 * math.cos(rad * 185.0) + 0.0014 * math.sin(th * 3.0) * (rad / 0.030)
+        return (lx, ly + dip, lz, 0.70 + 0.30 * vf)
+    add_ellipsoid(wine, (0.0, 0.0885, 0.0), (0.0295, 0.0054, 0.0295), 32, 12, mod_fn=wine_ripple)
+    # Sculpted overflowing blood-wine drips & streams spilling down the chalice rim
+    for di, dang in enumerate([0.42, 1.85, 3.25, 4.95]):
+        dca, dsa = math.cos(dang), math.sin(dang)
+        drop_len = 0.020 if di % 2 == 0 else 0.013
+        drip_pts = [
+            (dca * 0.0285, 0.091, dsa * 0.0285),
+            (dca * 0.0352, 0.090, dsa * 0.0352),
+            (dca * 0.0345, 0.082, dsa * 0.0345),
+            (dca * 0.0315, 0.088 - drop_len, dsa * 0.0315),
+        ]
+        add_swept_3d(wine, drip_pts, [0.0018, 0.0024, 0.0017, 0.0023], segs=8)
+        add_ellipsoid(wine, (dca * 0.0315, 0.087 - drop_len, dsa * 0.0315), (0.0026, 0.0034, 0.0026), 10, 8)
 
     wax = MeshData("WaxRibbon")
     # Stem crimson wax seal medallion + twin fluttering seal ribbons
@@ -868,30 +902,29 @@ def build_trelic_ash_glass() -> list[MeshData]:
     add_torus(brass, (0.0, 0.049, 0.0), 0.0065, 0.0020, 20, 8)
 
     glass = MeshData("GlassBulbs")
-    # 8 sculpted arched crystal glass ribs framing the bulbs so the golden sand cones & falling stream shine cleanly inside!
-    for gi in range(8):
-        ang = gi * (math.tau / 8.0) + math.pi / 8.0
-        ca, sa = math.cos(ang), math.sin(ang)
-        g_pts = []
-        for py, pr in [
-            (0.009, 0.022), (0.020, 0.0255), (0.032, 0.0225),
-            (0.043, 0.011), (0.049, 0.0052),
-            (0.055, 0.011), (0.066, 0.0225), (0.078, 0.0255),
-            (0.089, 0.022),
-        ]:
-            g_pts.append((ca * pr, py, sa * pr))
-        add_swept_3d(glass, g_pts, [0.0017] * len(g_pts), segs=6)
-    add_torus(glass, (0.0, 0.022, 0.0), 0.0252, 0.0015, 28, 8)
-    add_torus(glass, (0.0, 0.076, 0.0), 0.0252, 0.0015, 28, 8)
+    # True continuous translucent hourglass glass bulbs (ascending +Y profile)
+    glass_bulb_prof = [
+        (0.0215, 0.009, 0.72),
+        (0.0256, 0.020, 0.92),
+        (0.0226, 0.032, 0.88),
+        (0.0112, 0.043, 0.80),
+        (0.0046, 0.049, 0.95),
+        (0.0112, 0.055, 0.80),
+        (0.0226, 0.066, 0.88),
+        (0.0256, 0.078, 0.92),
+        (0.0215, 0.089, 0.72),
+    ]
+    add_lathe(glass, glass_bulb_prof, segs=32, cap_bottom=False, cap_top=False, uv_v_scale=1.2)
 
     sand = MeshData("SandCones")
-    # Lower golden sand mound + upper golden sand reservoir cone
+    # Lower golden sand mound + upper reservoir cone + continuous falling sand stream in waist
     add_lathe(sand, [
         (0.021, 0.010, 0.55), (0.020, 0.016, 0.82), (0.012, 0.024, 0.96), (0.002, 0.032, 1.00)
     ], segs=24, cap_bottom=True, cap_top=True)
     add_lathe(sand, [
         (0.002, 0.055, 0.78), (0.014, 0.064, 0.94), (0.0215, 0.070, 0.98), (0.0215, 0.074, 0.86)
     ], segs=24, cap_bottom=True, cap_top=True)
+    add_swept_3d(sand, [(0.0, 0.055, 0.0), (0.0, 0.031, 0.0)], [0.0014, 0.0009], segs=8)
 
     return [finalize_mesh(brass), finalize_mesh(glass), finalize_mesh(sand)]
 
@@ -944,43 +977,53 @@ def build_trelic_gold_scales() -> list[MeshData]:
 
 
 def build_trelic_soul_bell() -> list[MeshData]:
-    # Graveyard Toll Bell — mortised oak gallows post + wrought-iron braces + bell chain + flared cracked bronze bell + crystal clapper
+    # Graveyard Toll Bell — charred oak gallows + wrought-iron chain & brackets + true hollow open bronze bell + glowing crack & clapper
     timber = MeshData("GallowsPost")
-    add_rounded_box(timber, (-0.022, 0.050, 0.0), (0.0062, 0.050, 0.0062), bevel=0.0016, subdiv=4, ao_bot=0.38, ao_top=0.88)
-    add_rounded_box(timber, (-0.002, 0.097, 0.0), (0.028, 0.0062, 0.0062), bevel=0.0016, subdiv=4, ao_bot=0.58, ao_top=0.95)
-    add_rounded_box(timber, (-0.012, 0.084, 0.0), (0.0042, 0.016, 0.0042), bevel=0.0010, subdiv=3, rot_deg=(0.0, 0.0, -45.0), ao_bot=0.55, ao_top=0.85)
+    add_rounded_box(timber, (-0.022, 0.050, 0.0), (0.0066, 0.050, 0.0066), bevel=0.0018, subdiv=4, ao_bot=0.32, ao_top=0.88)
+    add_rounded_box(timber, (-0.002, 0.097, 0.0), (0.028, 0.0064, 0.0064), bevel=0.0018, subdiv=4, ao_bot=0.52, ao_top=0.95)
+    add_rounded_box(timber, (-0.012, 0.084, 0.0), (0.0044, 0.016, 0.0044), bevel=0.0012, subdiv=3, rot_deg=(0.0, 0.0, -45.0), ao_bot=0.48, ao_top=0.85)
 
     iron = MeshData("IronBraces")
-    add_rounded_box(iron, (-0.022, 0.097, 0.0), (0.0074, 0.0074, 0.0074), bevel=0.0012, subdiv=3)
-    add_rounded_box(iron, (-0.022, 0.006, 0.0), (0.011, 0.006, 0.011), bevel=0.0015, subdiv=3)
-    add_torus(iron, (0.012, 0.090, 0.0), 0.0045, 0.0015, 16, 8, rot_deg=(90.0, 0.0, 0.0))
+    add_rounded_box(iron, (-0.022, 0.097, 0.0), (0.0078, 0.0078, 0.0078), bevel=0.0014, subdiv=3)
+    add_rounded_box(iron, (-0.022, 0.006, 0.0), (0.012, 0.0065, 0.012), bevel=0.0016, subdiv=3)
+    # 3 interlocking chain links suspending bell cleanly from gallows beam
+    for li, ly, lrot in [(0, 0.092, (90.0, 0.0, 0.0)), (1, 0.0885, (0.0, 90.0, 0.0)), (2, 0.085, (90.0, 0.0, 0.0))]:
+        add_torus(iron, (0.012, ly, 0.0), 0.0042, 0.0014, 16, 8, rot_deg=lrot)
 
     bell = MeshData("BronzeBell")
-    # Strictly ascending (+Y) outer flared bell profile so outward normals point UP/OUT cleanly!
-    bell_outer_prof = [
-        (0.026, 0.031, 0.75),
-        (0.0285, 0.033, 1.00),
-        (0.0245, 0.038, 0.96),
-        (0.0195, 0.049, 0.90),
-        (0.0165, 0.063, 0.94),
-        (0.0140, 0.077, 0.94),
-        (0.0085, 0.085, 0.88),
-        (0.0010, 0.087, 0.72),
+    # Single continuous closed hollow-bell profile: inner dome -> rounded bottom lip -> outer flared wall -> crown
+    # Ordered so outward normals point inward on inner vault, downward on bottom lip, outward on outer wall!
+    hollow_bell_prof = [
+        # Inner vault descending from crown to lip (radius increases as Y decreases -> normals point IN/DOWN!)
+        (0.0012, 0.080, 0.25),
+        (0.0082, 0.077, 0.30),
+        (0.0122, 0.068, 0.36),
+        (0.0148, 0.055, 0.42),
+        (0.0180, 0.043, 0.50),
+        (0.0228, 0.034, 0.62),
+        # Rounded bottom rim lip
+        (0.0248, 0.031, 0.78),
+        (0.0274, 0.0305, 0.88),
+        (0.0290, 0.0325, 1.00),
+        # Outer wall ascending (+Y)
+        (0.0252, 0.0375, 0.96),
+        (0.0200, 0.049, 0.90),
+        (0.0168, 0.063, 0.94),
+        (0.0142, 0.076, 0.94),
+        (0.0086, 0.083, 0.88),
+        (0.0012, 0.0845, 0.72),
     ]
-    add_lathe(bell, bell_outer_prof, segs=36, offset=(0.012, 0.0, 0.0), cap_bottom=False, cap_top=True, uv_v_scale=1.2)
-    # Inner hollow dome ascending profile facing inward cleanly (r decreases toward top? No: reverse outer order for underside cap ring)
-    bell_rim_lip = [
-        (0.0225, 0.035, 0.35),
-        (0.0255, 0.032, 0.55),
-        (0.0265, 0.031, 0.65),
-    ]
-    add_lathe(bell, bell_rim_lip, segs=36, offset=(0.012, 0.0, 0.0), cap_bottom=True, cap_top=False)
-    add_torus(bell, (0.012, 0.036, 0.0), 0.0265, 0.0020, 32, 8)
-    add_torus(bell, (0.012, 0.088, 0.0), 0.0046, 0.0016, 16, 8, rot_deg=(0.0, 0.0, 90.0))
+    add_lathe(bell, hollow_bell_prof, segs=36, offset=(0.012, 0.0, 0.0), cap_bottom=False, cap_top=False, uv_v_scale=1.35)
+    # Gothic relief bands around shoulder and soundbow
+    add_torus(bell, (0.012, 0.0355, 0.0), 0.0266, 0.0021, 32, 8)
+    add_torus(bell, (0.012, 0.0720, 0.0), 0.0148, 0.0015, 28, 8)
 
     clapper = MeshData("SoulClapper")
-    add_swept_3d(clapper, [(0.012, 0.072, 0.0), (0.012, 0.032, 0.0)], [0.0016, 0.0018], segs=8)
-    add_ellipsoid(clapper, (0.012, 0.028, 0.0), (0.0068, 0.0085, 0.0068), 12, 8, ao_bot=0.75, ao_top=1.0)
+    add_swept_3d(clapper, [(0.012, 0.076, 0.0), (0.012, 0.031, 0.0)], [0.0017, 0.0020], segs=8)
+    add_ellipsoid(clapper, (0.012, 0.027, 0.0), (0.0072, 0.0090, 0.0072), 14, 10, ao_bot=0.75, ao_top=1.0)
+    # Glowing carved spectral crack along front wall of bell
+    crack_pts = [(0.012, 0.068, 0.0155), (0.015, 0.056, 0.0185), (0.010, 0.044, 0.0228), (0.013, 0.034, 0.0268)]
+    add_swept_3d(clapper, crack_pts, [0.0014, 0.0022, 0.0018, 0.0012], segs=8)
 
     return [finalize_mesh(timber), finalize_mesh(iron), finalize_mesh(bell), finalize_mesh(clapper)]
 
