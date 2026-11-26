@@ -19,20 +19,8 @@ Sdílený seznam úkolů a poznámek mezi námi v repozitáři.
 
 ---
 
-### Priorita #2B — Příprava Living 2.5D Overhaulu zbývajících 10 Power karet (další sprint)
-
-> Cílový jednotný standard: **žádné ploché `SphereMesh` / `PrismMesh` / `BoxMesh` / `TorusMesh` primitivní náhražky**, žádný statický PNG „nalepený“ bez pohybu — každá karta dostane ručně kreslený woodcut/rytinový 2.5D hero sprite rozdělený do nezávisle animovaných vrstev v `shaders/power_25d_living.gdshader` a ručně kreslené 2.5D partikly.
-
-1. **`SPEC_MIDAS` (Midas Touch — nejvyšší priorita z desítky):** Detailní ručně kreslená pozlacená rytířská rukavice a přetékající zlatý pokladový kalich (`midas_gauntlet_2d.png`), shader tekoucího roztaveného zlata (`liquid gold ripple`) + 3D padající/rotující ručně kreslené zlaté floriny (`gold_florin_2d.png`) a zářivé zlaté jiskry (`ink_sparks_sheet.png`).
-2. **`SPEC_CHRONOS` (Chronos Glass):** Detailní středověký mosazný astroláb a přesýpací hodiny (`chronos_astrolabe_2d.png`) rozdělené na samostatně se zpětně točící ozubené prstence a ručičky + zmrazené kreslené střepy času.
-3. **`SPEC_ORACLE` (All-Seeing Oracle):** Iluminované mystické Třetí oko se zlatým věšteckým okružím (`oracle_eye_2d.png`), shader mrkání/rozšiřování zornice a plující inkoustové tarotové záblesky.
-4. **`SPEC_JESTER` (Fool's Gambit):** Středověká šaškovská maska s rolničkami a roztrhanými kartami (`jester_mask_2d.png`), chaotický shader výkyvu/smíchu + vířící ručně kreslené karty.
-5. **`SPEC_HEX` (Shadow Hex):** Prokletý kožený grimoár a železné trnové řetězy (`hex_grimoire_2d.png`), plazící se stínově-inkoustové úpony + pulzující fialové runy.
-6. **`SPEC_MAGNET` (Arcane Magnet):** Kovaná runová podkova magnetu (`magnet_sigil_2d.png`), pulzující siločáry a kroužící přitahované inkované jiskry.
-7. **`SPEC_SHIELD` (Iron Bastion):** Dva monumentální kované rytířské pavézy (`bastion_shield_2d.png`) s kovovým leskem a pulzujícími zlatými runami bariéry.
-8. **`SPEC_GAMBLER` (Loaded Fate):** Ručně kreslené kostěné hrací kostky a stříbrné kolo štěstěny (`gambler_wheel_2d.png`), samostatně rotující kolo osudu + zlaté jiskry.
-9. **`SPEC_PLAGUE` (Frost Plague):** Středověká morová maska a krystalická mrazová koruna (`plague_frost_2d.png`), vířící ledová mlha a ručně kreslené krystaly ledu.
-10. **`SPEC_CROWN` (Sovereign's Decree):** Královská imperiální koruna se zkříženými žezly (`sovereign_crown_2d.png`), pulzující odlesky drahokamů a zlaté paprsky.
+### Hotovo v v0.197c — Living 2.5D Overhaul zbývajících 10 Power karet (Priorita #2B)
+- **`SPEC_MIDAS`, `SPEC_CHRONOS`, `SPEC_ORACLE`, `SPEC_JESTER`, `SPEC_HEX`, `SPEC_MAGNET`, `SPEC_SHIELD`, `SPEC_GAMBLER`, `SPEC_PLAGUE`, `SPEC_CROWN`** převedeny na živý shader `shaders/power_25d_living.gdshader` (`anim_mode` 6–15) s ručně kreslenými 2.5D woodcut sprity (`assets/vfx/power_25d/`), samostatně rotujícími prstenci (`chronos_gear_ring_2d.png`, `gambler_wheel_2d.png`), dvojitými cel-animated slashy a vlastními 2.5D partikly (`gold_florin_2d.png`, `jester_card_2d.png`, `hex_thorn_2d.png`, `frost_crystal_2d.png`, `gambler_dice_2d.png`) bez primitivních `SphereMesh`/`PrismMesh`/`BoxMesh`/`CylinderMesh` náhražek.
 
 ---
 
