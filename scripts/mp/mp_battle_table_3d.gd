@@ -1646,7 +1646,17 @@ func _on_vfx_event(evt: Dictionary) -> void:
 				var lead_card: Dictionary = cards_arr[0]
 				var lr := str(lead_card.get("rank", ""))
 				var lpid := str(lead_card.get("power_id", ""))
-				if lpid == "SPEC_SHIELD" or (lpid == "" and lr == "D"):
+				if lpid == "SPEC_VAMPIRE":
+					play_sfx_requested.emit("music_power_vampire")
+					play_sfx_requested.emit("power_vampire_master")
+				elif lpid == "SPEC_STORM":
+					play_sfx_requested.emit("music_power_storm")
+					play_sfx_requested.emit("power_storm_master")
+				elif lpid == "SPEC_MIRROR":
+					play_sfx_requested.emit("music_power_mirror")
+				elif lpid == "SPEC_ALCHEMIST":
+					play_sfx_requested.emit("music_power_alchemist")
+				elif lpid == "SPEC_SHIELD" or (lpid == "" and lr == "D"):
 					play_sfx_requested.emit("card_shield_guard")
 				elif lpid == "" and lr == "E":
 					play_sfx_requested.emit("card_ace_strike")

@@ -698,6 +698,10 @@ func _setup_cinematic_director() -> void:
 	cinematic_director = CinematicDirectorScript.new()
 	cinematic_director.name = "CinematicDirector"
 	add_child(cinematic_director)
+	if cinematic_director.has_signal("sfx_requested"):
+		cinematic_director.connect("sfx_requested", func(sk: String, _v: float, p: float):
+			emit_signal("play_sfx_pitched_requested", sk, p)
+		)
 	cinematic_director.call("setup", self, cam, hud_root, _get_font(true))
 	if is_instance_valid(opp_silhouette_root):
 		cinematic_director.call("set_opponent_rig", opp_silhouette_root)
@@ -3109,7 +3113,7 @@ func _spawn_signature_play_vfx(chosen_cards: Array[Dictionary], impact_pos: Vect
 		card_vfx.sfx_triggered.connect(func(sfx_key: String, _vol: float, pitch_val: float):
 			emit_signal("play_sfx_pitched_requested", sfx_key, pitch_val)
 		)
-		card_vfx.setup_battle_fx(impact_pos, rival_pos, pid)
+		card_vfx.setup_battle_fx(impact_pos, rival_pos, pid, false)
 	elif pid != "":
 		Fx.shard_burst(self, impact_pos, lead.get("accent", Color(1.0, 0.84, 0.32)), 8, 0.42)
 

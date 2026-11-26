@@ -120,6 +120,8 @@ var amb_player: AudioStreamPlayer
 var splash_sfx_player: AudioStreamPlayer
 var battle_bgm_players: Dictionary = {}
 var battle_music_intensity: float = 0.0
+var bgm_duck_timer: float = 0.0
+var bgm_duck_db: float = 0.0
 var sfx_pool: Array[AudioStreamPlayer] = []
 var sfx_pool_idx: int = 0
 var sfx_cache: Dictionary = {}
@@ -525,7 +527,9 @@ func _setup_audio_engine() -> void:
 	bgm_cache["battle_climax"] = _load_audio("res://assets/audio/bgm_battle_intense", true)
 	if bgm_cache["battle_climax"] == null:
 		bgm_cache["battle_climax"] = bgm_cache["battle_epic"]
-	bgm_cache["battle_boss"] = bgm_cache["battle_climax"]
+	bgm_cache["battle_boss"] = _load_audio("res://assets/audio/bgm_boss_awakening", true)
+	if bgm_cache["battle_boss"] == null:
+		bgm_cache["battle_boss"] = bgm_cache["battle_climax"]
 	bgm_cache["battle"] = bgm_cache["battle_epic"] if bgm_cache["battle_epic"] != null else bgm_cache["battle_climax"]
 	bgm_cache["amb_tavern"] = _load_audio("res://assets/audio/amb_tavern", true)
 
@@ -537,7 +541,10 @@ func _setup_audio_engine() -> void:
 		"card_ace_strike", "card_seven_curse", "card_suit_shift", "card_shield_guard",
 		"anim_sword_unsheathe", "anim_sword_slash", "anim_sword_cleave",
 		"anim_parry_clang", "anim_combo_slam",
-		"btn_wooden_slam", "btn_ghost_curse"
+		"btn_wooden_slam", "btn_ghost_curse",
+		"power_vampire_master", "power_vampire_cast", "power_vampire_shift", "power_vampire_impact", "power_vampire_tail",
+		"power_storm_master", "power_storm_cast", "power_storm_shift", "power_storm_impact", "power_storm_tail",
+		"music_power_vampire", "music_power_storm", "music_power_mirror", "music_power_alchemist"
 	]:
 		var st := _load_audio("res://assets/audio/sfx_%s" % sfx_key, false)
 		if st:
@@ -721,11 +728,14 @@ func _apply_battle_layer_volumes() -> void:
 		if not is_instance_valid(bp):
 			continue
 		var w := float(weights.get(k, 0.0))
-		bp.volume_db = _calc_vol_db(-6.5 + linear_to_db(w)) if w > 0.015 else -80.0
+		bp.volume_db = _calc_vol_db(-6.5 + linear_to_db(w) + bgm_duck_db) if w > 0.015 else -80.0
 
 func _update_battle_music_mix(delta: float) -> void:
 	if active_bgm_key != "battle" or not _has_layered_battle_bgm():
 		return
+	bgm_duck_timer = maxf(0.0, bgm_duck_timer - delta)
+	var target_duck := -11.5 if bgm_duck_timer > 0.0 else 0.0
+	bgm_duck_db = lerpf(bgm_duck_db, target_duck, clampf(delta * (6.5 if bgm_duck_timer > 0.0 else 2.2), 0.0, 1.0))
 	var target_int := 0.0
 	if battle_3d and is_instance_valid(battle_3d):
 		var t_sc := maxf(1.0, float(battle_3d.target_score))
@@ -826,13 +836,25 @@ func _play_sfx(key: String, vol_db: float = -5.5, pitch: float = 1.0) -> void:
 		var q_cand := "quill_scratch_%d" % (randi() % 3)
 		if sfx_cache.has(q_cand):
 			resolved_key = q_cand
+	var is_music_stinger := resolved_key.begins_with("music_power_")
+	var is_power_studio := resolved_key.begins_with("power_")
+	if is_music_stinger and not music_enabled:
+		return
 	if not window_focused or audio_muted or audio_volume_pct <= 0 or not sfx_cache.has(resolved_key) or sfx_pool.is_empty():
 		return
+	if is_music_stinger:
+		bgm_duck_timer = maxf(bgm_duck_timer, 6.0)
+		bgm_duck_db = minf(bgm_duck_db, -11.5)
+		_apply_battle_layer_volumes()
+	elif is_power_studio and resolved_key.ends_with("_master"):
+		bgm_duck_timer = maxf(bgm_duck_timer, 5.8)
+	var eff_vol := maxf(vol_db, -2.0) if (is_music_stinger or is_power_studio) else vol_db
+	var eff_pitch := 1.0 if (is_music_stinger or is_power_studio) else pitch
 	var p: AudioStreamPlayer = sfx_pool[sfx_pool_idx]
 	sfx_pool_idx = (sfx_pool_idx + 1) % sfx_pool.size()
 	p.stream = sfx_cache[resolved_key]
-	p.volume_db = _calc_vol_db(vol_db)
-	p.pitch_scale = pitch
+	p.volume_db = _calc_vol_db(eff_vol)
+	p.pitch_scale = eff_pitch
 	p.stream_paused = false
 	p.play()
 
@@ -994,20 +1016,26 @@ func _ready() -> void:
 	if battle_3d.has_signal("play_sfx_requested"):
 		battle_3d.play_sfx_requested.connect(func(sname: String):
 			var v := -5.0
-			match sname:
-				"card_hover":
-					v = -11.5
-				"btn_card_tick":
-					v = -8.0
-				"btn_wooden_slam":
-					v = -5.5
-				"card_ace_strike", "anim_parry_clang":
-					v = -3.5
-			_play_sfx(sname, v, randf_range(0.96, 1.04))
+			var p := randf_range(0.96, 1.04)
+			if sname.begins_with("music_power_") or sname.begins_with("power_"):
+				v = -2.0
+				p = 1.0
+			else:
+				match sname:
+					"card_hover":
+						v = -11.5
+					"btn_card_tick":
+						v = -8.0
+					"btn_wooden_slam":
+						v = -5.5
+					"card_ace_strike", "anim_parry_clang":
+						v = -3.5
+			_play_sfx(sname, v, p)
 		)
 	if battle_3d.has_signal("play_sfx_pitched_requested"):
 		battle_3d.play_sfx_pitched_requested.connect(func(sname: String, pitch_val: float):
-			_play_sfx(sname, -4.5, pitch_val)
+			var v := -2.0 if (sname.begins_with("music_power_") or sname.begins_with("power_")) else -4.5
+			_play_sfx(sname, v, pitch_val)
 		)
 	if battle_3d.has_signal("toggle_mute_requested"):
 		battle_3d.toggle_mute_requested.connect(_toggle_audio_mute)

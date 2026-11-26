@@ -109,9 +109,12 @@ var _bgm_intensity_slider: HSlider
 var _bgm_intensity_lbl: Label
 var _amb_tavern_chk: CheckButton
 var _audio_player: AudioStreamPlayer
+var _sfx_pool: Array[AudioStreamPlayer] = []
+var _sfx_pool_idx: int = 0
 var _bgm_calm_player: AudioStreamPlayer
 var _bgm_epic_player: AudioStreamPlayer
 var _bgm_climax_player: AudioStreamPlayer
+var _bgm_boss_player: AudioStreamPlayer
 var _bgm_amb_player: AudioStreamPlayer
 var _bgm_mix_active := false
 var _bgm_intensity := 0.0
@@ -725,6 +728,19 @@ func _build_stage_audio() -> void:
 	start_mix_btn.custom_minimum_size = Vector2(160, 34)
 	mix_btns.add_child(start_mix_btn)
 
+	var boss_btn := _make_ctrl_btn("Play Boss Awakening", "skull", func():
+		_stop_audio_players()
+		if not _is_headless and is_instance_valid(_bgm_boss_player):
+			var st := _load_audio_stream("res://assets/audio/bgm_boss_awakening.mp3")
+			if st != null:
+				_bgm_boss_player.stream = st
+				_bgm_boss_player.volume_db = -5.5
+				_bgm_boss_player.play(0.0)
+				_audio_info_lbl.text = "Playing: res://assets/audio/bgm_boss_awakening.mp3"
+	)
+	boss_btn.custom_minimum_size = Vector2(178, 34)
+	mix_btns.add_child(boss_btn)
+
 	var stop_mix_btn := _make_ctrl_btn("Stop Audio", "cross", func():
 		_stop_audio_players()
 	)
@@ -735,21 +751,30 @@ func _build_stage_audio() -> void:
 func _build_audio_players() -> void:
 	_audio_player = AudioStreamPlayer.new()
 	add_child(_audio_player)
+	for _si in range(6):
+		var sp := AudioStreamPlayer.new()
+		add_child(sp)
+		_sfx_pool.append(sp)
 	_bgm_calm_player = AudioStreamPlayer.new()
 	add_child(_bgm_calm_player)
 	_bgm_epic_player = AudioStreamPlayer.new()
 	add_child(_bgm_epic_player)
 	_bgm_climax_player = AudioStreamPlayer.new()
 	add_child(_bgm_climax_player)
+	_bgm_boss_player = AudioStreamPlayer.new()
+	add_child(_bgm_boss_player)
 	_bgm_amb_player = AudioStreamPlayer.new()
 	add_child(_bgm_amb_player)
 
 
 func _stop_audio_players() -> void:
 	_bgm_mix_active = false
-	for p in [_audio_player, _bgm_calm_player, _bgm_epic_player, _bgm_climax_player, _bgm_amb_player]:
+	for p in [_audio_player, _bgm_calm_player, _bgm_epic_player, _bgm_climax_player, _bgm_boss_player, _bgm_amb_player]:
 		if is_instance_valid(p):
 			p.stop()
+	for sp in _sfx_pool:
+		if is_instance_valid(sp):
+			sp.stop()
 
 
 func _load_audio_stream(path: String) -> AudioStream:
@@ -1018,16 +1043,19 @@ func _trigger_selected_preview() -> void:
 			_fpv_showcase = PowerCardShowcaseScript.new()
 			_fpv_vp.add_child(_fpv_showcase)
 			_fpv_showcase.sfx_triggered.connect(func(sfx_key: String, vol_db: float, pitch_val: float):
-				if _is_headless or not is_instance_valid(_audio_player):
+				if _is_headless or _sfx_pool.is_empty():
 					return
 				var st := _load_audio_stream("res://assets/audio/sfx_%s.mp3" % sfx_key)
 				if st == null:
 					st = _load_audio_stream("res://assets/audio/sfx_%s.wav" % sfx_key)
 				if st != null:
-					_audio_player.stream = st
-					_audio_player.volume_db = vol_db
-					_audio_player.pitch_scale = pitch_val
-					_audio_player.play()
+					var sp: AudioStreamPlayer = _sfx_pool[_sfx_pool_idx]
+					_sfx_pool_idx = (_sfx_pool_idx + 1) % _sfx_pool.size()
+					if is_instance_valid(sp):
+						sp.stream = st
+						sp.volume_db = vol_db
+						sp.pitch_scale = pitch_val
+						sp.play()
 			)
 			_fpv_showcase.setup_fpv_preview(_fpv_cam, _fpv_overlay, _loop_enabled, str(it.get("card_id", "SPEC_STORM")))
 			_fpv_showcase.set_speed(_speed_scale)

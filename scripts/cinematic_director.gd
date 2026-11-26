@@ -20,6 +20,7 @@ const TYBW_IMPACT_SHADER := preload("res://shaders/tybw_impact.gdshader")
 signal cinematic_started(profile_id: String)
 signal cinematic_impact(profile_id: String)
 signal cinematic_finished(profile_id: String, skipped: bool)
+signal sfx_requested(sfx_key: String, vol_db: float, pitch: float)
 
 static var _glb_cache: Dictionary = {}
 
@@ -56,6 +57,7 @@ var _duration: float = 3.0
 var _hitstop_at: float = 1.75
 var _manifest_fired: bool = false
 var _impact_fired: bool = false
+var _tail_fired: bool = false
 var _tybw_style: String = "getsuga"
 var _vfx_scale: float = 1.5
 var _impact_flash_t: float = 0.0
@@ -187,6 +189,7 @@ func _start_cinematic_from_profile(
 	_elapsed = 0.0
 	_manifest_fired = false
 	_impact_fired = false
+	_tail_fired = false
 	_impact_flash_t = 0.0
 	_slash_t = 0.0
 	_shake_amp = 0.0
@@ -239,6 +242,18 @@ func _start_cinematic_from_profile(
 	_playing = true
 	_update_camera_choreography(0.0)
 	_update_opponent_pose_choreography(0.0)
+	if not _is_rival_turn:
+		match _active_profile_id:
+			"SPEC_VAMPIRE":
+				emit_signal("sfx_requested", "music_power_vampire", -2.0, 1.0)
+				emit_signal("sfx_requested", "power_vampire_cast", -2.5, 1.0)
+			"SPEC_STORM":
+				emit_signal("sfx_requested", "music_power_storm", -2.0, 1.0)
+				emit_signal("sfx_requested", "power_storm_cast", -2.5, 1.0)
+			"SPEC_MIRROR":
+				emit_signal("sfx_requested", "music_power_mirror", -2.0, 1.0)
+			"SPEC_ALCHEMIST":
+				emit_signal("sfx_requested", "music_power_alchemist", -2.0, 1.0)
 	emit_signal("cinematic_started", _active_profile_id)
 
 
@@ -260,6 +275,11 @@ func _process(delta: float) -> void:
 		_shake_amp = maxf(_shake_amp, 0.022)
 		_fov_punch = -2.2
 		_trigger_tybw_manifest_fx()
+		if not _is_rival_turn:
+			if _active_profile_id == "SPEC_VAMPIRE":
+				emit_signal("sfx_requested", "power_vampire_shift", -2.5, 1.0)
+			elif _active_profile_id == "SPEC_STORM":
+				emit_signal("sfx_requested", "power_storm_shift", -2.5, 1.0)
 
 	# Check climax impact timestamp (Act III: Impact Frame + Diagonal Slash + Climax Strike!)
 	if not _impact_fired and _elapsed >= _hitstop_at:
@@ -270,9 +290,23 @@ func _process(delta: float) -> void:
 		_slash_t = 1.0
 		_pulse_lights_on_impact()
 		_trigger_tybw_climax_fx()
+		if not _is_rival_turn:
+			if _active_profile_id == "SPEC_VAMPIRE":
+				emit_signal("sfx_requested", "power_vampire_impact", -1.5, 1.0)
+			elif _active_profile_id == "SPEC_STORM":
+				emit_signal("sfx_requested", "power_storm_impact", -1.5, 1.0)
 		emit_signal("cinematic_impact", _active_profile_id)
 		if _on_impact_cb.is_valid():
 			_on_impact_cb.call()
+
+	# Act IV Aftermath tail stem
+	if not _tail_fired and _impact_fired and _elapsed >= minf(_hitstop_at + 0.85, _duration - 0.35):
+		_tail_fired = true
+		if not _is_rival_turn:
+			if _active_profile_id == "SPEC_VAMPIRE":
+				emit_signal("sfx_requested", "power_vampire_tail", -3.0, 1.0)
+			elif _active_profile_id == "SPEC_STORM":
+				emit_signal("sfx_requested", "power_storm_tail", -3.0, 1.0)
 
 	# Decay impact frame, slash line, camera shake & FOV punch
 	_impact_flash_t = maxf(0.0, _impact_flash_t - dt * 4.6)

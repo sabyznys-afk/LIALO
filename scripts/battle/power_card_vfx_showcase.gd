@@ -142,6 +142,7 @@ var _rng := RandomNumberGenerator.new()
 var _beats_fired: Dictionary = {}
 var _bolt_rebuild_acc: float = 0.0
 var _finished_emitted: bool = false
+var _with_stinger: bool = true
 
 # Preview Stage Nodes
 var _stage_root: Node3D = null
@@ -218,6 +219,7 @@ func _exit_tree() -> void:
 
 func setup_fpv_preview(cam: Camera3D, overlay_ctrl: Control, loop_enabled: bool = true, card_id: String = "SPEC_STORM") -> void:
 	_mode = "fpv_preview"
+	_with_stinger = true
 	_card_id = card_id if CARD_META.has(card_id) else "SPEC_STORM"
 	var meta: Dictionary = CARD_META[_card_id]
 	_accent = meta["accent"] as Color
@@ -236,8 +238,9 @@ func setup_fpv_preview(cam: Camera3D, overlay_ctrl: Control, loop_enabled: bool 
 	restart()
 
 
-func setup_battle_fx(impact_pos: Vector3, rival_pos: Vector3, card_id: String = "SPEC_STORM") -> void:
+func setup_battle_fx(impact_pos: Vector3, rival_pos: Vector3, card_id: String = "SPEC_STORM", with_stinger: bool = false) -> void:
 	_mode = "battle_fx"
+	_with_stinger = with_stinger
 	_card_id = card_id if CARD_META.has(card_id) else "SPEC_STORM"
 	var meta: Dictionary = CARD_META[_card_id]
 	_accent = meta["accent"] as Color
@@ -1036,11 +1039,25 @@ func _fire_beat(beat_id: String, at_time: float, sfx_key: String, vol_db: float,
 
 
 func _apply_animation_state(t: float) -> void:
-	# Common 5-act beats tuned to 4.20s
-	_fire_beat("rise", 0.05, "card_throw_whoosh", -5.0, 1.04)
-	_fire_beat("charge", 0.22, "anim_sword_unsheathe", -6.0, 1.18)
-	_fire_beat("slam", 0.85, "card_slam", -3.0, 1.0)
-	_fire_beat("conduit", 0.90, "anim_combo_slam", -4.5, 1.10)
+	var use_custom_studio := _with_stinger and (_card_id in ["SPEC_VAMPIRE", "SPEC_STORM"])
+	if _with_stinger:
+		if _card_id == "SPEC_VAMPIRE":
+			_fire_beat("stinger", 0.02, "music_power_vampire", -2.0, 1.0)
+			_fire_beat("studio_cast", 0.05, "power_vampire_cast", -2.5, 1.0)
+		elif _card_id == "SPEC_STORM":
+			_fire_beat("stinger", 0.02, "music_power_storm", -2.0, 1.0)
+			_fire_beat("studio_cast", 0.05, "power_storm_cast", -2.5, 1.0)
+		elif _card_id == "SPEC_MIRROR":
+			_fire_beat("stinger", 0.02, "music_power_mirror", -2.0, 1.0)
+		elif _card_id == "SPEC_ALCHEMIST":
+			_fire_beat("stinger", 0.02, "music_power_alchemist", -2.0, 1.0)
+
+	# Common 5-act beats tuned to 4.20s (fallback when card doesn't use bespoke multi-stem studio cues)
+	if not use_custom_studio:
+		_fire_beat("rise", 0.05, "card_throw_whoosh", -5.0, 1.04)
+		_fire_beat("charge", 0.22, "anim_sword_unsheathe", -6.0, 1.18)
+		_fire_beat("slam", 0.85, "card_slam", -3.0, 1.0)
+		_fire_beat("conduit", 0.90, "anim_combo_slam", -4.5, 1.10)
 
 	# 1. Hero Card Transform across 4.20s
 	if is_instance_valid(_hero_card):
@@ -1165,11 +1182,16 @@ func _apply_animation_state(t: float) -> void:
 
 
 func _animate_storm(t: float) -> void:
-	_fire_beat("thunder", 1.56, "card_ace_strike", -2.0, 0.88)
-	_fire_beat("cleave", 1.58, "anim_sword_cleave", -3.5, 1.15)
-	_fire_beat("curse_0", 2.62, "card_deal", -4.5, 1.10)
-	_fire_beat("curse_1", 2.80, "card_deal", -4.5, 1.22)
-	_fire_beat("curse_2", 2.98, "card_deal", -4.5, 1.35)
+	if _with_stinger:
+		_fire_beat("storm_shift", 0.85, "power_storm_shift", -2.5, 1.0)
+		_fire_beat("storm_impact", 1.56, "power_storm_impact", -1.5, 1.0)
+		_fire_beat("storm_tail", 2.60, "power_storm_tail", -3.0, 1.0)
+	else:
+		_fire_beat("thunder", 1.56, "card_ace_strike", -2.0, 0.88)
+		_fire_beat("cleave", 1.58, "anim_sword_cleave", -3.5, 1.15)
+		_fire_beat("curse_0", 2.62, "card_deal", -4.5, 1.10)
+		_fire_beat("curse_1", 2.80, "card_deal", -4.5, 1.22)
+		_fire_beat("curse_2", 2.98, "card_deal", -4.5, 1.35)
 
 	if is_instance_valid(_vortex_root):
 		var v_alpha := 0.0
@@ -1238,8 +1260,13 @@ func _animate_storm(t: float) -> void:
 
 
 func _animate_vampire(t: float) -> void:
-	_fire_beat("slash", 1.56, "anim_sword_slash", -2.5, 0.84)
-	_fire_beat("siphon", 2.25, "btn_ghost_curse", -4.0, 1.08)
+	if _with_stinger:
+		_fire_beat("vamp_shift", 0.85, "power_vampire_shift", -2.5, 1.0)
+		_fire_beat("vamp_impact", 1.56, "power_vampire_impact", -1.5, 1.0)
+		_fire_beat("vamp_tail", 2.35, "power_vampire_tail", -3.0, 1.0)
+	else:
+		_fire_beat("slash", 1.56, "anim_sword_slash", -2.5, 0.84)
+		_fire_beat("siphon", 2.25, "btn_ghost_curse", -4.0, 1.08)
 
 	if is_instance_valid(_blood_moon_mesh):
 		var m_u := clampf((t - 0.50) / 0.90, 0.0, 1.0)
