@@ -86,7 +86,17 @@ var _leaderboard_tab_btn: Button
 var _mode_cards: Dictionary = {}
 var _selected_match_mode: String = Config.MODE_UNRANKED
 var _in_match_room: bool = false
-var _mode_tabs_hb: HBoxContainer
+var _mode_tabs_hb: Control
+var _mode_pill_btn: Button
+var _mode_drawer_panel: PanelContainer
+var _mode_drawer_open: bool = false
+var _arena_vpc: SubViewportContainer
+var _arena_vp: SubViewport
+var _arena_sword_l: Node3D
+var _arena_sword_r: Node3D
+var _arena_banners: Array[Node3D] = []
+var _arena_torches: Array[OmniLight3D] = []
+var _arena_clash_pulse: float = 0.0
 var _room_banner_pan: PanelContainer
 var _room_banner_lbl: Label
 var _room_back_btn: Button
@@ -191,6 +201,16 @@ func _process(delta: float) -> void:
 			sm["x"] = randf()
 	if is_instance_valid(_bg_fx_canvas):
 		_bg_fx_canvas.queue_redraw()
+	_arena_clash_pulse = maxf(0.0, _arena_clash_pulse - delta * 1.8)
+	for ti in range(_arena_torches.size()):
+		var tl := _arena_torches[ti]
+		if is_instance_valid(tl):
+			tl.light_energy = 2.6 + sin(_fx_t * 7.5 + float(ti) * 2.1) * 0.45 + _arena_clash_pulse * 2.5
+	for bi in range(_arena_banners.size()):
+		var bn := _arena_banners[bi]
+		if is_instance_valid(bn):
+			bn.rotation_degrees.x = sin(_fx_t * 1.8 + float(bi) * 1.4) * 4.5
+			bn.rotation_degrees.z = cos(_fx_t * 1.4 + float(bi) * 1.9) * 2.2
 	if is_instance_valid(_hdr_title_lbl):
 		var glow_mix := 0.5 + 0.5 * sin(_fx_t * 2.2)
 		var brass := Color(1.0, 0.86, 0.44)
@@ -394,69 +414,150 @@ func _init_bg_fx_particles() -> void:
 
 
 func _draw_bg_fx() -> void:
+	# Minimal subtle atmospheric vignette; 3D Arena Stage provides the live gothic backdrop & foreground Oath Blades (v0.197)
 	if not is_instance_valid(_bg_fx_canvas):
 		return
 	var sz := _bg_fx_canvas.size
 	if sz.x < 10.0 or sz.y < 10.0:
 		return
+	var glow_p := 0.06 + 0.03 * sin(_fx_t * 1.9) + _arena_clash_pulse * 0.14
+	_bg_fx_canvas.draw_circle(Vector2(sz.x * 0.5, sz.y * 0.55), sz.x * 0.24, Color(0.98, 0.58, 0.22, glow_p))
 
-	# Flickering twin side wall torches & distant arena brazier halos
-	for tx_v in [0.028, 0.972]:
-		var tx_f: float = float(tx_v)
-		var flick := 0.82 + 0.18 * sin(_fx_t * 7.4 + tx_f * 13.0) + 0.08 * cos(_fx_t * 14.2)
-		var torch_pos := Vector2(sz.x * tx_f, sz.y * 0.42)
-		_bg_fx_canvas.draw_circle(torch_pos, 110.0 * flick, Color(0.95, 0.36, 0.12, 0.14 * flick))
-		_bg_fx_canvas.draw_circle(torch_pos, 46.0 * flick, Color(1.0, 0.72, 0.24, 0.22 * flick))
-		var sway_x := sin(_fx_t * 9.5 + tx_f * 9.0) * 5.0
-		var flame := PackedVector2Array([
-			torch_pos + Vector2(-9.0, 8.0),
-			torch_pos + Vector2(sway_x, -22.0 * flick),
-			torch_pos + Vector2(9.0, 8.0),
-		])
-		_bg_fx_canvas.draw_colored_polygon(flame, Color(1.0, 0.56, 0.14, 0.48))
 
-	# Gently swaying left & right duel banners in depth
-	for side_v in [0.015, 0.985]:
-		var side_f: float = float(side_v)
-		var dir_s: float = 1.0 if side_f < 0.5 else -1.0
-		var bx: float = sz.x * side_f
-		var wave: float = sin(_fx_t * 1.6 + side_f * 4.0) * 8.0
-		var b_pts := PackedVector2Array([
-			Vector2(bx, sz.y * 0.12),
-			Vector2(bx + dir_s * 24.0, sz.y * 0.12),
-			Vector2(bx + dir_s * 22.0 + wave, sz.y * 0.48),
-			Vector2(bx + dir_s * 11.0 + wave * 1.2, sz.y * 0.54),
-			Vector2(bx + wave * 0.6, sz.y * 0.48),
-		])
-		_bg_fx_canvas.draw_colored_polygon(b_pts, Color(0.44, 0.10, 0.12, 0.26))
-		_bg_fx_canvas.draw_polyline(PackedVector2Array([b_pts[0], b_pts[1], b_pts[2], b_pts[3], b_pts[4], b_pts[0]]), Color(0.84, 0.64, 0.28, 0.18), 1.4, true)
+func _build_3d_arena_stage() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	_arena_vpc = SubViewportContainer.new()
+	_arena_vpc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_arena_vpc.stretch = true
+	_arena_vpc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_arena_vpc)
 
-	var glow_p := 0.11 + 0.045 * sin(_fx_t * 1.9)
-	_bg_fx_canvas.draw_circle(Vector2(sz.x * 0.5, sz.y * 0.10), sz.x * 0.36, Color(0.96, 0.34, 0.18, glow_p))
+	_arena_vp = SubViewport.new()
+	_arena_vp.size = Vector2i(1280, 720)
+	_arena_vp.own_world_3d = true
+	_arena_vp.transparent_bg = true
+	_arena_vp.msaa_3d = Viewport.MSAA_4X
+	_arena_vp.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
+	_arena_vpc.add_child(_arena_vp)
 
-	# Slowly rising tavern smoke wisps
-	for sm in _smoke_wisps:
-		var sx := float(sm["x"]) * sz.x + sin(_fx_t * 0.8 + float(sm["phase"])) * 22.0
-		var sy := float(sm["y"]) * sz.y
-		_bg_fx_canvas.draw_circle(Vector2(sx, sy), float(sm["rad"]), Color(0.62, 0.56, 0.58, float(sm["alpha"])))
+	var env := Environment.new()
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.16, 0.12, 0.10)
+	env.ambient_light_energy = 0.85
+	var we := WorldEnvironment.new()
+	we.environment = env
+	_arena_vp.add_child(we)
 
-	# Subtle crossed-blade silhouette emblems & inked card motes
-	for bc in _bg_cards:
-		var cx := float(bc["x"]) * sz.x
-		var cy := float(bc["y"]) * sz.y
-		var w := float(bc["w"])
-		var h := w * 1.45
-		_bg_fx_canvas.draw_set_transform(Vector2(cx, cy), float(bc["rot"]), Vector2.ONE)
-		_bg_fx_canvas.draw_rect(Rect2(-w * 0.5, -h * 0.5, w, h), Color(0.85, 0.68, 0.36, 0.075), false, 1.5)
-		_bg_fx_canvas.draw_rect(Rect2(-w * 0.5 + 4, -h * 0.5 + 4, w - 8, h - 8), Color(0.18, 0.12, 0.08, 0.12), true)
-		_bg_fx_canvas.draw_line(Vector2(-w * 0.22, -h * 0.22), Vector2(w * 0.22, h * 0.22), Color(0.88, 0.72, 0.38, 0.06), 1.4)
-		_bg_fx_canvas.draw_line(Vector2(w * 0.22, -h * 0.22), Vector2(-w * 0.22, h * 0.22), Color(0.88, 0.72, 0.38, 0.06), 1.4)
-	_bg_fx_canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	for em in _embers:
-		var ex := float(em["x"]) * sz.x + sin(_fx_t * 2.1 + float(em["phase"])) * 16.0
-		var ey := float(em["y"]) * sz.y
-		var ea := float(em["alpha"]) * (0.65 + 0.35 * sin(_fx_t * 3.4 + float(em["phase"])))
-		_bg_fx_canvas.draw_circle(Vector2(ex, ey), float(em["r"]), Color(1.0, 0.64, 0.24, ea))
+	var cam := Camera3D.new()
+	cam.fov = 42.0
+	cam.current = true
+	cam.look_at_from_position(Vector3(0.0, 1.32, 2.35), Vector3(0.0, 0.78, 0.0), Vector3.UP)
+	_arena_vp.add_child(cam)
+
+	var key := DirectionalLight3D.new()
+	key.light_color = Color(1.0, 0.86, 0.64)
+	key.light_energy = 1.65
+	key.rotation_degrees = Vector3(-34.0, 28.0, 0.0)
+	_arena_vp.add_child(key)
+
+	for tx in [-1.45, 1.45]:
+		var tl := OmniLight3D.new()
+		tl.position = Vector3(tx, 1.55, -0.55)
+		tl.light_color = Color(1.0, 0.56, 0.22)
+		tl.light_energy = 2.6
+		tl.omni_range = 4.5
+		_arena_vp.add_child(tl)
+		_arena_torches.append(tl)
+
+	# Gothic Arena Oak Table
+	var tbl := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 1.55; cyl.bottom_radius = 1.48; cyl.height = 0.12; cyl.radial_segments = 48
+	tbl.mesh = cyl
+	tbl.position = Vector3(0.0, 0.56, 0.0)
+	var tmat := StandardMaterial3D.new()
+	tmat.albedo_color = Color(0.16, 0.10, 0.07)
+	if ResourceLoader.exists("res://assets/table/wood.png"):
+		tmat.albedo_texture = load("res://assets/table/wood.png") as Texture2D
+	tmat.roughness = 0.74
+	tbl.material_override = tmat
+	_arena_vp.add_child(tbl)
+
+	# Swaying 3D Banners
+	_arena_banners.clear()
+	for bx in [-1.65, 1.65]:
+		var bm := MeshInstance3D.new()
+		var bp := PlaneMesh.new()
+		bp.size = Vector2(0.42, 1.35)
+		bp.orientation = PlaneMesh.FACE_Z
+		bm.mesh = bp
+		bm.position = Vector3(bx, 1.65, -1.35)
+		var bmat := StandardMaterial3D.new()
+		bmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		bmat.albedo_color = Color(0.48, 0.09, 0.11)
+		bmat.roughness = 0.85
+		bm.material_override = bmat
+		_arena_vp.add_child(bm)
+		_arena_banners.append(bm)
+
+	# Ink-textured embers GPUParticles3D
+	if ResourceLoader.exists("res://shaders/relic_ink_particle.gdshader") and ResourceLoader.exists("res://assets/vfx/relic_ink_particles_atlas.png"):
+		var gp := GPUParticles3D.new()
+		gp.amount = 24
+		gp.lifetime = 2.8
+		gp.position = Vector3(0.0, 0.65, 0.0)
+		var pm := ParticleProcessMaterial.new()
+		pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+		pm.emission_box_extents = Vector3(1.4, 0.1, 0.8)
+		pm.direction = Vector3(0.0, 1.0, 0.0)
+		pm.gravity = Vector3(0.0, 0.22, 0.0)
+		pm.initial_velocity_min = 0.15
+		pm.initial_velocity_max = 0.45
+		gp.process_material = pm
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.045, 0.045)
+		var qmat := ShaderMaterial.new()
+		qmat.shader = load("res://shaders/relic_ink_particle.gdshader") as Shader
+		qmat.set_shader_parameter("atlas_tex", load("res://assets/vfx/relic_ink_particles_atlas.png") as Texture2D)
+		qmat.set_shader_parameter("cell_idx", 7)
+		qmat.set_shader_parameter("tint_color", Color(1.0, 0.72, 0.28, 0.85))
+		qmat.set_shader_parameter("emission_boost", 1.2)
+		qm.material = qmat
+		gp.draw_pass_1 = qm
+		_arena_vp.add_child(gp)
+
+	# Foreground Crossed 3D Oath Blades on Arena Table
+	var sw_path := "res://assets/models/swords/handdrawn_oathblade.glb"
+	if ResourceLoader.exists(sw_path):
+		var sw_scene := load(sw_path) as PackedScene
+		if sw_scene != null:
+			_arena_sword_l = sw_scene.instantiate() as Node3D
+			_arena_sword_r = sw_scene.instantiate() as Node3D
+			if is_instance_valid(_arena_sword_l) and is_instance_valid(_arena_sword_r):
+				_arena_sword_l.scale = Vector3.ONE * 1.15
+				_arena_sword_r.scale = Vector3.ONE * 1.15
+				_arena_sword_l.position = Vector3(-0.34, 0.74, 0.42)
+				_arena_sword_r.position = Vector3(0.34, 0.74, 0.42)
+				_arena_sword_l.rotation_degrees = Vector3(18.0, 15.0, -44.0)
+				_arena_sword_r.rotation_degrees = Vector3(18.0, -15.0, 44.0)
+				_arena_vp.add_child(_arena_sword_l)
+				_arena_vp.add_child(_arena_sword_r)
+
+
+func _trigger_arena_sword_clash() -> void:
+	_arena_clash_pulse = 1.0
+	if not is_inside_tree() or not is_instance_valid(_arena_sword_l) or not is_instance_valid(_arena_sword_r):
+		return
+	var tw := create_tween().set_parallel(true)
+	_arena_sword_l.position = Vector3(-0.62, 0.92, 0.52)
+	_arena_sword_r.position = Vector3(0.62, 0.92, 0.52)
+	_arena_sword_l.rotation_degrees = Vector3(8.0, 28.0, -72.0)
+	_arena_sword_r.rotation_degrees = Vector3(8.0, -28.0, 72.0)
+	tw.tween_property(_arena_sword_l, "position", Vector3(-0.34, 0.74, 0.42), 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_arena_sword_r, "position", Vector3(0.34, 0.74, 0.42), 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_arena_sword_l, "rotation_degrees", Vector3(18.0, 15.0, -44.0), 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_arena_sword_r, "rotation_degrees", Vector3(18.0, -15.0, 44.0), 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 func _build_ui() -> void:
@@ -480,6 +581,8 @@ func _build_ui() -> void:
 	dim.color = Color(0.025, 0.018, 0.024, 0.64)
 	add_child(dim)
 
+	_build_3d_arena_stage()
+
 	_bg_fx_canvas = Control.new()
 	_bg_fx_canvas.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_bg_fx_canvas.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -487,10 +590,10 @@ func _build_ui() -> void:
 	add_child(_bg_fx_canvas)
 
 	_main_panel = PanelContainer.new()
-	_main_panel.anchor_left = 0.035; _main_panel.anchor_right = 0.965
-	_main_panel.anchor_top = 0.035; _main_panel.anchor_bottom = 0.965
-	_main_panel.clip_contents = true
-	_main_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.072, 0.052, 0.044, 0.88), Color(0.84, 0.64, 0.26, 0.94), 3, 14, 16))
+	_main_panel.anchor_left = 0.025; _main_panel.anchor_right = 0.975
+	_main_panel.anchor_top = 0.025; _main_panel.anchor_bottom = 0.975
+	_main_panel.clip_contents = false
+	_main_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
 	add_child(_main_panel)
 
 	var root_vb := VBoxContainer.new()
@@ -572,10 +675,40 @@ func _build_ui() -> void:
 	hdr_hb.add_child(close_btn)
 
 	# 2. Top Match Mode Tabs (Public Match | Private Match | Ranked | Unranked)
+	var mode_wrap := VBoxContainer.new()
+	mode_wrap.add_theme_constant_override("separation", 6)
+	root_vb.add_child(mode_wrap)
+	_mode_tabs_hb = mode_wrap
+
+	var pill_row := HBoxContainer.new()
+	pill_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	mode_wrap.add_child(pill_row)
+
+	_mode_pill_btn = Button.new()
+	_mode_pill_btn.text = "UNRANKED  [CASUAL]  v"
+	_mode_pill_btn.custom_minimum_size = Vector2(280, 38)
+	Icons.apply_button_icon(_mode_pill_btn, "sword", 18)
+	_style_tavern_btn(_mode_pill_btn, Color(0.14, 0.10, 0.07, 0.94), Color(0.92, 0.72, 0.30, 0.94), true, 12)
+	_mode_pill_btn.pressed.connect(func():
+		play_click_sfx.emit()
+		_mode_drawer_open = not _mode_drawer_open
+		if is_instance_valid(_mode_drawer_panel):
+			_mode_drawer_panel.visible = _mode_drawer_open
+			if _mode_drawer_open:
+				_mode_drawer_panel.modulate.a = 0.0
+				var mtw := _mode_drawer_panel.create_tween()
+				mtw.tween_property(_mode_drawer_panel, "modulate:a", 1.0, 0.16)
+	)
+	pill_row.add_child(_mode_pill_btn)
+
+	_mode_drawer_panel = PanelContainer.new()
+	_mode_drawer_panel.visible = false
+	_mode_drawer_panel.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.08, 0.06, 0.05, 0.94), Color(0.84, 0.64, 0.28, 0.88), 2, 10, 8))
+	mode_wrap.add_child(_mode_drawer_panel)
+
 	var mode_tabs_hb := HBoxContainer.new()
 	mode_tabs_hb.add_theme_constant_override("separation", 8)
-	root_vb.add_child(mode_tabs_hb)
-	_mode_tabs_hb = mode_tabs_hb
+	_mode_drawer_panel.add_child(mode_tabs_hb)
 
 	# Match Room Banner (shown when user enters Private/Public/Ranked/Unranked Match Room)
 	_room_banner_pan = PanelContainer.new()
@@ -1307,6 +1440,18 @@ func _attach_mode_card_anim(btn: Button, mode_id: String, accent: Color) -> void
 func _select_match_mode(mode_id: String) -> void:
 	_selected_match_mode = mode_id
 	_in_match_room = true
+	_mode_drawer_open = false
+	if is_instance_valid(_mode_drawer_panel):
+		_mode_drawer_panel.visible = false
+	if is_instance_valid(_mode_pill_btn):
+		var p_labels := {
+			Config.MODE_PUBLIC: "PUBLIC MATCH  [OPEN]  v",
+			Config.MODE_PRIVATE: "PRIVATE MATCH  [CODE]  v",
+			Config.MODE_RANKED: "RANKED  [ELO]  v",
+			Config.MODE_UNRANKED: "UNRANKED  [CASUAL]  v",
+		}
+		_mode_pill_btn.text = str(p_labels.get(mode_id, "UNRANKED  v"))
+	_trigger_arena_sword_clash()
 	if _active_tab != 0:
 		_switch_tab(0)
 	var mode_colors := {

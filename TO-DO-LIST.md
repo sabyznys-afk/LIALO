@@ -14,15 +14,6 @@ Sdílený seznam úkolů a poznámek mezi námi v repozitáři.
 
 ---
 
-### Priorita #3 — Velké Multiplayer Lobby & Animace Mečů na Ploše (`scripts/mp/mp_lobby_overlay.gd`)
-
-- **Konec plochých vektorů na pozadí:** Odstranit primitivní `_draw_bg_fx()` trojúhelníky, kruhy a obdélníky (`mp_lobby_overlay.gd` ř. 396–460). Nahradit plnoobrazovkovou živou **3D Multiplayer Arena Stage** (vlastní `SubViewport` s gotickou halou, dynamickými shader pochodněmi, vrstveným texturovaným dýmem a jiskrami v `GPUParticles3D`, vlajícími 3D prapory s cloth vertex shaderem a objemovým světlem).
-- **Konec „malých boxíků“ -> Velký AAA open-stage layout:** Zrušit uzavírající hlavní panel (`_main_panel` box). Rozvrhnout prvky volně po okrajích (štíhlá horní lišta, kompaktní levý dock Duelista & Buildu, výsuvný pravý panel míst a chatu, monumentální dolní středové tlačítko **READY / PLAY**), aby **50 %+ středu obrazovky patřilo živé 3D scéně**.
-- **Animace mečů přímo NA PLOŠE (v popředí, ne v pozadí!):** Přímo na centrální interaktivní ploše stolu/arény před 3D postavami umístit **dva vysoce detailní 3D Oath Blady** (`handdrawn_oathblade.glb` + zvolený skin hráče). Při přepnutí módu, hledání hry nebo stisknutí **READY** se meče na ploše dramaticky tasí, zkříží se v jiskřivém střetu se zábleskem tušové rázové vlny a uzamknou připravenost k duelu.
-- **Rozbalovací záložka pro přepínání módů („záložka, která se zvětší“):** Zrušit obří trvalou řadu 4 tlačítek (`_mode_tabs_hb`). Místo ní udělat elegantní kompaktní **rozbalovací záložku / pilulku** (např. `[ ⚔ UNRANKED ▾ ]`), která se při kliknutí/najetí plynule tweenem rozvine do vějíře/draweru 4 bohatě ilustrovaných karet módů (`Public`, `Private + Room Code`, `Ranked`, `Unranked`) a po volbě se zase úsporně stáhne.
-
----
-
 ### Priorita #4 — Fujira Studios Intro: Sculptovaný celočerný 3D dravec (`scripts/ui/fujira_studio_intro.gd`)
 
 - **Diagnostikovaný stav:** `_build_all_black_bird()` (ř. 278–453) stále skládá ptáka z primitivních `SphereMesh`, `CylinderMesh`, `PrismMesh` a 20 hranatých `BoxMesh` destiček.
