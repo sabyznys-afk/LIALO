@@ -8,19 +8,46 @@ Sdílený seznam úkolů a poznámek mezi námi v repozitáři.
 
 ---
 
-## 🎯 LIALO v0.197 — Master Visual, VFX & Lobby Overhaul Plan
+## 🎯 LIALO v0.198 — Master `/goal` Plan: Pravé 3D Dynamické Power Karty (15/15) + Oprava & Detail Všech Relikvií
 
-> **Zásada zpracování:** Nejprve pečlivě po jednom přebudovat a vizuálně schválit přes GPU náhledy (`3-angle` preview sheety jako `tankard_relic_preview.png`). Žádné primitivní `SphereMesh` / `PrismMesh` / `BoxMesh` náhražky ani ploché vektory.
+> **Kompletní detailní specifikace & exekuční blueprint pro více agentů:** [GOAL_V0198_3D_POWER_AND_RELICS_PLAN.md](docs/GOAL_V0198_3D_POWER_AND_RELICS_PLAN.md)
+> **Zásada zpracování:** Nejprve schválit po dávkách přes multi-angle GPU náhledy (čelně + 60° boční orbit + detail okrajů). **Žádné ploché 2D quad náhražky pevných objektů a žádné statické VFX zapečené do textur!**
+
+### 4 Neporušitelné Zákony v0.198
+1. **Pravé 3D Hero Modely (konec ohýbání ze strany):** `_make_25d_diorama()` používá plochý 2D `QuadMesh`, který se při pohledu z boku deformuje. Všech 15 Power karet dostane vícedílný pravý **3D `.glb` model** ve stylu `TRELIC_WAR_HORN.glb` (410 KB, 1024px woodcut ink textury, `handdrawn_relic_3d.gdshader`), funkční ze všech 360° úhlů.
+2. **Fyzikální dynamika & 0 % statických efektů:** Žádný model nesmí mít na textuře namalovaný kouř, blesky, pírko ani zmrzlou tekutinu.
+   - *Tekutina (`Vampire Chalice`, `Crucible`, `Midas Gold`, `Blood Goblet`):* Dynamicky šplouchající/poskakující 3D hladina + padající/kapající 3D kapky na stůl.
+   - *Kopí (`SPEC_STORM`):* Čistý 3D model — samostatný živý objemový kouř, procedurálně větvené 3D modré blesky skákající po čepeli a fyzikálně vlající pírko/střapec.
+3. **Proměna celého prostředí krčmy (`TavernRealityShiftController` + `tavern_wall_shift.gdshader`):** Každá Power karta dočasně změní stěny, soumrak/světlo, okna, strop i stůl krčmy (např. *Vampire:* stékající krev po kamenných stěnách + hluboký soumrak; *Plague:* namrzající jinovatka; *Midas:* zlaté žíly; *Storm:* bouře a blesky v oknech) a po skončení je plynule vrátí.
+4. **Relikvie bez průhledných bugů na úrovni Piva (`TRELIC_WAR_HORN`):** Automatický Python validátor `validate_mesh_winding_and_uvs()`, oprava převrácených normál a konkávních profilů u `add_lathe()`, náprava skla přesýpacích hodin (`handdrawn_glass_3d.gdshader`), podpora `normal_tex` a upgrade všech 10 stolních + 8 core relikvií.
+
+### Checklist Fází `/goal` (připraveno k realizaci — zatím neimplementováno; přechod z 2.5D v0.197b/c na plné 3D + fyzika + krčma)
+- [ ] **Fáze 0 — Core Engine & Validátory:**
+  - [ ] Opravit `add_lathe()` v `tools/generate_all_handdrawn_relics.py` + přidat `validate_mesh_winding_and_uvs()` v `tools/generate_tankard_relic.py`
+  - [ ] Vytvořit `shaders/handdrawn_glass_3d.gdshader` + přidat `normal_tex` do `shaders/handdrawn_relic_3d.gdshader`
+  - [ ] Vytvořit `scripts/battle/tavern_reality_shift.gd` + `shaders/tavern_wall_shift.gdshader` (stékající krev, soumrak, bouře, jinovatka, zlaté žíly, zrcadlové praskliny)
+- [ ] **Fáze 1 — Oprava průhledných textur & detailní resculpt Relikvií (10 Tabletop + 8 Core):**
+  - [ ] Fix Bugů R1–R5 (převrácené normály dutých lemů, průsak `cull_front` obrysu, `DEPTH_DRAW_DISABLED` sklo)
+  - [ ] Top opravy: `TRELIC_SOUL_BELL` (lem/klenba zvonu bez děr), `TRELIC_BLOOD_SEAL` (lem číše + dynamická kapající krev), `TRELIC_STAR_BOW` (hluboké runy + dráty bez průsaku), `TRELIC_ASH_GLASS` (oprava skla), `TRELIC_HOLLOW_MASK` (pohárek bez děr)
+  - [ ] Detail upgrade k Tankardu: `TRELIC_CENSER`, `TRELIC_GOLD_SCALES`, `TRELIC_IRON_CHAIN`, `TRELIC_PHOENIX_BOX`, `TRELIC_WAR_HORN` (kapající pěna + normal map)
+  - [ ] Upgrade 4 zastaralých legacy Core `.glb` (`REL_PHOENIX_F`, `REL_KNUCKLE`, `REL_CHAMOIS`, `REL_FANG`) na Tankard standard + kontrola zděděných 4 relikvií
+- [ ] **Fáze 2 — Vlajkové Power Karty #1–#4 + Fénix v Pravém 3D + Krčma:**
+  - [ ] `SPEC_VAMPIRE`: Pravý 3D kalich + rotující 3D prstenec + dynamicky šplouchající & kapající krev + mávající netopýři + **tekoucí krev po zdech & soumrak krčmy**
+  - [ ] `SPEC_STORM`: Čisté 3D kopí + živý obíhající kouř + dynamické 3D blesky + vlající fyzikální pírko + bouřková proměna oken a stropu krčmy
+  - [ ] `SPEC_PHOENIX`: Kloubový 3D Fénix s reálným máváním křídel + živé plameny + žhavé stěny krčmy
+  - [ ] `SPEC_MIRROR`: 3D zrcadlový portál + vlnící se tekuté sklo + 3D rozlétající se střepy + praskliny v krčmě
+  - [ ] `SPEC_ALCHEMIST`: 3D mosazný kelímek s trubkami a prstenci + vřící/přetékající elixír + mandala přes krčmu
+- [ ] **Fáze 3 — Zbývajících 10 Power Karet po dávkách (vždy 3D `.glb` + dynamika + proměna krčmy):**
+  - [ ] Dávka 3A: `SPEC_MIDAS` (3D rukavice + tekoucí roztavené zlato + padající 3D floriny), `SPEC_CHRONOS` (3D astroláb + písek proti gravitaci + zamrzlá krčma), `SPEC_ORACLE` (3D oko + světelné kužely + souhvězdí na zdech)
+  - [ ] Dávka 3B: `SPEC_JESTER` (3D maska s houpajícími rolničkami + vír 3D karet), `SPEC_HEX` (3D grimoár + plazící se stínové úpony po stěnách), `SPEC_MAGNET` (3D podkova + dynamické siločáry)
+  - [ ] Dávka 3C: `SPEC_SHIELD` (3D nýtované pavézy + nárazové třísky), `SPEC_GAMBLER` (kutálející se 3D kostky + kolo štěstěny), `SPEC_PLAGUE` (3D morová maska + namrzající jinovatka po krčmě), `SPEC_CROWN` (3D koruna + kapající pečetní vosk + prapory krčmy)
+- [ ] **Fáze 4 — GPU Multi-Angle QA (čelně + 60° z boku) & 4/4 Godot Testy (`exit code 0`)**
 
 ---
 
-### Hotovo v v0.197b — Živé vrstvené 2.5D Power Karty (#1–#4 + Crucible)
-- **`SPEC_VAMPIRE`, `SPEC_STORM`, `SPEC_PHOENIX`, `SPEC_MIRROR`** převedeny na živý shader `shaders/power_25d_living.gdshader` s nezávisle animovanými vrstvami (samostatný rotující prstenec krvavého zatmění + žhnoucí rubíny a proudící krev kalichu + křídly mávající netopýři; ručně kreslené 2.5D bleskové jiskry, Fénixova pera s křídly a zrcadlové střepy bez primitivních vektorů; odstraněny šikmé čárky z rohů obrazovky; `SPEC_ALCHEMIST` Crucible obohacen o texturovanou mlhu, runy a inkované jiskry).
-
----
-
-### Hotovo v v0.197c — Living 2.5D Overhaul zbývajících 10 Power karet (Priorita #2B)
-- **`SPEC_MIDAS`, `SPEC_CHRONOS`, `SPEC_ORACLE`, `SPEC_JESTER`, `SPEC_HEX`, `SPEC_MAGNET`, `SPEC_SHIELD`, `SPEC_GAMBLER`, `SPEC_PLAGUE`, `SPEC_CROWN`** převedeny na živý shader `shaders/power_25d_living.gdshader` (`anim_mode` 6–15) s ručně kreslenými 2.5D woodcut sprity (`assets/vfx/power_25d/`), samostatně rotujícími prstenci (`chronos_gear_ring_2d.png`, `gambler_wheel_2d.png`), dvojitými cel-animated slashy a vlastními 2.5D partikly (`gold_florin_2d.png`, `jester_card_2d.png`, `hex_thorn_2d.png`, `frost_crystal_2d.png`, `gambler_dice_2d.png`) bez primitivních `SphereMesh`/`PrismMesh`/`BoxMesh`/`CylinderMesh` náhražek.
+### Předchozí mezikrok (v0.197b + v0.197c — živé 2.5D vrstvy)
+- **v0.197b:** `SPEC_VAMPIRE`, `SPEC_STORM`, `SPEC_PHOENIX`, `SPEC_MIRROR` a `SPEC_ALCHEMIST` převedeny na vrstvený `power_25d_living.gdshader` bez rohových čárek.
+- **v0.197c (commit `8e69293`):** Zbývajících 10 Power karet (`SPEC_MIDAS`, `SPEC_CHRONOS`, `SPEC_ORACLE`, `SPEC_JESTER`, `SPEC_HEX`, `SPEC_MAGNET`, `SPEC_SHIELD`, `SPEC_GAMBLER`, `SPEC_PLAGUE`, `SPEC_CROWN`) převedeno na 2.5D sprity (`anim_mode` 6–15) — ty v Fázi 3 výše přejdou rovnou na pravé 3D `.glb` + proměnu krčmy.
 
 ---
 
