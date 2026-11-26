@@ -37,30 +37,6 @@ Sdílený seznam úkolů a poznámek mezi námi v repozitáři.
 ---
 
 
-### Priorita #5 — Kompletní přestavba Vnitřku Krčmy (`scripts/battle_table_3d.gd` + `scripts/battle/tavern_scene_builder.gd`)
-
-*(Sdílený pipeline pro Kampaň i Multiplayer — „posunout vnitřek na jiný level“)*
-
-1. **Detailní živý oheň (Krb, svíčky, lucerny):**
-   - *Diagnostika:* `_spawn_tavern_hearth()` v `battle_table_3d.gd` i `tavern_scene_builder.gd` dnes **nemá vůbec žádné plameny** — pouze oranžový materiál na `hearthembercore` a `OmniLight3D` bez stínů! Svíčky na stole jsou statické žluté `SphereMesh` kuličky.
-   - *Plán:* Nový multi-vrstvý shader ohně (`shaders/tavern_hearth_fire.gdshader` — scrolling fBM turbulence, teplotní přechod bílozlaté jádro -> jantar -> oranžová -> karmínové špičky, eroze a pohyb plamenných jazyků) + žhnoucí uhlíky (`shaders/ember_bed.gdshader`) + 6–8 prohnutých křížících se plamenných pásů v krbu + `GPUParticles3D` texturovaných jisker a jemného kouře stoupajícího do komína + **stíny vrhající mihotavé světlo krbu** (`shadow_enabled = true`) tančící po podlaze a zdi. Upgrade plamenů svíček na stole a nástěnných luceren na mini shaderové kapky ohně.
-2. **Duch / Spirko — hlubší stíny a vyšší rozlišení (`_build_detailed_tutorial_ghost`):**
-   - *Diagnostika:* Všechny GLB části ducha mají `cast_shadow = false`, `phantom_shader` (`battle_table_3d.gd` ř. 6125–6156) je plochá zářící tyrkysová bez temných stínů v záhybech látky a bez textur, lebka (`ghost_skull.glb`) je bez textury a kolem létá 12 `SphereMesh` koulí.
-   - *Plán:* Vyšší rozlišení modelů `ghost_shroud.glb`, `ghost_skull.glb`, `ghost_jaw.glb`, `ghost_hand_l.glb`, `ghost_hand_r.glb` + 1024×1024 ručně inkované textury (popraskaná slonovina lebky, hluboké stínované očnice, roztrhané tkané sukno kápě s normal/roughness mapou). Nový chiaroscuro shader (`shaders/spirit_chiaroscuro.gdshader`) kombinující **hluboké tmavé stíny a šrafování v záhybech látky** (reagující na reálné teplé/studené světlo krčmy) s chladným spektrálním Fresnel obrysem + měkký stín/mlžná louže pod duchem + výměna `SphereMesh` wispů za texturované mlhové stuhy.
-3. **Osvětlení z oken (krásné světlo, čistý jednoduchý výhled ven):**
-   - *Diagnostika:* Okna mají jen plochou modrou tabulku, `OmniLight3D` bez stínů a hranaté `BoxMesh` kapky; chybí světelné paprsky a vržené stíny rámů.
-   - *Plán:* Venkovní pozadí zjednodušit na čistou malířskou atmosféru (měsíc/slunce/mlhavý obzor bez rušivé hranaté geometrie) a hlavní důraz dát na **světlo uvnitř**:
-     - Šikmé **objemové světelné paprsky (god-rays)** (`shaders/window_godray.gdshader`) prostupující z obou gotických oken zakouřenou krčmou na podlahu a okraj stolu.
-     - Nahradit `OmniLight3D` směrovými **stíny vrhajícími `SpotLight3D`** procházejícími skrz gotické mřížování okna, aby na podlahu a sudy dopadal reálný vzor světla a stínu okenních příček.
-     - Nový shader okenního skla (`shaders/tavern_window_glass.gdshader`) se stékajícími kapkami deště / refrakcí v bouřce a měkkým zářícím halem na okraji skla.
-     - Výměna `SphereMesh` prachových částic za jemné podsvícené billboard částice `GPUParticles3D` viditelné hlavně v kuželech světla z oken a lustru.
-4. **Celkové detaily vnitřku a materiálová hloubka (včetně stropního háku / lustru):**
-   - Přidat **Normal + Roughness + AO mapy (1024×1024)** pro kamenné zdi, dubové trámy, kamennou podlahu, koberec a sametový stůl.
-   - Detailní kovaný stropní **hák + řetěz lustru** (`tavern_chandelier.glb`) se svíčkami s opravdovými shaderovými plameny a vrstveným kuželem světla; kovaný krbový hák / kotlík, pohrabáč a stojan na polena u krbu.
-   - Víc živých krčmových detailů: zkosené kamenné ostění, dřevěné konzole trámů, pavučiny v rozích stropu, zavěšené bylinky/korbely nad barem, různorodé vymodelované lahve na policích (ne stejné válce), dřevěné lavice, nástěnné vyhlášky/pergameny a vyvážený `WorldEnvironment` (ACES tonemapping, selektivní Bloom na oheň/měsíc/runy, hluboký kontrast teplého ohně vs chladného měsíčního světla).
-
----
-
 ### Priorita #6 — Balík Audio / SFX & Epických Hudebních Promptů (47 vrstvených SFX & Epických Hudebních Promptů pro ElevenLabs SFX / Suno / Udio / Stable Audio)
 
 > Anglické prompty zajišťují nejvyšší věrnost v generátorech AI zvuku; doporučené nastavení v **ElevenLabs SFX**: `duration_seconds` = `6.0` pro Master Cues a `1.5–3.0` pro stemy, `prompt_influence` = `0.65–0.80`. Po vygenerování uložit do `assets/audio/`.

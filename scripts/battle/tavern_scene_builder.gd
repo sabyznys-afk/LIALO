@@ -49,7 +49,7 @@ var dust_motes_root: Node3D
 var exterior_vista_root: Node3D
 var exterior_vista_theme: String = "full_moon"
 var storm_rain_meshes: Array[MeshInstance3D] = []
-var storm_window_lights: Array[OmniLight3D] = []
+var storm_window_lights: Array[Light3D] = []
 var exterior_twinkle_nodes: Array[MeshInstance3D] = []
 var exterior_pine_nodes: Array[Node3D] = []
 var exterior_lightning_meshes: Array[MeshInstance3D] = []
@@ -167,6 +167,8 @@ func animate_ambient(delta: float, t: float, active_suit_id: String, is_my_turn:
 		drp.position.x = float(drp.get_meta("base_x", 0.0)) - cycle * 0.32
 	if is_instance_valid(dust_motes_root):
 		for m in dust_motes_root.get_children():
+			if not m.has_meta("base_pos"):
+				continue
 			var bp: Vector3 = m.get_meta("base_pos")
 			var ph: float = float(m.get_meta("phase", 0.0))
 			var swirl := table_arcane_spin_boost * 0.08
@@ -267,7 +269,7 @@ func _apply_mat_by_mesh_name(root: Node, mat_map: Dictionary) -> void:
 		_apply_mat_by_mesh_name(ch, mat_map)
 
 
-func _make_triplanar_pbr_mat(tex_path: String, tint: Color, world_scale: float, roughness: float = 0.85, metallic: float = 0.04) -> StandardMaterial3D:
+func _make_triplanar_pbr_mat(tex_path: String, tint: Color, world_scale: float, roughness: float = 0.85, metallic: float = 0.04, normal_path: String = "", ao_path: String = "") -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = tint
 	m.roughness = roughness
@@ -282,6 +284,18 @@ func _make_triplanar_pbr_mat(tex_path: String, tint: Color, world_scale: float, 
 			m.albedo_texture = t
 			m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 			m.albedo_color = Color(1, 1, 1, 1).lerp(tint, 0.56)
+	if normal_path != "":
+		var nt := Toon.tex(normal_path)
+		if nt:
+			m.normal_enabled = true
+			m.normal_texture = nt
+			m.normal_scale = 0.85
+	if ao_path != "":
+		var at := Toon.tex(ao_path)
+		if at:
+			m.ao_enabled = true
+			m.ao_texture = at
+			m.ao_light_affect = 0.65
 	return m
 
 
@@ -573,10 +587,10 @@ func _build_suit_astrolabe_and_rim(parent: Node3D, disc_center_xz: Vector2) -> v
 
 
 func _setup_epic_3d_tavern_environment(parent: Node3D, vista_era: String) -> void:
-	var beam_mat := _make_triplanar_pbr_mat("res://assets/table/wood.png", Color(0.24, 0.16, 0.10), 0.52, 0.72, 0.04)
-	var wainscot_mat := _make_triplanar_pbr_mat("res://assets/table/wood.png", Color(0.18, 0.11, 0.07), 0.65, 0.66, 0.05)
+	var beam_mat := _make_triplanar_pbr_mat("res://assets/table/wood.png", Color(0.24, 0.16, 0.10), 0.52, 0.72, 0.04, "res://assets/textures/tavern/tavern_wood_normal.png")
+	var wainscot_mat := _make_triplanar_pbr_mat("res://assets/table/wood.png", Color(0.18, 0.11, 0.07), 0.65, 0.66, 0.05, "res://assets/textures/tavern/tavern_wood_normal.png")
 	var iron_mat := Toon.pbr(Color(0.18, 0.20, 0.24), "", 0.42, 0.84)
-	var stone_wall_mat := _make_triplanar_pbr_mat("res://assets/table/stone_floor.png", Color(0.24, 0.23, 0.25), 0.44, 0.90, 0.02)
+	var stone_wall_mat := _make_triplanar_pbr_mat("res://assets/table/stone_floor.png", Color(0.24, 0.23, 0.25), 0.44, 0.90, 0.02, "res://assets/textures/tavern/tavern_stone_normal.png", "res://assets/textures/tavern/tavern_stone_ao.png")
 
 	# Tavern chairs around far & side arcs
 	_spawn_tavern_chair(parent, Vector3(0.0, 0.0, -2.02), 0.0, beam_mat, 1.15)
@@ -694,25 +708,69 @@ func _setup_epic_3d_tavern_environment(parent: Node3D, vista_era: String) -> voi
 	tavern_chandelier = Node3D.new()
 	tavern_chandelier.position = Vector3(0.0, 4.2, 0.05)
 	parent.add_child(tavern_chandelier)
+	var hook_ring := MeshInstance3D.new()
+	var hrt := TorusMesh.new(); hrt.inner_radius = 0.04; hrt.outer_radius = 0.085
+	hook_ring.mesh = hrt; hook_ring.position = Vector3(0, 0.28, 0); hook_ring.rotation_degrees.x = 90.0
+	hook_ring.material_override = iron_mat
+	tavern_chandelier.add_child(hook_ring)
+	for li_c in range(5):
+		var link := MeshInstance3D.new()
+		var lt := TorusMesh.new(); lt.inner_radius = 0.020; lt.outer_radius = 0.044
+		link.mesh = lt; link.position = Vector3(0, 0.16 - float(li_c) * 0.11, 0)
+		link.rotation_degrees = Vector3(90.0, 90.0 if (li_c % 2 == 1) else 0.0, 0.0)
+		link.material_override = iron_mat
+		tavern_chandelier.add_child(link)
 	var chand_glb := _load_glb_model("res://assets/models/tavern_chandelier.glb", true)
 	if chand_glb:
 		chand_glb.name = "TavernChandelierGLB"
 		tavern_chandelier.add_child(chand_glb)
+	var chand_flame_mat := ShaderMaterial.new()
+	chand_flame_mat.shader = load("res://shaders/tavern_hearth_fire.gdshader")
+	chand_flame_mat.set_shader_parameter("speed", 3.1)
+	chand_flame_mat.set_shader_parameter("intensity", 2.7)
+	for ci_f in range(6):
+		var c_ang := float(ci_f) * (TAU / 6.0)
+		var c_pos := Vector3(cos(c_ang) * 0.56, -1.24, sin(c_ang) * 0.56)
+		for cross_y in [0.0, 90.0]:
+			var cf := MeshInstance3D.new()
+			var cqm := QuadMesh.new(); cqm.size = Vector2(0.045, 0.085); cqm.subdivide_depth = 4
+			cf.mesh = cqm; cf.position = c_pos; cf.rotation_degrees.y = cross_y
+			cf.material_override = chand_flame_mat
+			cf.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			tavern_chandelier.add_child(cf)
 
 	dust_motes_root = Node3D.new()
 	parent.add_child(dust_motes_root)
-	var mote_mat := Toon.mat(Color(1.0, 0.88, 0.62), "", 0.0, Vector2.ONE, Color(0.95, 0.75, 0.38))
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 9091
-	for _i in range(30):
-		var mote := MeshInstance3D.new()
-		var ms := SphereMesh.new(); ms.radius = rng.randf_range(0.008, 0.017); ms.height = ms.radius * 2.0
-		mote.mesh = ms; mote.material_override = mote_mat
-		var base_p := Vector3(rng.randf_range(-1.55, 1.55), rng.randf_range(1.02, 2.45), rng.randf_range(-1.35, 1.05))
-		mote.position = base_p
-		mote.set_meta("base_pos", base_p)
-		mote.set_meta("phase", rng.randf_range(0.0, TAU))
-		dust_motes_root.add_child(mote)
+	var dust_gp := GPUParticles3D.new()
+	dust_gp.name = "TavernDustParticles"
+	dust_gp.amount = 72
+	dust_gp.lifetime = 6.5
+	dust_gp.preprocess = 3.0
+	dust_gp.position = Vector3(0.0, 1.75, -0.15)
+	var dust_proc := ParticleProcessMaterial.new()
+	dust_proc.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	dust_proc.emission_box_extents = Vector3(1.8, 0.9, 1.5)
+	dust_proc.direction = Vector3(0.15, 1.0, 0.05)
+	dust_proc.spread = 38.0
+	dust_proc.gravity = Vector3(0.0, 0.015, 0.0)
+	dust_proc.initial_velocity_min = 0.02
+	dust_proc.initial_velocity_max = 0.07
+	dust_proc.scale_min = 0.6
+	dust_proc.scale_max = 1.35
+	dust_gp.process_material = dust_proc
+	var dust_qm := QuadMesh.new()
+	dust_qm.size = Vector2(0.026, 0.026)
+	var dust_mat := StandardMaterial3D.new()
+	dust_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dust_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dust_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	dust_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	dust_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	dust_mat.albedo_texture = Fx.soft_tex()
+	dust_mat.albedo_color = Color(1.0, 0.88, 0.60, 0.45)
+	dust_qm.material = dust_mat
+	dust_gp.draw_pass_1 = dust_qm
+	dust_motes_root.add_child(dust_gp)
 
 
 func _spawn_gothic_room_architecture(parent: Node3D, beam_mat: Material, stone_mat: Material) -> void:
@@ -992,9 +1050,10 @@ func _spawn_wall_banner(parent: Node3D, pos: Vector3, fabric_col: Color, trim_co
 func _spawn_tavern_hearth(parent: Node3D, pos: Vector3, stone_mat: Material, wood_mat: Material) -> void:
 	var hearth := Node3D.new(); hearth.position = pos; parent.add_child(hearth)
 	var hearth_glb := _load_glb_model("res://assets/models/tavern_hearth.glb", true)
+	var h_iron := Toon.pbr(Color(0.14, 0.14, 0.16), "", 0.46, 0.84)
 	if hearth_glb:
-		var h_iron := Toon.pbr(Color(0.14, 0.14, 0.16), "", 0.46, 0.84)
-		var h_ember := Toon.pbr(Color(1.0, 0.34, 0.05), "", 0.25, 0.0, Vector2.ONE, Color(1.0, 0.26, 0.02), 2.4)
+		var h_ember := ShaderMaterial.new()
+		h_ember.shader = load("res://shaders/ember_bed.gdshader")
 		var h_soot := Toon.pbr(Color(0.05, 0.045, 0.05), "", 0.96, 0.0)
 		_apply_mat_by_mesh_name(hearth_glb, {
 			"hearthembercore": h_ember, "hearthback": h_soot, "andiron": h_iron,
@@ -1002,16 +1061,53 @@ func _spawn_tavern_hearth(parent: Node3D, pos: Vector3, stone_mat: Material, woo
 			"hearthjamb": stone_mat, "hearthcorbel": stone_mat, "hearthhood": stone_mat, "archstone": stone_mat,
 		})
 		hearth.add_child(hearth_glb)
+	var hearth_flame_mat := ShaderMaterial.new()
+	hearth_flame_mat.shader = load("res://shaders/tavern_hearth_fire.gdshader")
+	hearth_flame_mat.set_shader_parameter("speed", 2.6); hearth_flame_mat.set_shader_parameter("intensity", 2.5)
+	for fi in range(6):
+		var f_ang := float(fi) * 30.0
+		var flame_strip := MeshInstance3D.new()
+		var fqm := QuadMesh.new()
+		fqm.size = Vector2(0.32 + float(fi % 3) * 0.07, 0.44 + float(fi % 2) * 0.22)
+		fqm.subdivide_width = 4; fqm.subdivide_depth = 8
+		flame_strip.mesh = fqm
+		flame_strip.position = Vector3(0.32 + sin(deg_to_rad(f_ang)) * 0.05, 0.44, cos(deg_to_rad(f_ang)) * 0.12)
+		flame_strip.rotation_degrees = Vector3(0.0, f_ang, (float(fi % 3) - 1.0) * 6.0)
+		flame_strip.material_override = hearth_flame_mat; flame_strip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		hearth.add_child(flame_strip)
+	var spark_gp := GPUParticles3D.new(); spark_gp.name = "HearthSparks"; spark_gp.amount = 36; spark_gp.lifetime = 2.2
+	spark_gp.position = Vector3(0.32, 0.36, 0.0)
+	var spark_proc := ParticleProcessMaterial.new()
+	spark_proc.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX; spark_proc.emission_box_extents = Vector3(0.16, 0.08, 0.28)
+	spark_proc.direction = Vector3(0.08, 1.0, 0.0); spark_proc.spread = 22.0; spark_proc.gravity = Vector3(0.0, 0.18, 0.0)
+	spark_proc.initial_velocity_min = 0.45; spark_proc.initial_velocity_max = 0.95; spark_proc.scale_min = 0.5; spark_proc.scale_max = 1.2
+	spark_gp.process_material = spark_proc
+	var spark_qm := QuadMesh.new(); spark_qm.size = Vector2(0.032, 0.032)
+	var spark_mat := StandardMaterial3D.new()
+	spark_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; spark_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	spark_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD; spark_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	spark_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED; spark_mat.albedo_texture = Fx.soft_tex(); spark_mat.albedo_color = Color(1.0, 0.58, 0.18, 0.92)
+	spark_qm.material = spark_mat; spark_gp.draw_pass_1 = spark_qm; hearth.add_child(spark_gp)
+	var poker := MeshInstance3D.new(); var pm := CylinderMesh.new(); pm.top_radius = 0.011; pm.bottom_radius = 0.014; pm.height = 0.88
+	poker.mesh = pm; poker.position = Vector3(0.56, 0.44, 0.96); poker.rotation_degrees.x = -10.0; poker.material_override = h_iron; hearth.add_child(poker)
+	for li_log in range(3):
+		var log_m := MeshInstance3D.new(); var lm := CylinderMesh.new(); lm.top_radius = 0.075; lm.bottom_radius = 0.082; lm.height = 0.48
+		log_m.mesh = lm; var row_y := 0.14 if li_log < 2 else 0.26; var row_z := -1.04 + float(li_log % 2) * 0.15 if li_log < 2 else -0.965
+		log_m.position = Vector3(0.44, row_y, row_z); log_m.rotation_degrees.z = 90.0; log_m.material_override = wood_mat; hearth.add_child(log_m)
 	hearth_fire_light = OmniLight3D.new()
 	hearth_fire_light.position = Vector3(0.65, 0.55, 0.0); hearth_fire_light.light_color = Color(1.0, 0.56, 0.18)
-	hearth_fire_light.light_energy = 2.8; hearth_fire_light.omni_range = 6.2; hearth.add_child(hearth_fire_light)
+	hearth_fire_light.light_energy = 2.8; hearth_fire_light.omni_range = 6.2
+	hearth_fire_light.shadow_enabled = true; hearth_fire_light.shadow_bias = 0.05; hearth.add_child(hearth_fire_light)
 
 
 func _spawn_storm_window(parent: Node3D, pos: Vector3, wood_mat: Material, iron_mat: Material) -> void:
 	var root := Node3D.new(); root.position = pos; parent.add_child(root)
 	var glass := MeshInstance3D.new(); var gp := BoxMesh.new(); gp.size = Vector3(1.18, 1.62, 0.03)
 	glass.mesh = gp
-	var gmat := StandardMaterial3D.new(); gmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; gmat.albedo_color = Color(0.32, 0.56, 0.85, 0.14); gmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var gmat := ShaderMaterial.new()
+	gmat.shader = load("res://shaders/tavern_window_glass.gdshader")
+	gmat.set_shader_parameter("glass_tint", Color(0.18, 0.32, 0.54, 0.24))
+	gmat.set_shader_parameter("moon_halo", Color(0.62, 0.82, 1.0, 0.42))
 	glass.material_override = gmat; root.add_child(glass)
 	for bar_x in [-0.60, 0.0, 0.60]:
 		var bar := MeshInstance3D.new(); var bb := BoxMesh.new(); bb.size = Vector3(0.08, 1.72, 0.14)
@@ -1027,8 +1123,24 @@ func _spawn_storm_window(parent: Node3D, pos: Vector3, wood_mat: Material, iron_
 		drop.position = Vector3(bx, -0.4 + fmod(float(ri) * 0.37, 0.9), -0.06); drop.rotation_degrees.z = -16.0
 		drop.set_meta("base_x", bx); drop.set_meta("phase", float(ri) * 0.6)
 		root.add_child(drop); storm_rain_meshes.append(drop)
-	var moon_light := OmniLight3D.new(); moon_light.position = Vector3(0, 0, 0.55); moon_light.light_color = Color(0.42, 0.68, 1.0); moon_light.light_energy = 1.35; moon_light.omni_range = 3.8
+	var moon_light := SpotLight3D.new()
+	moon_light.position = Vector3(0.0, 0.25, -0.35); moon_light.rotation_degrees = Vector3(-28.0, 180.0, 0.0)
+	moon_light.spot_range = 7.5; moon_light.spot_angle = 44.0
+	moon_light.light_color = Color(0.46, 0.72, 1.0); moon_light.light_energy = 2.4
+	moon_light.shadow_enabled = true; moon_light.shadow_bias = 0.04
 	root.add_child(moon_light); storm_window_lights.append(moon_light)
+	var ray_mat := ShaderMaterial.new()
+	ray_mat.shader = load("res://shaders/window_godray.gdshader")
+	ray_mat.set_shader_parameter("ray_color", Color(0.46, 0.70, 0.98, 0.14))
+	for ray_i in range(2):
+		var shaft := MeshInstance3D.new()
+		var smesh := QuadMesh.new(); smesh.size = Vector2(1.22, 3.2)
+		shaft.mesh = smesh
+		shaft.position = Vector3(0.0, -0.68, 1.25 + float(ray_i) * 0.10)
+		shaft.rotation_degrees = Vector3(52.0, -14.0 if ray_i == 0 else 14.0, 0.0)
+		shaft.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		shaft.material_override = ray_mat
+		root.add_child(shaft)
 
 
 func _spawn_wall_lantern(parent: Node3D, pos: Vector3, iron_mat: Material, rot_y: float = 0.0) -> void:
@@ -1041,6 +1153,13 @@ func _spawn_wall_lantern(parent: Node3D, pos: Vector3, iron_mat: Material, rot_y
 		body.mesh = bb; body.material_override = Toon.mat(Color(1.0, 0.72, 0.30), "", 0.01, Vector2.ONE, Color(0.95, 0.55, 0.18)); root.add_child(body)
 		var cap := MeshInstance3D.new(); var cc := CylinderMesh.new(); cc.top_radius = 0.02; cc.bottom_radius = 0.14; cc.height = 0.12
 		cap.mesh = cc; cap.position = Vector3(0, 0.17, 0); cap.material_override = iron_mat; root.add_child(cap)
+	var lan_flame_mat := ShaderMaterial.new()
+	lan_flame_mat.shader = load("res://shaders/tavern_hearth_fire.gdshader")
+	lan_flame_mat.set_shader_parameter("speed", 3.2); lan_flame_mat.set_shader_parameter("intensity", 2.8)
+	for cross_y in [0.0, 90.0]:
+		var l_flame := MeshInstance3D.new(); var lqm := QuadMesh.new(); lqm.size = Vector2(0.045, 0.075); lqm.subdivide_depth = 4
+		l_flame.mesh = lqm; l_flame.position = Vector3(0, -0.01, 0.16); l_flame.rotation_degrees.y = cross_y
+		l_flame.material_override = lan_flame_mat; l_flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; root.add_child(l_flame)
 	var l_light := OmniLight3D.new(); l_light.position = Vector3(0, 0, 0.28); l_light.light_color = Color(1.0, 0.68, 0.30); l_light.light_energy = 1.8; l_light.omni_range = 3.6
 	root.add_child(l_light); lantern_lights.append(l_light)
 
@@ -1050,11 +1169,16 @@ func _spawn_candle(parent: Node3D, pos: Vector3) -> void:
 	var cand_glb := _load_glb_model("res://assets/models/candelabra.glb", true)
 	if cand_glb:
 		cand_glb.name = "CandelabraGLB"; root.add_child(cand_glb)
+	var candle_flame_mat := ShaderMaterial.new()
+	candle_flame_mat.shader = load("res://shaders/tavern_hearth_fire.gdshader")
+	candle_flame_mat.set_shader_parameter("speed", 3.2); candle_flame_mat.set_shader_parameter("intensity", 2.8)
 	for ci in range(2):
 		var cx := -0.074 if ci == 0 else 0.074
 		var top_y := 0.238 if ci == 0 else 0.250
-		var flame := MeshInstance3D.new(); var fs := SphereMesh.new(); fs.radius = 0.012; fs.height = 0.036
-		flame.mesh = fs; flame.position = Vector3(cx, top_y, 0.0); flame.material_override = Toon.mat(Color(1.0, 0.78, 0.30), "", 0.0, Vector2.ONE, Color(1.0, 0.62, 0.18)); root.add_child(flame)
+		for cross_y in [0.0, 90.0]:
+			var flame := MeshInstance3D.new(); var fqm := QuadMesh.new(); fqm.size = Vector2(0.028, 0.052); fqm.subdivide_depth = 4
+			flame.mesh = fqm; flame.position = Vector3(cx, top_y + 0.016, 0.0); flame.rotation_degrees.y = cross_y
+			flame.material_override = candle_flame_mat; flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF; root.add_child(flame)
 	var glow := OmniLight3D.new(); glow.position.y = 0.27; glow.light_color = Color(1.0, 0.68, 0.34); glow.light_energy = 1.15; glow.omni_range = 1.4; root.add_child(glow)
 
 
