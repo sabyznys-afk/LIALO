@@ -6,6 +6,23 @@ Sdílený seznam úkolů a poznámek mezi námi v repozitáři.
 
 ---
 
+## ⚡ Rychlý příkaz `/goal` pro hromadné dokončení všeho najednou
+
+> Zkopíruj a pošli svému agentovi níže uvedený blok — vezme celý tento `TO-DO-LIST.md` od bodu #6 až po finální test & export a udělá ho kompletně v jednom běhu:
+
+```text
+/goal Proveď kompletní implementaci všech otevřených úkolů z TO-DO-LIST.md v tomto pořadí:
+1) Úkol #6 — Přepracuj zbývajících 9 relikvií (TRELIC_*) + sdílené 3D textury/zbraně přesně podle schváleného etalonu TRELIC_WAR_HORN (viz docs/HANDDRAWN_3D_REWORK_PLAN.md, shaders/handdrawn_relic_3d.gdshader, shaders/handdrawn_outline_3d.gdshader, tools/generate_tankard_relic.py, scripts/battle/tankard_bubbles_fx.gd), ke každé relikvii udělej živý 3D efekt a vizuálně ji ověř přes capture screenshot.
+2) Úkol #1 — Sjednoť styl animací karet na hybridní 2.5D woodcut-ink kompromis a omez spouštění meče/štítu u normálních základních karet.
+3) Úkol #2 — Dovol třídu KNIGHT na jakoukoli ze 32 karet, přidej bonusové zlaťáky pro NORMAL karty, implementuj 3dílný KNIGHT štít (1/3 -> 3/3 = +1 celý štít blokující 1 DMG), Grand Seal Shield-Pierce Critical a UI štítu kolem/vedle srdce.
+4) Úkol #3 & #4 — Přidej vlastní animované pozadí MP Lobby a ohnivě-magické animované pozadí Arzenálu/Deck Builderu.
+5) Úkol #5 — Implementuj kampaňový příběh, 5 érových mikro-tutoriálů, 5 vícefázových bossů a krátké animované komiksové cutscény podle docs/CAMPAIGN_STORY_PLAN.md.
+6) Priorita #0 — Dokonči zbývajících 11 animací Power Cards v jednotném hybridním 2.5D stylu.
+Po každém kroku otestuj přes headless Godot (verify_ci_headless.gd, verify_progression_mp.gd, verify_battle_redesign.gd), odstraň hotové položky z TO-DO-LIST.md a na konci vše commitni a pushni na origin/main.
+```
+
+---
+
 ## ★ NOVÉ ÚKOLY — v0.196 (Zadání pro kolegu)
 
 ### 1. Sjednocení stylu animací karet — Hybridní 2.5D kompromis + konec spamu meče/štítu na normálních kartách
@@ -105,9 +122,19 @@ Sdílený seznam úkolů a poznámek mezi námi v repozitáři.
 
 ---
 
-## Kontrola & případné úpravy relikvií (Návrh z v0.195)
-- `RelicMeshFactory` a `Catalog.TABLE_RELICS` byly přepracovány na ručně kreslené woodcut 3D stolní relikvie (`Tavern Ale Tankard`, `Loaded Bone Dice`, `Arcane Slate Rune`, `Crimson Blood Goblet`, `Executioner's Whetstone`, `Fate Hourglass`, `Guild Coin Purse`, `Graveyard Toll Bell`, `Alchemist's Ember Censer`, `Phoenix Ember Reliquary`).
-- Po kontrole ve hře / v `F9` Dev Inspectoru upravit tvary, barvy nebo efekty podle zpětné vazby.
+## ★ PRIORITA #6: Kompletní Hand-Drawn ("Kreslený") 3D Rework všech Relikvií & 3D Textur
+- **Schválený referenční etalon:** **`TRELIC_WAR_HORN` (Tavern Ale Tankard / Krčmový korbel piva)** s bublající pěnou!
+  - Generátor & textura pipeline: [`tools/generate_tankard_relic.py`](tools/generate_tankard_relic.py) -> [`assets/models/relics/TRELIC_WAR_HORN.glb`](assets/models/relics/TRELIC_WAR_HORN.glb) + [`assets/textures/relics/tankard_*.png`](assets/textures/relics/)
+  - Shader & inkoustové obrysy: [`shaders/handdrawn_relic_3d.gdshader`](shaders/handdrawn_relic_3d.gdshader) + [`shaders/handdrawn_outline_3d.gdshader`](shaders/handdrawn_outline_3d.gdshader)
+  - Živý bublací efekt: [`scripts/battle/tankard_bubbles_fx.gd`](scripts/battle/tankard_bubbles_fx.gd) (`TankardBubblesFx`)
+  - Vizuální GPU kontrola: [`tools/capture_relic_screenshot.gd`](tools/capture_relic_screenshot.gd)
+- **Detailní plán pro zbývajících 9 relikvií + 3D meče, stolní rekvizity a textury stolu:** [`docs/HANDDRAWN_3D_REWORK_PLAN.md`](docs/HANDDRAWN_3D_REWORK_PLAN.md)
+- **Norma, kterou musí splnit každá další 3D relikvie a textura:**
+  1. Vysoce detailní model (cca 6 000–12 000 trojúhelníků v `.glb`, zkosené hrany, nýty, rýhy, vyhlazené normály přes UV švy, zapečené vertex AO `COLOR_0` v prohlubních).
+  2. Ručně kreslené 1024×1024 textury v `assets/textures/relics/` s inkoustovými konturami a šrafováním.
+  3. Materiály výhradně přes `handdrawn_relic_3d.gdshader` + `handdrawn_outline_3d.gdshader` + sjednocený podstavec přes `_apply_handdrawn_coaster`.
+  4. Každá relikvie musí mít vlastní živý kreslený 3D FX skript (kostky jiskří, runa točí úlomky, hodiny sypou písek, zvonec se houpe s mlhou, kadidelnice kouří, fénix sype pírka).
+  5. Povinná vizuální kontrola vícepohledového GPU screenshotu před dokončením.
 
 ---
 

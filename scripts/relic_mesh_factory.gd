@@ -6,6 +6,9 @@ extends RefCounted
 const Toon = preload("res://scripts/toon_style.gd")
 const BlenderVfx = preload("res://scripts/blender_vfx_animator.gd")
 const OUTLINE_SHADER := preload("res://shaders/outline.gdshader")
+const HANDDRAWN_RELIC_SHADER := preload("res://shaders/handdrawn_relic_3d.gdshader")
+const HANDDRAWN_OUTLINE_SHADER := preload("res://shaders/handdrawn_outline_3d.gdshader")
+const TankardBubblesFxScript := preload("res://scripts/battle/tankard_bubbles_fx.gd")
 
 
 static func _apply_woodcut_ink_outline(node: Node, thickness: float = 0.005) -> void:
@@ -28,6 +31,121 @@ static func _apply_woodcut_ink_outline(node: Node, thickness: float = 0.005) -> 
 				mat.next_pass = out_mat
 		for ch in cur.get_children():
 			stack.append(ch)
+
+
+static func _make_handdrawn_mat(
+	tex_path: String,
+	tint: Color,
+	shadow_tint: Color,
+	hatch_str: float,
+	hatch_dens: float,
+	spec_str: float,
+	spec_sz: float,
+	rim_str: float,
+	outline_thick: float,
+	uv_sc: Vector2 = Vector2.ONE,
+	ao_str: float = 0.78,
+	emission: Color = Color.BLACK
+) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = HANDDRAWN_RELIC_SHADER
+	mat.set_shader_parameter("albedo_tint", tint)
+	mat.set_shader_parameter("shadow_tint", shadow_tint)
+	mat.set_shader_parameter("highlight_tint", Color(1.0, 0.94, 0.80, 1.0))
+	mat.set_shader_parameter("uv_scale", uv_sc)
+	mat.set_shader_parameter("hatch_strength", hatch_str)
+	mat.set_shader_parameter("hatch_density", hatch_dens)
+	mat.set_shader_parameter("specular_strength", spec_str)
+	mat.set_shader_parameter("specular_size", spec_sz)
+	mat.set_shader_parameter("rim_strength", rim_str)
+	mat.set_shader_parameter("ao_ink_strength", ao_str)
+	mat.set_shader_parameter("emission_color", emission)
+	var tx := Toon.tex(tex_path) if tex_path != "" else null
+	if tx != null:
+		mat.set_shader_parameter("albedo_tex", tx)
+		mat.set_shader_parameter("use_texture", true)
+	else:
+		mat.set_shader_parameter("use_texture", false)
+	if outline_thick > 0.0:
+		var out := ShaderMaterial.new()
+		out.shader = HANDDRAWN_OUTLINE_SHADER
+		out.set_shader_parameter("thickness", outline_thick)
+		out.set_shader_parameter("dist_scale", outline_thick * 1.9)
+		out.set_shader_parameter("outline_color", Color(0.035, 0.022, 0.018, 1.0))
+		mat.next_pass = out
+	return mat
+
+
+static func _apply_handdrawn_tankard_materials(glb_root: Node3D, accent_col: Color) -> void:
+	var oak_mat := _make_handdrawn_mat(
+		"res://assets/textures/relics/tankard_oak_ink.png",
+		Color(1.04, 0.98, 0.92), Color(0.14, 0.08, 0.06),
+		0.90, 44.0, 0.14, 20.0, 0.32, 0.0011, Vector2.ONE, 0.82
+	)
+	var brass_mat := _make_handdrawn_mat(
+		"res://assets/textures/relics/tankard_brass_ink.png",
+		Color(1.06, 0.98, 0.86), Color(0.22, 0.14, 0.08),
+		0.68, 52.0, 0.72, 26.0, 0.56, 0.0009, Vector2.ONE, 0.80
+	)
+	var handle_mat := _make_handdrawn_mat(
+		"res://assets/textures/relics/tankard_oak_ink.png",
+		Color(0.84, 0.74, 0.64), Color(0.12, 0.07, 0.05),
+		0.95, 36.0, 0.18, 22.0, 0.36, 0.0011, Vector2(0.5, 1.2), 0.75
+	)
+	var crest_mat := _make_handdrawn_mat(
+		"res://assets/textures/relics/tankard_crest_ink.png",
+		Color(1.04, 1.0, 0.96), Color(0.18, 0.10, 0.08),
+		0.45, 38.0, 0.42, 28.0, 0.42, 0.0009, Vector2.ONE, 0.72
+	)
+	var foam_mat := _make_handdrawn_mat(
+		"res://assets/textures/relics/tankard_foam_ink.png",
+		Color(1.04, 1.01, 0.96), Color(0.32, 0.24, 0.16),
+		0.42, 34.0, 0.28, 16.0, 0.48, 0.0010, Vector2.ONE, 0.65,
+		Color(accent_col.r * 0.04, accent_col.g * 0.04, accent_col.b * 0.02)
+	)
+	var ale_mat := _make_handdrawn_mat(
+		"", Color(0.84, 0.44, 0.08), Color(0.24, 0.09, 0.02),
+		0.35, 32.0, 0.95, 42.0, 0.50, 0.0005, Vector2.ONE, 0.45,
+		Color(0.18, 0.08, 0.01)
+	)
+
+	var stack: Array[Node] = [glb_root]
+	while not stack.is_empty():
+		var cur: Node = stack.pop_back() as Node
+		if cur is MeshInstance3D:
+			var mi := cur as MeshInstance3D
+			var nm := mi.name
+			if "OakStaves" in nm:
+				mi.material_override = oak_mat
+			elif "BrassHoops" in nm:
+				mi.material_override = brass_mat
+			elif "ScrollHandle" in nm:
+				mi.material_override = handle_mat
+			elif "HeraldicCrest" in nm:
+				mi.material_override = crest_mat
+			elif "AleFoam" in nm:
+				mi.material_override = foam_mat
+			elif "AleLiquid" in nm or "SpilledAle" in nm:
+				mi.material_override = ale_mat
+		for ch in cur.get_children():
+			stack.append(ch)
+
+
+static func _apply_handdrawn_coaster(root: Node3D) -> void:
+	var oak_base := _make_handdrawn_mat(
+		"res://assets/table/wood.png", Color(0.45, 0.30, 0.20), Color(0.10, 0.06, 0.05),
+		0.85, 34.0, 0.12, 18.0, 0.24, 0.0009, Vector2(2.0, 2.0), 0.35
+	)
+	var brass_trim := _make_handdrawn_mat(
+		"res://assets/textures/relics/tankard_brass_ink.png", Color(0.95, 0.85, 0.72), Color(0.20, 0.12, 0.06),
+		0.65, 46.0, 0.68, 26.0, 0.45, 0.0008, Vector2.ONE, 0.35
+	)
+	var children := root.get_children()
+	if children.size() >= 2:
+		if children[0] is MeshInstance3D:
+			(children[0] as MeshInstance3D).material_override = oak_base
+		if children[1] is MeshInstance3D:
+			(children[1] as MeshInstance3D).material_override = brass_trim
 
 static func _add_part(parent: Node3D, mesh: Mesh, pos: Vector3, rot_deg: Vector3, mat: Material, scale_v: Vector3 = Vector3.ONE) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -143,7 +261,21 @@ static func build_relic_3d_mesh(rel_id: String, accent_col: Color) -> Node3D:
 	var handled_hand_drawn := true
 	match rel_id:
 		"TRELIC_WAR_HORN":
-			# Tavern Ale Tankard (oak staves, brass hoops, overflowing sculpted foam + mug handle)
+			var tankard_glb := _load_glb("res://assets/models/relics/TRELIC_WAR_HORN.glb")
+			if tankard_glb != null:
+				tankard_glb.name = "HandDrawnTankardGLB"
+				_apply_handdrawn_tankard_materials(tankard_glb, accent_col)
+				sp.add_child(tankard_glb)
+				var bfx := TankardBubblesFxScript.new()
+				bfx.name = "TankardBubblesFx"
+				bfx.setup_for_tankard(tankard_glb)
+				sp.add_child(bfx)
+				root.set_meta("handdrawn_3d", true)
+				halo_mi.mesh = _tor(0.0435, 0.0462, 32)
+				halo_mat.emission_energy_multiplier = 0.52
+				_apply_handdrawn_coaster(root)
+				return root
+			# Fallback oak staves prototype
 			_add_part(sp, _cyl(0.026, 0.031, 0.078, 16), Vector3(-0.004, 0.039, 0.0), Vector3.ZERO, wood)
 			for hy in [0.016, 0.062]:
 				_add_part(sp, _cyl(0.0315, 0.0315, 0.009, 16), Vector3(-0.004, hy, 0.0), Vector3.ZERO, brass)
