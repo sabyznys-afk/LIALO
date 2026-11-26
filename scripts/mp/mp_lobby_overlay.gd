@@ -84,6 +84,16 @@ var _leaderboard_tab_btn: Button
 
 var _mode_cards: Dictionary = {}
 var _selected_match_mode: String = Config.MODE_UNRANKED
+var _in_match_room: bool = false
+var _mode_tabs_hb: HBoxContainer
+var _room_banner_pan: PanelContainer
+var _room_banner_lbl: Label
+var _room_back_btn: Button
+var _tab_bar_hb: HBoxContainer
+var _left_col_vb: VBoxContainer
+var _right_col_vb: VBoxContainer
+var _duelist_section_hdr: Control
+var _duelist_section_row: Control
 
 var char_buttons: Dictionary = {}
 var _char_portrait_pivots: Array[Dictionary] = []
@@ -505,6 +515,36 @@ func _build_ui() -> void:
 	var mode_tabs_hb := HBoxContainer.new()
 	mode_tabs_hb.add_theme_constant_override("separation", 8)
 	root_vb.add_child(mode_tabs_hb)
+	_mode_tabs_hb = mode_tabs_hb
+
+	# Match Room Banner (shown when user enters Private/Public/Ranked/Unranked Match Room)
+	_room_banner_pan = PanelContainer.new()
+	_room_banner_pan.visible = false
+	_room_banner_pan.add_theme_stylebox_override("panel", _make_tavern_panel_sb(Color(0.11, 0.08, 0.055, 0.96), Color(0.95, 0.74, 0.28, 0.90), 2, 10, 8))
+	root_vb.add_child(_room_banner_pan)
+	var rb_hb := HBoxContainer.new()
+	rb_hb.add_theme_constant_override("separation", 10)
+	_room_banner_pan.add_child(rb_hb)
+	rb_hb.add_child(Icons.make_icon_rect("lock", 18, Color(0.98, 0.78, 0.30)))
+	_room_banner_lbl = Label.new()
+	_room_banner_lbl.text = "MATCH ROOM"
+	_room_banner_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_apply_font(_room_banner_lbl, true)
+	_room_banner_lbl.add_theme_font_size_override("font_size", 16)
+	_room_banner_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.46))
+	rb_hb.add_child(_room_banner_lbl)
+	_room_back_btn = Button.new()
+	_room_back_btn.text = "← Change Mode"
+	_room_back_btn.custom_minimum_size = Vector2(142, 30)
+	_style_tavern_btn(_room_back_btn, Color(0.18, 0.13, 0.09, 0.94), Color(0.76, 0.60, 0.30, 0.85), false, 7, false)
+	_room_back_btn.pressed.connect(func():
+		play_click_sfx.emit()
+		_in_match_room = false
+		if mp_net != null and bool(mp_net.get("in_session")):
+			mp_net.leave_room(true)
+		_refresh_controls()
+	)
+	rb_hb.add_child(_room_back_btn)
 
 	var mode_defs := [
 		{
@@ -820,10 +860,12 @@ func _build_ui() -> void:
 	left_col.size_flags_stretch_ratio = 1.22
 	left_col.add_theme_constant_override("separation", 8)
 	body_hb.add_child(left_col)
+	_left_col_vb = left_col
 
 	var tab_bar := HBoxContainer.new()
 	tab_bar.add_theme_constant_override("separation", 8)
 	left_col.add_child(tab_bar)
+	_tab_bar_hb = tab_bar
 
 	var tab_defs := [
 		{"label": "Play & Loadout", "icon": "sword"},
@@ -883,6 +925,7 @@ func _build_ui() -> void:
 	right_vb.size_flags_stretch_ratio = 0.90
 	right_vb.add_theme_constant_override("separation", 8)
 	body_hb.add_child(right_vb)
+	_right_col_vb = right_vb
 
 	var settings_hb := HBoxContainer.new()
 	settings_hb.add_theme_constant_override("separation", 8)
@@ -1058,6 +1101,7 @@ func _build_play_loadout_tab(parent_vb: VBoxContainer) -> void:
 		if child is Label:
 			_apply_font(child, true)
 	parent_vb.add_child(c_title)
+	_duelist_section_hdr = c_title
 
 	var char_back_map := {
 		"CHAR_GUILLOTINE": "res://assets/table/deck_back_obsidian.png",
@@ -1069,6 +1113,7 @@ func _build_play_loadout_tab(parent_vb: VBoxContainer) -> void:
 	var char_hb := HBoxContainer.new()
 	char_hb.add_theme_constant_override("separation", 8)
 	parent_vb.add_child(char_hb)
+	_duelist_section_row = char_hb
 	_char_portrait_pivots.clear()
 	for ch_idx in range(Config.CHARACTERS.size()):
 		var ch: Dictionary = Config.CHARACTERS[ch_idx]
@@ -1201,6 +1246,9 @@ func _attach_mode_card_anim(btn: Button, mode_id: String, accent: Color) -> void
 
 func _select_match_mode(mode_id: String) -> void:
 	_selected_match_mode = mode_id
+	_in_match_room = true
+	if _active_tab != 0:
+		_switch_tab(0)
 	var mode_colors := {
 		Config.MODE_PUBLIC: Color(0.36, 0.86, 0.98),
 		Config.MODE_PRIVATE: Color(0.98, 0.76, 0.28),
@@ -1219,6 +1267,10 @@ func _select_match_mode(mode_id: String) -> void:
 		mp_net.set_match_mode(mode_id)
 	_persist_ui_prefs()
 	_refresh_controls()
+	if is_inside_tree() and is_instance_valid(_main_panel):
+		_main_panel.modulate.a = 0.82
+		var rtw := _main_panel.create_tween()
+		rtw.tween_property(_main_panel, "modulate:a", 1.0, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 
 func _rebuild_saved_deck_selector() -> void:
@@ -2210,6 +2262,30 @@ func _update_share_bar(info: Dictionary) -> void:
 func _refresh_controls() -> void:
 	var in_s: bool = (mp_net != null and bool(mp_net.get("in_session")))
 	var is_h: bool = (mp_net != null and bool(mp_net.get("is_host")))
+	var show_room: bool = _in_match_room or in_s
+	if is_instance_valid(_mode_tabs_hb):
+		_mode_tabs_hb.visible = not show_room
+	if is_instance_valid(_room_banner_pan):
+		_room_banner_pan.visible = show_room
+		if show_room and is_instance_valid(_room_banner_lbl):
+			var mode_titles := {
+				Config.MODE_PUBLIC: "PUBLIC MATCH ROOM  •  Your Deck & Live Table",
+				Config.MODE_PRIVATE: "PRIVATE MATCH ROOM  •  Invite Friends via Room Code",
+				Config.MODE_RANKED: "RANKED ARENA ROOM  •  ELO Balanced Matchmaking",
+				Config.MODE_UNRANKED: "UNRANKED MATCH ROOM  •  Casual Tavern Table",
+			}
+			_room_banner_lbl.text = str(mode_titles.get(_selected_match_mode, "MATCH ROOM"))
+	if is_instance_valid(_tab_bar_hb):
+		_tab_bar_hb.visible = not show_room
+	if show_room and _active_tab != 0:
+		_switch_tab(0)
+	if is_instance_valid(_duelist_section_hdr):
+		_duelist_section_hdr.visible = not show_room
+	if is_instance_valid(_duelist_section_row):
+		_duelist_section_row.visible = not show_room
+	if is_instance_valid(_left_col_vb) and is_instance_valid(_right_col_vb):
+		_left_col_vb.size_flags_stretch_ratio = 0.72 if show_room else 1.22
+		_right_col_vb.size_flags_stretch_ratio = 1.28 if show_room else 0.90
 	if is_instance_valid(_conn_dot_lbl):
 		if not in_s:
 			_conn_dot_lbl.text = "Offline"

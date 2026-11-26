@@ -15,6 +15,7 @@ const CinematicProfiles = preload("res://scripts/cinematic_profiles.gd")
 const BankaiFxScript = preload("res://scripts/battle/bankai_fx.gd")
 const SnakeLoadingScript = preload("res://scripts/ui/snake_loading_screen.gd")
 const PowerCardShowcaseScript = preload("res://scripts/battle/power_card_vfx_showcase.gd")
+const FujiraIntroScript = preload("res://scripts/ui/fujira_studio_intro.gd")
 
 const RELIC_MESH_FACTORY_PATH := "res://scripts/relic_mesh_factory.gd"
 const BLENDER_VFX_PATHS := [
@@ -91,6 +92,7 @@ var _auto_spin_3d := true
 var _stage_2d_wrap: ScrollContainer
 var _stage_2d_center: CenterContainer
 var _tex_rect_2d: TextureRect
+var _fujira_intro_node: Control
 
 var _stage_anim_2d: Control
 var _anim_2d_t := 0.0
@@ -845,8 +847,11 @@ func _scan_dir_items(cat: String, dir_path: String, exts: PackedStringArray, kin
 func _catalog_all_items() -> void:
 	_all_items.clear()
 
-	# 1. Animations & VFX (Pinned 1st-Person Power Card Showcase at #0)
-	_add_item(CAT_ANIM, "PINNED [1ST-PERSON] Power Card: SPEC_STORM (Thunder Strike)", "power_card_fpv", "res://scripts/battle/power_card_vfx_showcase.gd", {"card_id": "SPEC_STORM", "pinned": true})
+	# 1. Animations & VFX (Pinned 1st-Person Hand-Drawn 4.2s Power Card Showcases #0..#3)
+	_add_item(CAT_ANIM, "PINNED [1ST-PERSON] Power Card: SPEC_STORM (Thunder Strike • 4.2s)", "power_card_fpv", "res://scripts/battle/power_card_vfx_showcase.gd", {"card_id": "SPEC_STORM", "pinned": true})
+	_add_item(CAT_ANIM, "PINNED [1ST-PERSON] Power Card: SPEC_VAMPIRE (Crimson Pact • 4.2s)", "power_card_fpv", "res://scripts/battle/power_card_vfx_showcase.gd", {"card_id": "SPEC_VAMPIRE", "pinned": true})
+	_add_item(CAT_ANIM, "PINNED [1ST-PERSON] Power Card: SPEC_PHOENIX (Rebirth Blaze • 4.2s)", "power_card_fpv", "res://scripts/battle/power_card_vfx_showcase.gd", {"card_id": "SPEC_PHOENIX", "pinned": true})
+	_add_item(CAT_ANIM, "PINNED [1ST-PERSON] Power Card: SPEC_CHRONOS (Sandglass Warp • 4.2s)", "power_card_fpv", "res://scripts/battle/power_card_vfx_showcase.gd", {"card_id": "SPEC_CHRONOS", "pinned": true})
 	for bid in ["GUILLOTINE_ACES", "MIRROR_MONARCH", "CHAOS_JESTER", "MISTBLADE_DUELIST"]:
 		_add_item(CAT_ANIM, "Grand Seal: " + bid, "bankai", "res://scripts/battle/bankai_fx.gd", {"build_id": bid})
 	_add_item(CAT_ANIM, "SwordCardAnimator (3D Slash & Blade)", "sword_anim", SWORD_ANIM_PATH)
@@ -953,6 +958,9 @@ func _stop_all_previews() -> void:
 	if is_instance_valid(_snake_screen):
 		_snake_screen.queue_free()
 		_snake_screen = null
+	if is_instance_valid(_fujira_intro_node):
+		_fujira_intro_node.queue_free()
+		_fujira_intro_node = null
 	if is_instance_valid(_pivot_3d):
 		for c in _pivot_3d.get_children():
 			c.queue_free()
@@ -974,6 +982,17 @@ func _trigger_selected_preview() -> void:
 	_loop_timer = 0.0
 	var it := _filtered_items[_selected_idx]
 	var kind := str(it["kind"])
+	# First-person tabletop POV default for animations & VFX; turntable spin only for static props
+	if kind in ["table_relic", "sword_3d"]:
+		_rot_yaw = 0.45
+		_rot_pitch = -0.24
+		_zoom_dist = 1.75
+		_auto_spin_3d = true
+	else:
+		_rot_yaw = 0.06
+		_rot_pitch = -0.30
+		_zoom_dist = 1.62
+		_auto_spin_3d = false
 	var path := str(it.get("path", ""))
 	var ok := bool(it["exists"])
 
@@ -999,7 +1018,7 @@ func _trigger_selected_preview() -> void:
 					_audio_player.pitch_scale = pitch_val
 					_audio_player.play()
 			)
-			_fpv_showcase.setup_fpv_preview(_fpv_cam, _fpv_overlay, _loop_enabled)
+			_fpv_showcase.setup_fpv_preview(_fpv_cam, _fpv_overlay, _loop_enabled, str(it.get("card_id", "SPEC_STORM")))
 			_fpv_showcase.set_speed(_speed_scale)
 			_fpv_showcase.set_playing(_is_playing)
 		"bankai":
@@ -1017,9 +1036,16 @@ func _trigger_selected_preview() -> void:
 				_snake_screen.configure_transition("DEV PREVIEW: OUROBOROS", Callable(), 4.5, -14.0)
 				add_child(_snake_screen)
 		"fujira_intro":
-			_stage_anim_2d.visible = true
-			_anim_2d_kind = "fujira_intro"
-			_anim_2d_t = 0.0
+			if not _is_headless:
+				_fujira_intro_node = FujiraIntroScript.new()
+				_fujira_intro_node.set("skippable", false)
+				_fujira_intro_node.set("play_internal_audio", false)
+				_stage_stack.add_child(_fujira_intro_node)
+				_fujira_intro_node.call("start_intro", false, _loop_enabled)
+			else:
+				_stage_anim_2d.visible = true
+				_anim_2d_kind = "fujira_intro"
+				_anim_2d_t = 0.0
 		"combo_banner":
 			_stage_anim_2d.visible = true
 			_anim_2d_kind = "combo_banner"
@@ -1028,10 +1054,31 @@ func _trigger_selected_preview() -> void:
 			_anim_2d_t = 0.0
 		"sword_anim":
 			_stage_3d_wrap.visible = true
-			if not _is_headless and ResourceLoader.exists(SWORD_ANIM_PATH):
-				var sa_res := load(SWORD_ANIM_PATH)
-				if sa_res != null:
-					FxLib.tybw_slash_arc(_fx_root_3d, Vector3(-0.6, 0.0, 0.4), Vector3(0.6, 0.2, -0.4), Color(0.32, 0.88, 1.0), 1.2)
+			if not _is_headless:
+				# Mount 1st-person tabletop coaster & sculpted Oath Blade so the slash has full 3D context
+				var coaster := MeshInstance3D.new()
+				var cm := CylinderMesh.new()
+				cm.top_radius = 0.55; cm.bottom_radius = 0.58; cm.height = 0.04; cm.radial_segments = 18
+				coaster.mesh = cm
+				coaster.position = Vector3(0.0, -0.32, 0.0)
+				var cmat := StandardMaterial3D.new()
+				cmat.albedo_color = Color(0.14, 0.10, 0.07)
+				cmat.roughness = 0.85
+				coaster.material_override = cmat
+				_pivot_3d.add_child(coaster)
+				if ResourceLoader.exists(RELIC_MESH_FACTORY_PATH):
+					var rmf_s := load(RELIC_MESH_FACTORY_PATH) as GDScript
+					if rmf_s != null and rmf_s.has_method("build_sword_3d_mesh"):
+						var sw_n := rmf_s.call("build_sword_3d_mesh", "SWORD_IRON", {}) as Node3D
+						if sw_n != null:
+							sw_n.position = Vector3(0.0, 0.05, 0.0)
+							sw_n.rotation_degrees = Vector3(12.0, 28.0, -24.0)
+							_pivot_3d.add_child(sw_n)
+							var sw_tw := sw_n.create_tween().set_loops()
+							sw_tw.tween_property(sw_n, "rotation_degrees:z", 34.0, 0.42).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+							sw_tw.tween_property(sw_n, "rotation_degrees:z", -24.0, 0.65).set_trans(Tween.TRANS_SINE)
+				FxLib.tybw_slash_arc(_fx_root_3d, Vector3(-0.65, -0.05, 0.35), Vector3(0.65, 0.25, -0.35), Color(0.32, 0.88, 1.0), 1.3)
+				FxLib.ring(_fx_root_3d, Vector3(0.0, -0.25, 0.0), Color(0.32, 0.88, 1.0), 0.75, 1.0)
 		"fx_lib":
 			_stage_3d_wrap.visible = true
 			if not _is_headless:
@@ -1132,16 +1179,28 @@ func _load_glb_into_pivot(path: String) -> void:
 		return
 	var inst := ps.instantiate()
 	if inst is Node3D:
-		_normalize_3d_node(inst as Node3D)
-		var ap := _find_anim_player(inst)
+		var n3d := inst as Node3D
+		_normalize_3d_node(n3d)
+		# First-person tabletop tilt so player sees front face & silhouette cleanly
+		n3d.rotation_degrees.x = -10.0
+		var ap := _find_anim_player(n3d)
 		if ap != null:
 			_active_anim_player = ap
 			ap.speed_scale = _speed_scale
 			var anims := ap.get_animation_list()
+			var played := false
 			for an in anims:
 				if String(an) != "RESET":
 					ap.play(an)
+					played = true
 					break
+			if not played and anims.size() > 0:
+				ap.play(anims[0])
+		else:
+			# Fallback procedural motion for static GLBs so nothing looks frozen
+			var glb_tw := n3d.create_tween().set_loops()
+			glb_tw.tween_property(n3d, "position:y", n3d.position.y + 0.08, 0.9).set_trans(Tween.TRANS_SINE)
+			glb_tw.tween_property(n3d, "position:y", n3d.position.y - 0.03, 0.9).set_trans(Tween.TRANS_SINE)
 	elif inst != null:
 		inst.queue_free()
 

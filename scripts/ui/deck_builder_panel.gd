@@ -9,6 +9,7 @@ extends Control
 
 signal deck_changed(profile: Dictionary)
 signal sfx_requested(sfx_name: String)
+signal explain_card_requested(card_key: String, is_power: bool)
 
 const Catalog := preload("res://scripts/lialo_catalog.gd")
 const Toon := preload("res://scripts/toon_style.gd")
@@ -23,6 +24,7 @@ const SUITS := [
 	{"id": "GULA",   "icon": "bell",   "en": "Bells",  "cs": "Kule",    "col": Color(0.98, 0.64, 0.24)},
 ]
 const RANKS := ["7", "8", "9", "10", "D", "H", "K", "E"]
+const CLASS_CYCLE_RANKS := ["D", "H", "K", "E"]
 const CLASS_CYCLE := ["NORMAL", "KNIGHT", "MAGE", "THIEF", "MERCHANT"]
 
 const CARD_BACKS := [
@@ -31,9 +33,6 @@ const CARD_BACKS := [
 	{"id": "rim",        "en": "Legion's Aegis",  "cs": "Štít legie",        "tex": "res://assets/table/deck_back_rim.png",        "col": Color(0.91, 0.44, 0.32)},
 	{"id": "stredovek",  "en": "Iron Crown",      "cs": "Železná koruna",    "tex": "res://assets/table/deck_back_stredovek.png",  "col": Color(0.58, 0.83, 0.69)},
 	{"id": "objavy",     "en": "Corsair's Grip",  "cs": "Korzárův stisk",    "tex": "res://assets/table/deck_back_objavy.png",     "col": Color(0.30, 0.78, 0.94)},
-	{"id": "prohibicia", "en": "Syndicate Noir",  "cs": "Syndikát prohibice","tex": "res://assets/table/deck_back_prohibicia.png", "col": Color(0.96, 0.76, 0.26)},
-	{"id": "obsidian",   "en": "Obsidian Seal",   "cs": "Obsidiánová pečeť", "tex": "res://assets/table/deck_back_obsidian.png",   "col": Color(0.96, 0.18, 0.26)},
-	{"id": "astral",     "en": "Astral Compass",  "cs": "Astrální kompas",   "tex": "res://assets/table/deck_back_astral.png",     "col": Color(0.24, 0.90, 1.0)},
 ]
 
 const BUILD_ICONS := {
@@ -60,7 +59,7 @@ var _table_cache: Dictionary = {}
 
 var _current_step: int = 0
 var _step_dir: int = 1
-var _guide_open: bool = false
+var _guide_open: bool = true
 var _bg_fx: Control
 var _content_vb: VBoxContainer
 var _step_body_wrap: Control
@@ -78,6 +77,10 @@ var _status_toast: Label
 
 var _fx_time: float = 0.0
 var _fx_col: Color = Color(0.88, 0.68, 0.28)
+var _tut_step: int = 0
+var _tut_done_flags: Array[bool] = [false, false, false, false, false]
+var _spirko_celebrate_t: float = 0.0
+var _spirko_avatar: Control
 var _fx_target_col: Color = Color(0.88, 0.68, 0.28)
 var _motes: Array[Dictionary] = []
 var _relic_pivots: Array[Node3D] = []
@@ -135,11 +138,113 @@ func _tr(en: String, cs: String) -> String:
 	return cs if _lang == "cs" else en
 
 
+func _count_tut_done() -> int:
+	var c := 0
+	for f in _tut_done_flags:
+		if f:
+			c += 1
+	return c
+
+
+func _mark_tut_action(step_idx: int) -> void:
+	if step_idx >= 0 and step_idx < _tut_done_flags.size():
+		if not _tut_done_flags[step_idx]:
+			_tut_done_flags[step_idx] = true
+			_spirko_celebrate_t = 1.2
+		_tut_step = clampi(step_idx + 1, 0, 4)
+
+
+func _get_spirko_dialogue() -> String:
+	var done_cnt := _count_tut_done()
+	if done_cnt >= 5:
+		return _tr("Spirko: Magnificent! All 5 forging rites are complete — your deck is battle-ready!", "Spirko: Skvělé! Všech 5 kroků kovárny je hotovo — balíček je připraven do boje!")
+	match _tut_step:
+		0:
+			return _tr("Spirko: Step 1 — 7–10 stay pure classics. Click any D, H, K or E card above 10 to infuse Mage, Thief or Knight, or tap ? to learn!", "Spirko: Krok 1 — 7–10 jsou čisté základy. Klikni na D, H, K nebo E nad 10 pro výběr třídy, nebo na ? pro vysvětlení!")
+		1:
+			return _tr("Spirko: Step 2 — Equip up to 3 Power Cards (max 1 Mythic). Tap ? on any card to inspect its Arsenal lore!", "Spirko: Krok 2 — Vybav až 3 Mocné karty (max 1 Mýtickou). Klikni na ? pro detail v Arzenálu!")
+		2:
+			return _tr("Spirko: Step 3 — Forge your 4-card Grand Seal combination and hit Preview to see the ink finisher!", "Spirko: Krok 3 — Sestav 4 karty Velké Pečeti a vyzkoušej Ukázku animace!")
+		3:
+			return _tr("Spirko: Step 4 — Equip 2 physical 3D Tabletop Relics, inspect them in 3D, and pick your Card Back & Blade!", "Spirko: Krok 4 — Vybav 2 stolní 3D Relikvie, prohlédni si je ve 3D a vyber rub karet i čepel!")
+		_:
+			return _tr("Spirko: Final Step — Name your deck and hit Save & Play so Campaign and Multiplayer both use your forge build!", "Spirko: Poslední krok — Pojmenuj balíček a klikni na Uložit a hrát pro Kampaň i Multiplayer!")
+
+
+func _make_explain_mini_btn(card_key: String, is_power: bool) -> Button:
+	var eb := Button.new()
+	eb.text = "?"
+	eb.custom_minimum_size = Vector2(20, 20)
+	eb.tooltip_text = _tr("Explain card in Arsenal", "Vysvětlit kartu v Arzenálu")
+	eb.z_index = 2
+	eb.add_theme_font_override("font", _font_disp)
+	eb.add_theme_font_size_override("font_size", 11)
+	eb.add_theme_color_override("font_color", Color(0.08, 0.05, 0.03))
+	var sb_n := StyleBoxFlat.new()
+	sb_n.bg_color = Color(0.94, 0.78, 0.34, 0.94)
+	sb_n.border_color = Color(0.14, 0.09, 0.04)
+	sb_n.set_border_width_all(1)
+	sb_n.set_corner_radius_all(10)
+	var sb_h := sb_n.duplicate() as StyleBoxFlat
+	sb_h.bg_color = Color(0.42, 0.92, 1.0, 1.0)
+	eb.add_theme_stylebox_override("normal", sb_n)
+	eb.add_theme_stylebox_override("hover", sb_h)
+	eb.pressed.connect(func():
+		sfx_requested.emit("ui_click")
+		explain_card_requested.emit(card_key, is_power)
+	)
+	return eb
+
+
+func _draw_spirko_2d(cv: Control) -> void:
+	var s := cv.size
+	if s.x < 24.0 or s.y < 24.0:
+		return
+	var cx := s.x * 0.5
+	var cy := s.y * 0.56
+	var bob := sin(_fx_time * 3.4) * 2.5 - absf(sin(_spirko_celebrate_t * 8.0)) * (6.0 if _spirko_celebrate_t > 0.0 else 0.0)
+	# Parchment halo & ink ring
+	cv.draw_circle(Vector2(cx, cy - 4.0), 40.0, Color(0.12, 0.10, 0.08, 0.95))
+	var ring_c := Color(0.46, 0.98, 0.62, 0.9) if _spirko_celebrate_t > 0.0 else Color(0.34, 0.88, 1.0, 0.78)
+	cv.draw_arc(Vector2(cx, cy - 4.0), 40.0, 0.0, TAU, 40, ring_c, 2.4, true)
+	# Crosshatched cloak shoulders
+	var cloak := PackedVector2Array([
+		Vector2(cx - 26, cy + 32), Vector2(cx - 18, cy + 4 + bob), Vector2(cx + 18, cy + 4 + bob), Vector2(cx + 26, cy + 32)
+	])
+	cv.draw_colored_polygon(cloak, Color(0.18, 0.22, 0.28))
+	cv.draw_polyline(PackedVector2Array([cloak[0], cloak[1], cloak[2], cloak[3], cloak[0]]), Color(0.04, 0.03, 0.03), 2.2, true)
+	# Quill staff beside Spirko
+	var arm_wave := sin(_fx_time * 5.0) * 3.0 + (sin(_spirko_celebrate_t * 14.0) * 6.0 if _spirko_celebrate_t > 0.0 else 0.0)
+	cv.draw_line(Vector2(cx + 22, cy + 28), Vector2(cx + 28, cy - 22 + bob + arm_wave), Color(0.84, 0.64, 0.28), 2.5, true)
+	cv.draw_circle(Vector2(cx + 28, cy - 24 + bob + arm_wave), 5.0, Color(0.42, 0.94, 1.0, 0.92))
+	# Head + tavern wide-brim mage hat + hand-drawn woodcut hatching
+	cv.draw_circle(Vector2(cx, cy - 6.0 + bob), 14.0, Color(0.88, 0.76, 0.62))
+	cv.draw_arc(Vector2(cx, cy - 6.0 + bob), 14.0, 0.0, TAU, 24, Color(0.06, 0.04, 0.04), 2.2, true)
+	# Wide hat brim & pointy crown
+	var brim := PackedVector2Array([
+		Vector2(cx - 24, cy - 13 + bob), Vector2(cx, cy - 19 + bob), Vector2(cx + 24, cy - 13 + bob), Vector2(cx, cy - 10 + bob)
+	])
+	cv.draw_colored_polygon(brim, Color(0.10, 0.09, 0.12))
+	var crown := PackedVector2Array([
+		Vector2(cx - 13, cy - 14 + bob), Vector2(cx - 3, cy - 39 + bob), Vector2(cx + 12, cy - 14 + bob)
+	])
+	cv.draw_colored_polygon(crown, Color(0.14, 0.12, 0.18))
+	cv.draw_line(Vector2(cx - 12, cy - 14 + bob), Vector2(cx + 11, cy - 14 + bob), Color(0.95, 0.76, 0.28), 2.5, true)
+	# Glowing spectacles (blinks briefly every ~3s)
+	var blink: bool = fmod(_fx_time, 3.2) > 3.06
+	var eye_h: float = 0.8 if blink else 3.4
+	for ex in [-5.5, 5.5]:
+		cv.draw_circle(Vector2(cx + ex, cy - 5.0 + bob), 4.2, Color(0.08, 0.06, 0.04))
+		cv.draw_rect(Rect2(cx + ex - 2.4, cy - 5.0 + bob - eye_h * 0.5, 4.8, eye_h), Color(0.45, 0.96, 1.0))
+
+
 func _process(delta: float) -> void:
 	if not visible:
 		return
 	var dt := minf(delta, 0.05)
 	_fx_time += dt
+	if _spirko_celebrate_t > 0.0:
+		_spirko_celebrate_t = maxf(0.0, _spirko_celebrate_t - dt)
 	_fx_col = _fx_col.lerp(_fx_target_col, 1.0 - exp(-5.0 * dt))
 	for m in _motes:
 		m["y"] = float(m["y"]) - float(m["spd"]) * dt
@@ -151,6 +256,8 @@ func _process(delta: float) -> void:
 			piv.rotation.y += dt * 0.75
 	if is_instance_valid(_bg_fx):
 		_bg_fx.queue_redraw()
+	if is_instance_valid(_spirko_avatar):
+		_spirko_avatar.queue_redraw()
 
 
 func _draw_animated_bg() -> void:
@@ -464,8 +571,8 @@ func _rebuild_ui(animate_step: bool = false, animate_guide: bool = false) -> voi
 	hdr_vb.add_child(sub_lbl)
 
 	var guide_btn := Button.new()
-	guide_btn.custom_minimum_size = Vector2(158, 36)
-	guide_btn.text = _tr("How to Build", "Jak postavit build")
+	guide_btn.custom_minimum_size = Vector2(168, 36)
+	guide_btn.text = _tr("Spirko Tutor (%d/5)" % _count_tut_done(), "Spirko Průvodce (%d/5)" % _count_tut_done())
 	LialoIcons.apply_button_icon(guide_btn, "help", 16)
 	guide_btn.add_theme_font_override("font", _font_disp)
 	guide_btn.add_theme_font_size_override("font_size", 13)
@@ -484,30 +591,70 @@ func _rebuild_ui(animate_step: bool = false, animate_guide: bool = false) -> voi
 
 	hdr_hb.add_child(LialoIcons.make_icon_label_row("check", _tr("SYNCED", "SYNC"), 16, 13, Color(0.46, 0.96, 0.62)))
 
-	# === COLLAPSIBLE VISUAL "HOW TO BUILD" STEP GUIDE ===
+	# === INTERACTIVE HAND-DRAWN 2D SPIRKO TUTOR DOCK ===
 	if _guide_open:
 		var guide_pan := PanelContainer.new()
-		guide_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_DEEP, COL_GOLD_BORDER, 10, 8))
+		guide_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_DEEP, Color(0.32, 0.86, 0.98, 0.85), 10, 10))
 		_content_vb.add_child(guide_pan)
 
+		var g_outer := HBoxContainer.new()
+		g_outer.add_theme_constant_override("separation", 12)
+		guide_pan.add_child(g_outer)
+
+		_spirko_avatar = Control.new()
+		_spirko_avatar.custom_minimum_size = Vector2(92, 92)
+		_spirko_avatar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_spirko_avatar.draw.connect(_draw_spirko_2d.bind(_spirko_avatar))
+		g_outer.add_child(_spirko_avatar)
+
+		var g_right := VBoxContainer.new()
+		g_right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		g_right.add_theme_constant_override("separation", 6)
+		g_outer.add_child(g_right)
+
+		var sp_speech := Label.new()
+		sp_speech.text = _get_spirko_dialogue()
+		sp_speech.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		sp_speech.add_theme_font_override("font", _font_body)
+		sp_speech.add_theme_font_size_override("font_size", 13)
+		sp_speech.add_theme_color_override("font_color", Color(0.98, 0.93, 0.78))
+		g_right.add_child(sp_speech)
+
 		var g_hb := HBoxContainer.new()
-		g_hb.add_theme_constant_override("separation", 8)
-		guide_pan.add_child(g_hb)
+		g_hb.add_theme_constant_override("separation", 6)
+		g_right.add_child(g_hb)
 
 		var tips := [
-			{"ic": "crown", "en": "1. Pick Build & tap cards for Class", "cs": "1. Vyber build a třídu karet"},
-			{"ic": "bolt",  "en": "2. Equip up to 3 Power Cards", "cs": "2. Vybav až 3 Mocné karty"},
-			{"ic": "seal",  "en": "3. Set 4 Grand Seal cards", "cs": "3. Nastav 4 karty Pečeti"},
-			{"ic": "trophy","en": "4. Equip 2 Relics, Back & Sword", "cs": "4. Vyber 2 Relikvie, rub a meč"},
-			{"ic": "scroll","en": "5. Name & Save your Deck", "cs": "5. Pojmenuj a ulož balíček"},
+			{"ic": "crown", "en": "1. Infuse D–E Card", "cs": "1. Třída D–E karty"},
+			{"ic": "bolt",  "en": "2. Equip Power Card", "cs": "2. Mocná karta"},
+			{"ic": "seal",  "en": "3. Customize Seal", "cs": "3. Velká Pečeť"},
+			{"ic": "trophy","en": "4. Relic / Card Back", "cs": "4. Relikvie / Rub"},
+			{"ic": "scroll","en": "5. Save Deck", "cs": "5. Ulož balíček"},
 		]
-		for tp in tips:
-			var tp_pan := PanelContainer.new()
-			tp_pan.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			tp_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_CARD, Color(0.55, 0.42, 0.24, 0.70), 8, 6))
-			var tp_row := LialoIcons.make_icon_label_row(str(tp["ic"]), _tr(str(tp["en"]), str(tp["cs"])), 16, 12, COL_PARCHMENT)
-			tp_pan.add_child(tp_row)
-			g_hb.add_child(tp_pan)
+		for ti in range(tips.size()):
+			var tp: Dictionary = tips[ti]
+			var is_done: bool = _tut_done_flags[ti]
+			var is_cur: bool = (ti == _tut_step) and not is_done
+			var tp_btn := Button.new()
+			tp_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			tp_btn.custom_minimum_size = Vector2(0, 32)
+			tp_btn.text = _tr(str(tp["en"]), str(tp["cs"]))
+			LialoIcons.apply_button_icon(tp_btn, "check" if is_done else str(tp["ic"]), 14)
+			tp_btn.add_theme_font_override("font", _font_body)
+			tp_btn.add_theme_font_size_override("font_size", 11)
+			tp_btn.add_theme_color_override("font_color", Color(0.46, 0.98, 0.62) if is_done else (COL_GOLD_TEXT if is_cur else COL_PARCHMENT_DIM))
+			tp_btn.add_theme_stylebox_override("normal", _make_box_style(
+				Color(0.10, 0.24, 0.14, 0.94) if is_done else (Color(0.22, 0.16, 0.08, 0.96) if is_cur else COL_WALNUT_CARD),
+				Color(0.46, 0.96, 0.58) if is_done else (Color(0.32, 0.88, 1.0) if is_cur else Color(0.45, 0.36, 0.22, 0.55)), 7, 4
+			))
+			var target_step := ti
+			tp_btn.pressed.connect(func():
+				sfx_requested.emit("ui_click")
+				_step_dir = 1 if target_step >= _current_step else -1
+				_current_step = target_step
+				_rebuild_ui()
+			)
+			g_hb.add_child(tp_btn)
 
 		if animate_guide:
 			guide_pan.modulate.a = 0.0
@@ -636,59 +783,10 @@ func _rebuild_ui(animate_step: bool = false, animate_guide: bool = false) -> voi
 
 
 # ============================================================================
-# STEP 1: ARCHETYPE & PHYSICAL BASE CARDS
+# STEP 1: PHYSICAL BASE CARDS (7–10 FIXED BASE, D–H–K–E INDIVIDUAL RARITY + EXPLAIN ?)
 # ============================================================================
-func _build_step_1_base_cards(parent: VBoxContainer, sel_build_id: String) -> void:
-	var arch_pan := PanelContainer.new()
-	arch_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_BG, COL_GOLD_BORDER, 10, 10))
-	parent.add_child(arch_pan)
-
-	var arch_vb := VBoxContainer.new()
-	arch_vb.add_theme_constant_override("separation", 8)
-	arch_pan.add_child(arch_vb)
-
-	arch_vb.add_child(LialoIcons.make_icon_label_row(
-		"crown",
-		_tr("ARCHETYPE", "ARCHETYP BALÍČKU"),
-		18, 15, COL_GOLD_TEXT
-	))
-
-	var builds_hb := HBoxContainer.new()
-	builds_hb.add_theme_constant_override("separation", 10)
-	arch_vb.add_child(builds_hb)
-
-	for b_raw in Catalog.DECK_BUILDS:
-		var bid := str(b_raw["id"])
-		var b := Catalog.get_deck_build_loc(bid, _lang)
-		var b_col: Color = b["col"]
-		var is_sel := (bid == sel_build_id)
-		var b_btn := Button.new()
-		b_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b_btn.custom_minimum_size = Vector2(0, 62)
-		var seal_clean := _strip_seal_prefix(str(b.get("bankai_name", "")))
-		b_btn.text = "%s\n%s" % [str(b["name"]), _tr("ACTIVE", "AKTIVNÍ") if is_sel else seal_clean]
-		b_btn.tooltip_text = str(b.get("desc", ""))
-		LialoIcons.apply_button_icon(b_btn, "check" if is_sel else str(BUILD_ICONS.get(bid, "cards")), 20)
-		b_btn.add_theme_font_override("font", _font_disp)
-		b_btn.add_theme_font_size_override("font_size", 13)
-		b_btn.add_theme_color_override("font_color", COL_GOLD_TEXT if is_sel else COL_PARCHMENT)
-		b_btn.add_theme_stylebox_override("normal", _make_box_style(
-			Color(0.22, 0.16, 0.08, 0.98) if is_sel else COL_WALNUT_CARD,
-			COL_GOLD_TEXT if is_sel else Color(b_col.r, b_col.g, b_col.b, 0.55), 10, 8
-		))
-		b_btn.add_theme_stylebox_override("hover", _make_box_style(
-			Color(0.26, 0.19, 0.10, 1.0), COL_GOLD_TEXT, 10, 8
-		))
-		_attach_button_hover(b_btn, 1.03)
-		b_btn.pressed.connect(func():
-			sfx_requested.emit("ui_click")
-			_profile["selected_build_id"] = bid
-			_sync_and_save()
-			_rebuild_ui()
-		)
-		builds_hb.add_child(b_btn)
-
-	# Physical 32-Card Suit-Grouped Grid
+func _build_step_1_base_cards(parent: VBoxContainer, _sel_build_id: String) -> void:
+	# Physical 32-Card Suit-Grouped Grid (Archetype panel removed by design; infusion only above 10)
 	var base_pan := PanelContainer.new()
 	base_pan.add_theme_stylebox_override("panel", _make_box_style(COL_WALNUT_BG, Color(0.62, 0.48, 0.26, 0.85), 10, 10))
 	parent.add_child(base_pan)
@@ -702,7 +800,7 @@ func _build_step_1_base_cards(parent: VBoxContainer, sel_build_id: String) -> vo
 	base_vb.add_child(hdr_row)
 	hdr_row.add_child(LialoIcons.make_icon_label_row(
 		"cards",
-		_tr("32 BASE CARDS — CLICK TO CYCLE CLASS", "32 ZÁKLADNÍCH KARET — KLIKNUTÍM ZMĚŇ TŘÍDU"),
+		_tr("7–10 ARE PURE BASE CARDS  •  INFUSE CLASS ON CARDS ABOVE 10 (D, H, K, E)", "7–10 JSOU ZÁKLAD  •  TŘÍDU VYBÍREJ NA KARTÁCH NAD 10 (D, H, K, E)"),
 		18, 14, COL_GOLD_TEXT
 	))
 
@@ -739,23 +837,25 @@ func _build_step_1_base_cards(parent: VBoxContainer, sel_build_id: String) -> vo
 		suit_row.add_child(cards_hb)
 
 		for r in RANKS:
-			var fk := "%s_%s" % [suit_id, r]
-			var cur_cls := Catalog.normalize_card_class(str(ce.get(fk, "NORMAL")))
-			var cls_d := Catalog.get_card_class_loc(cur_cls, _lang)
+			var r_str: String = str(r)
+			var fk: String = "%s_%s" % [suit_id, r_str]
+			var is_infusable: bool = (r_str in CLASS_CYCLE_RANKS)
+			var cur_cls: String = Catalog.normalize_card_class(str(ce.get(fk, "NORMAL"))) if is_infusable else "NORMAL"
+			var cls_d: Dictionary = Catalog.get_card_class_loc(cur_cls, _lang)
 			var cls_col: Color = cls_d.get("col", COL_GOLD_BORDER)
-			var is_mod := (cur_cls != "NORMAL")
+			var is_mod: bool = is_infusable and (cur_cls != "NORMAL")
 
 			var card_btn := Button.new()
 			card_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			card_btn.custom_minimum_size = Vector2(64, 86)
+			card_btn.custom_minimum_size = Vector2(68, 92)
 			card_btn.tooltip_text = "%s (%s) — %s" % [
 				_pretty_card_key(fk),
 				str(cls_d.get("name", cur_cls)),
-				_tr("Click to cycle Class", "Kliknutím změň třídu")
+				_tr("Click to cycle Class (Normal/Mage/Thief/Knight)", "Kliknutím vyber třídu (Klasik/Mág/Zloděj/Rytíř)") if is_infusable else _tr("Pure Base Card • Click or tap ? to Explain", "Základní karta • Kliknutím zobrazíš vysvětlení")
 			]
 			card_btn.add_theme_stylebox_override("normal", _make_box_style(
-				Color(0.16, 0.11, 0.07, 0.96) if is_mod else COL_WALNUT_DEEP,
-				cls_col if is_mod else Color(0.45, 0.35, 0.22, 0.72), 8, 3
+				Color(0.18, 0.12, 0.07, 0.96) if is_mod else (Color(0.085, 0.064, 0.044, 0.96) if is_infusable else COL_WALNUT_DEEP),
+				cls_col if is_mod else (Color(0.72, 0.56, 0.28, 0.82) if is_infusable else Color(0.36, 0.30, 0.22, 0.56)), 8, 3
 			))
 			card_btn.add_theme_stylebox_override("hover", _make_box_style(
 				Color(0.24, 0.17, 0.10, 1.0), COL_GOLD_TEXT, 8, 3
@@ -777,20 +877,33 @@ func _build_step_1_base_cards(parent: VBoxContainer, sel_build_id: String) -> vo
 			card_vb.add_child(tex_r)
 
 			var cls_lbl := Label.new()
-			cls_lbl.text = str(cls_d.get("short_cls", cur_cls)) if is_mod else r
+			cls_lbl.text = (str(cls_d.get("short_cls", cur_cls)) if is_mod else (r_str + " ★" if is_infusable else r_str))
 			cls_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			cls_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			cls_lbl.add_theme_font_override("font", _font_disp if is_mod else _font_body)
 			cls_lbl.add_theme_font_size_override("font_size", 10)
-			cls_lbl.add_theme_color_override("font_color", cls_col if is_mod else COL_PARCHMENT_DIM)
+			cls_lbl.add_theme_color_override("font_color", cls_col if is_mod else (COL_GOLD_TEXT if is_infusable else COL_PARCHMENT_DIM))
 			card_vb.add_child(cls_lbl)
 
-			_attach_card_hover(card_btn, 0.036, 5.0, 1.12)
+			# Explain ? corner button (jumps directly into Arsenal Normal Cards explanation)
+			var exp_btn := _make_explain_mini_btn(fk, false)
+			exp_btn.anchor_left = 1.0; exp_btn.anchor_right = 1.0
+			exp_btn.anchor_top = 0.0; exp_btn.anchor_bottom = 0.0
+			exp_btn.offset_left = -22; exp_btn.offset_top = 3
+			exp_btn.offset_right = -3; exp_btn.offset_bottom = 22
+			card_btn.add_child(exp_btn)
+
+			_attach_card_hover(card_btn, 0.042 if is_infusable else 0.024, 6.0 if is_infusable else 3.0, 1.14 if is_infusable else 1.08)
 			if _pop_card_key == fk:
-				card_btn.call_deferred("set_pivot_offset", Vector2(32, 43))
+				card_btn.call_deferred("set_pivot_offset", Vector2(34, 46))
 				_animate_btn_pop(card_btn)
+				_animate_card_flip(card_btn)
 
 			card_btn.pressed.connect(func():
+				if not is_infusable:
+					sfx_requested.emit("ui_click")
+					explain_card_requested.emit(fk, false)
+					return
 				sfx_requested.emit("card_hover")
 				var idx := CLASS_CYCLE.find(cur_cls)
 				var next_cls: String = str(CLASS_CYCLE[(idx + 1) % CLASS_CYCLE.size()])
@@ -801,6 +914,7 @@ func _build_step_1_base_cards(parent: VBoxContainer, sel_build_id: String) -> vo
 					ce_map[fk] = next_cls
 				_profile["card_editions"] = ce_map
 				_pop_card_key = fk
+				_mark_tut_action(0)
 				_sync_and_save()
 				_rebuild_ui()
 			)
@@ -917,6 +1031,14 @@ func _build_step_2_power_cards(parent: VBoxContainer) -> void:
 			badge_ic.position = Vector2(4, 4)
 			tex_wrap.add_child(badge_ic)
 
+		# Explain ? corner button (jumps directly into Arsenal Power Cards explanation)
+		var p_exp_btn := _make_explain_mini_btn(pid, true)
+		p_exp_btn.anchor_left = 1.0; p_exp_btn.anchor_right = 1.0
+		p_exp_btn.anchor_top = 0.0; p_exp_btn.anchor_bottom = 0.0
+		p_exp_btn.offset_left = -24; p_exp_btn.offset_top = 4
+		p_exp_btn.offset_right = -4; p_exp_btn.offset_bottom = 24
+		pb.add_child(p_exp_btn)
+
 		var name_lbl := Label.new()
 		name_lbl.text = str(pcl["short"])
 		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -955,6 +1077,7 @@ func _build_step_2_power_cards(parent: VBoxContainer) -> void:
 					arr.pop_front()
 				arr.append(pid)
 			_profile["custom_cards"] = arr
+			_mark_tut_action(1)
 			_sync_and_save()
 			_rebuild_ui()
 		)
@@ -1160,6 +1283,7 @@ func _build_step_3_grand_seal(parent: VBoxContainer, sel_build_id: String, cur_b
 					_profile["bankai_combo"] = next_c
 					_flash_seal_slot = target_slot
 					_editing_seal_slot = -1
+					_mark_tut_action(2)
 					_sync_and_save()
 					_rebuild_ui()
 				)
@@ -1298,6 +1422,7 @@ func _build_step_4_relics_cosmetics(parent: VBoxContainer) -> void:
 				arr.append(tid)
 				_bounce_relic_id = tid
 			_profile["table_relics"] = arr
+			_mark_tut_action(3)
 			_sync_and_save()
 			_rebuild_ui()
 		)
@@ -1394,6 +1519,7 @@ func _build_step_4_relics_cosmetics(parent: VBoxContainer) -> void:
 			sfx_requested.emit("card_hover")
 			_profile["selected_deck"] = did
 			_flip_back_id = did
+			_mark_tut_action(3)
 			_sync_and_save()
 			_rebuild_ui()
 		)
@@ -1600,6 +1726,7 @@ func _build_step_5_name_save(parent: VBoxContainer, _sel_build_id: String, cur_b
 			dname = str(cur_build["name"])
 		Catalog.save_named_deck(_profile, dname)
 		_save_flare_pending = true
+		_mark_tut_action(4)
 		_sync_and_save()
 		_rebuild_ui()
 		if is_instance_valid(_status_toast):
@@ -1621,6 +1748,7 @@ func _build_step_5_name_save(parent: VBoxContainer, _sel_build_id: String, cur_b
 		if not dname.is_empty():
 			Catalog.save_named_deck(_profile, dname)
 		_animate_save_flare(save_pan)
+		_mark_tut_action(4)
 		_sync_and_save()
 		if is_instance_valid(_status_toast):
 			_status_toast.text = _tr("Ready for battle!", "Připraveno do boje!")

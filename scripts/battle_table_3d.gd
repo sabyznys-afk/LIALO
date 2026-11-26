@@ -3068,22 +3068,18 @@ func _spawn_signature_play_vfx(chosen_cards: Array[Dictionary], impact_pos: Vect
 			cam_spring.rot_vel_deg.z += dir * (14.0 + 6.0 * float(mini(cnt, 4)))
 
 	match pid:
-		"SPEC_VAMPIRE":
-			Fx.siphon(self, rival_pos + Vector3(0, 0.25, 0), impact_pos + Vector3(0, 0.08, 0), Color(0.85, 0.05, 0.10), 22, 0.75)
-		"SPEC_PHOENIX":
-			Fx.feather_vortex(self, impact_pos, 1.0)
-			overdrive_light_target = maxf(overdrive_light_target, 0.6)
-		"SPEC_CHRONOS":
-			Fx.sigil_clock(self, impact_pos, impact_pos, 1.2)
-		"SPEC_STORM":
-			Fx.shard_burst(self, impact_pos, Color(0.45, 0.80, 1.0), 12, 0.5)
-			emit_signal("play_sfx_pitched_requested", "card_ace_strike", 1.12)
-			var storm_vfx := PowerCardShowcase.new()
-			add_child(storm_vfx)
-			storm_vfx.sfx_triggered.connect(func(sfx_key: String, _vol: float, pitch_val: float):
+		"SPEC_VAMPIRE", "SPEC_PHOENIX", "SPEC_CHRONOS", "SPEC_STORM":
+			var accent_c: Color = Color(0.92, 0.14, 0.18) if pid == "SPEC_VAMPIRE" else (Color(1.0, 0.48, 0.14) if pid == "SPEC_PHOENIX" else (Color(0.32, 0.92, 1.0) if pid == "SPEC_CHRONOS" else Color(0.45, 0.80, 1.0)))
+			Fx.shard_burst(self, impact_pos, accent_c, 12, 0.52)
+			if pid == "SPEC_PHOENIX":
+				overdrive_light_target = maxf(overdrive_light_target, 0.6)
+			emit_signal("play_sfx_pitched_requested", "card_ace_strike", 1.12 if pid == "SPEC_STORM" else 1.02)
+			var card_vfx := PowerCardShowcase.new()
+			add_child(card_vfx)
+			card_vfx.sfx_triggered.connect(func(sfx_key: String, _vol: float, pitch_val: float):
 				emit_signal("play_sfx_pitched_requested", sfx_key, pitch_val)
 			)
-			storm_vfx.setup_battle_fx(impact_pos, rival_pos)
+			card_vfx.setup_battle_fx(impact_pos, rival_pos, pid)
 		"SPEC_SHIELD":
 			Fx.shard_burst(self, impact_pos, lead.get("accent", Color(0.68, 0.78, 0.88)), 8, 0.42)
 			emit_signal("play_sfx_requested", "card_shield_guard")
@@ -5221,6 +5217,9 @@ func _spawn_edition_burst_3d(world_pos: Vector3, col: Color) -> void:
 func _update_combo_hud(title_txt: String, chips_val: int, flat_mult_val: float, total_pts: int, is_active: bool, x_mult_val: float = 1.0) -> void:
 	if not combo_hud_grp:
 		return
+	var prev_chips := combo_raw_val
+	var prev_mult := combo_mult_val
+	var prev_tot := combo_tot_val
 	var card_cnt_mult := maxf(1.0, flat_mult_val)
 	combo_glow_active = is_active
 	combo_raw_val = chips_val
@@ -5247,8 +5246,12 @@ func _update_combo_hud(title_txt: String, chips_val: int, flat_mult_val: float, 
 		combo_flame_mat.set_shader_parameter("mult_tier", clampf(card_cnt_mult, 1.0, 12.0))
 	if chips_lbl:
 		chips_lbl.text = _format_pts_ui(chips_val)
+		if chips_val != prev_chips and chips_val > 0:
+			_punch_hud_label(chips_lbl, 1.38 if is_active else 1.24)
 	if flat_mult_lbl:
 		flat_mult_lbl.text = "%d" % maxi(1, int(round(card_cnt_mult)))
+		if absf(card_cnt_mult - prev_mult) > 0.05 or is_active:
+			_punch_hud_label(flat_mult_lbl, 1.44 if card_cnt_mult >= 2.0 else 1.25)
 	if xmult_lbl:
 		var xm_show := x_mult_val > 1.01
 		xmult_lbl.visible = xm_show
@@ -5256,29 +5259,39 @@ func _update_combo_hud(title_txt: String, chips_val: int, flat_mult_val: float, 
 			xmult_lbl.get_parent().visible = xm_show
 		if xm_show:
 			xmult_lbl.text = "×%s" % ScoreEng._fmt_num(x_mult_val)
+			_punch_hud_label(xmult_lbl, 1.48)
 	if mult_lbl:
 		var disp_eff := card_cnt_mult * maxf(1.0, x_mult_val)
 		mult_lbl.text = ("×%s" % ScoreEng._fmt_num(disp_eff)) if x_mult_val > 1.01 else ("×%d" % maxi(1, int(round(card_cnt_mult))))
 	if total_calc_lbl:
 		total_calc_lbl.text = "+" + _format_pts_ui(total_pts)
+		if total_pts != prev_tot and total_pts > 0:
+			_punch_hud_label(total_calc_lbl, 1.52 if is_active else 1.30)
 	combo_hud_grp.queue_redraw()
 	if combo_dial_ctrl:
 		combo_dial_ctrl.queue_redraw()
 
-	if is_active and combo_hud_grp.visible:
+	if (is_active or (total_pts > prev_tot and total_pts > 0)) and combo_hud_grp.visible:
+		score_sheen_phase = 0.0
+		score_ledger_glow = maxf(score_ledger_glow, 1.0 if is_active else 0.65)
 		combo_hud_grp.pivot_offset = combo_hud_grp.size * 0.5
-		combo_hud_grp.scale = Vector2(1.06, 1.06)
+		combo_hud_grp.scale = Vector2(1.10, 1.10) if is_active else Vector2(1.05, 1.05)
 		var tw := create_tween()
 		tw.tween_property(combo_hud_grp, "scale", Vector2.ONE, 0.24).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		if combo_embers.size() < 24:
-			for _ei in range(10):
+		if total_calc_lbl and is_active:
+			var tpos := total_calc_lbl.global_position + total_calc_lbl.size * 0.5
+			_score_fx_rings.append({"pos": tpos, "r": 6.0, "max_r": 76.0, "life": 0.34, "max_life": 0.34, "col": Color(1.0, 0.86, 0.28), "w": 3.0})
+			if card_cnt_mult >= 2.0:
+				_score_fx_bolts.append({"from": combo_hud_grp.global_position + Vector2(36, 48), "to": tpos, "life": 0.24, "max_life": 0.24, "col": Color(1.0, 0.72, 0.24), "w": 2.4})
+		if combo_embers.size() < 40:
+			for _ei in range(14 if is_active else 6):
 				combo_embers.append({
-					"pos": Vector2(30.0 + randf_range(-10.0, 10.0), 32.0 + randf_range(-6.0, 6.0)),
-					"vel": Vector2(randf_range(-20.0, 32.0), randf_range(-75.0, -35.0)),
-					"life": randf_range(0.4, 0.85),
-					"max_life": 0.85,
-					"col": Color(1.0, randf_range(0.42, 0.88), 0.14),
-					"sz": randf_range(1.8, 3.4),
+					"pos": Vector2(randf_range(24.0, 270.0), randf_range(22.0, 68.0)),
+					"vel": Vector2(randf_range(-28.0, 40.0), randf_range(-95.0, -35.0)),
+					"life": randf_range(0.45, 0.95),
+					"max_life": 0.95,
+					"col": Color(1.0, randf_range(0.42, 0.92), randf_range(0.14, 0.45)),
+					"sz": randf_range(2.0, 3.8),
 				})
 	_refresh_score_ledger_ui()
 
@@ -5697,7 +5710,10 @@ func _spawn_score_popup(txt: String, col: Color, is_player: bool) -> void:
 	)
 
 func set_print_mode(mode_idx: int) -> void:
-	woodcut_print_mode = posmod(mode_idx, 4)
+	var norm := posmod(mode_idx, 4)
+	if norm == 1:
+		norm = 2
+	woodcut_print_mode = norm
 	if woodcut_post_mat:
 		woodcut_post_mat.set_shader_parameter("print_mode", woodcut_print_mode)
 
@@ -7670,59 +7686,59 @@ func _setup_minimal_overlay_hud() -> void:
 	chips_lbl = Label.new()
 	chips_lbl.text = "0"
 	chips_lbl.add_theme_font_override("font", _get_font(true))
-	chips_lbl.add_theme_font_size_override("font_size", 17)
-	chips_lbl.add_theme_color_override("font_color", Color(0.60, 0.94, 1.0))
-	chips_lbl.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.08))
-	chips_lbl.add_theme_constant_override("outline_size", 5)
-	cf_row.add_child(_wrap_eq_capsule(chips_lbl, Color(0.04, 0.08, 0.14, 0.94), Color(0.32, 0.88, 1.0, 0.92), 10, 4, 8))
+	chips_lbl.add_theme_font_size_override("font_size", 26)
+	chips_lbl.add_theme_color_override("font_color", Color(0.62, 0.96, 1.0))
+	chips_lbl.add_theme_color_override("font_outline_color", Color(0.02, 0.04, 0.10))
+	chips_lbl.add_theme_constant_override("outline_size", 7)
+	cf_row.add_child(_wrap_eq_capsule(chips_lbl, Color(0.04, 0.09, 0.16, 0.96), Color(0.32, 0.90, 1.0, 0.96), 12, 4, 10))
 
 	var mul_sep := Label.new()
 	mul_sep.text = "×"
 	mul_sep.add_theme_font_override("font", _get_font(true))
-	mul_sep.add_theme_font_size_override("font_size", 15)
-	mul_sep.add_theme_color_override("font_color", Color(0.95, 0.82, 0.52))
-	mul_sep.add_theme_color_override("font_outline_color", Color(0.06, 0.02, 0.01))
-	mul_sep.add_theme_constant_override("outline_size", 4)
+	mul_sep.add_theme_font_size_override("font_size", 22)
+	mul_sep.add_theme_color_override("font_color", Color(0.98, 0.84, 0.50))
+	mul_sep.add_theme_color_override("font_outline_color", Color(0.08, 0.02, 0.01))
+	mul_sep.add_theme_constant_override("outline_size", 5)
 	cf_row.add_child(mul_sep)
 
 	flat_mult_lbl = Label.new()
 	flat_mult_lbl.text = "1"
 	flat_mult_lbl.add_theme_font_override("font", _get_font(true))
-	flat_mult_lbl.add_theme_font_size_override("font_size", 17)
-	flat_mult_lbl.add_theme_color_override("font_color", Color(1.0, 0.56, 0.40))
-	flat_mult_lbl.add_theme_color_override("font_outline_color", Color(0.12, 0.02, 0.02))
-	flat_mult_lbl.add_theme_constant_override("outline_size", 5)
-	cf_row.add_child(_wrap_eq_capsule(flat_mult_lbl, Color(0.14, 0.04, 0.05, 0.94), Color(1.0, 0.46, 0.34, 0.92), 10, 4, 8))
+	flat_mult_lbl.add_theme_font_size_override("font_size", 26)
+	flat_mult_lbl.add_theme_color_override("font_color", Color(1.0, 0.52, 0.34))
+	flat_mult_lbl.add_theme_color_override("font_outline_color", Color(0.14, 0.02, 0.02))
+	flat_mult_lbl.add_theme_constant_override("outline_size", 7)
+	cf_row.add_child(_wrap_eq_capsule(flat_mult_lbl, Color(0.16, 0.04, 0.05, 0.96), Color(1.0, 0.44, 0.30, 0.96), 12, 4, 10))
 
 	xmult_lbl = Label.new()
 	xmult_lbl.text = "×1"
 	xmult_lbl.visible = false
 	xmult_lbl.add_theme_font_override("font", _get_font(true))
-	xmult_lbl.add_theme_font_size_override("font_size", 15)
-	xmult_lbl.add_theme_color_override("font_color", Color(1.0, 0.90, 0.44))
+	xmult_lbl.add_theme_font_size_override("font_size", 22)
+	xmult_lbl.add_theme_color_override("font_color", Color(1.0, 0.92, 0.42))
 	xmult_lbl.add_theme_color_override("font_outline_color", Color(0.14, 0.06, 0.01))
-	xmult_lbl.add_theme_constant_override("outline_size", 5)
-	var xmult_cap := _wrap_eq_capsule(xmult_lbl, Color(0.14, 0.09, 0.02, 0.95), Color(1.0, 0.82, 0.28, 0.96), 8, 4, 8)
+	xmult_lbl.add_theme_constant_override("outline_size", 6)
+	var xmult_cap := _wrap_eq_capsule(xmult_lbl, Color(0.16, 0.10, 0.02, 0.96), Color(1.0, 0.84, 0.28, 0.98), 10, 4, 10)
 	xmult_cap.visible = false
 	cf_row.add_child(xmult_cap)
 
 	var arr_lbl := Label.new()
 	arr_lbl.text = "="
 	arr_lbl.add_theme_font_override("font", _get_font(true))
-	arr_lbl.add_theme_font_size_override("font_size", 16)
-	arr_lbl.add_theme_color_override("font_color", Color(1.0, 0.78, 0.30))
-	arr_lbl.add_theme_color_override("font_outline_color", Color(0.06, 0.02, 0.01))
-	arr_lbl.add_theme_constant_override("outline_size", 4)
+	arr_lbl.add_theme_font_size_override("font_size", 24)
+	arr_lbl.add_theme_color_override("font_color", Color(1.0, 0.80, 0.30))
+	arr_lbl.add_theme_color_override("font_outline_color", Color(0.08, 0.02, 0.01))
+	arr_lbl.add_theme_constant_override("outline_size", 5)
 	cf_row.add_child(arr_lbl)
 
 	total_calc_lbl = Label.new()
 	total_calc_lbl.text = "+0"
 	total_calc_lbl.add_theme_font_override("font", _get_font(true))
-	total_calc_lbl.add_theme_font_size_override("font_size", 19)
-	total_calc_lbl.add_theme_color_override("font_color", Color(1.0, 0.94, 0.44))
-	total_calc_lbl.add_theme_color_override("font_outline_color", Color(0.14, 0.04, 0.01))
-	total_calc_lbl.add_theme_constant_override("outline_size", 6)
-	cf_row.add_child(_wrap_eq_capsule(total_calc_lbl, Color(0.12, 0.09, 0.02, 0.96), Color(1.0, 0.86, 0.32, 0.98), 11, 4, 8))
+	total_calc_lbl.add_theme_font_size_override("font_size", 30)
+	total_calc_lbl.add_theme_color_override("font_color", Color(1.0, 0.96, 0.46))
+	total_calc_lbl.add_theme_color_override("font_outline_color", Color(0.16, 0.04, 0.01))
+	total_calc_lbl.add_theme_constant_override("outline_size", 8)
+	cf_row.add_child(_wrap_eq_capsule(total_calc_lbl, Color(0.14, 0.10, 0.02, 0.98), Color(1.0, 0.88, 0.34, 1.0), 14, 5, 11))
 
 	# ZONE 1 RIGHT WING: Round 1 / 6 + Rival Score & 10 HP Crest (x: 994..1350, y: 10..84)
 	rival_hud_grp = Control.new()
@@ -12177,11 +12193,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 		elif event.keycode == KEY_F8:
-			set_print_mode(woodcut_print_mode + 1)
+			var cycle_modes := [0, 2, 3]
+			var cur_pos := cycle_modes.find(woodcut_print_mode)
+			var next_mode: int = cycle_modes[(cur_pos + 1) % cycle_modes.size()] if cur_pos >= 0 else 3
+			set_print_mode(next_mode)
 			emit_signal("print_mode_changed", woodcut_print_mode)
 			emit_signal("play_sfx_requested", "ui_click")
-			var mode_names := ["LIVING WOODCUT", "BROADSHEET SEPIA", "CLASSIC TOON", "LIAR'S BAR PBR"]
-			_show_stagger_callout("PRINT: " + mode_names[woodcut_print_mode] + " [F8]", Color(0.96, 0.84, 0.46), 1.18)
+			var mode_names := ["WOODCUT INK", "3D", "3D", "ULTRA DETAILED"]
+			_show_stagger_callout("STYLE: " + mode_names[woodcut_print_mode] + " [F8]", Color(0.96, 0.84, 0.46), 1.18)
 			if stagger_callout_tween and stagger_callout_tween.is_valid():
 				stagger_callout_tween.tween_interval(1.3)
 				stagger_callout_tween.tween_property(stagger_callout_pill, "modulate:a", 0.0, 0.35)
@@ -12434,7 +12453,8 @@ func _inspect_table_prop_3d(prop_id: String) -> bool:
 				cat = _tr("RIVAL ARTIFACT", "ARTEFAKT SOUPEŘE")
 		"sword":
 			var sw_info: Dictionary = Catalog.get_sword_skin(active_sword_skin_id) if Catalog else {}
-			glb_p = str(sw_info.get("glb", ""))
+			custom_n = RelicMesh.build_sword_3d_mesh(active_sword_skin_id, sw_info)
+			glb_p = ""
 			accent = Color(0.86, 0.92, 1.0)
 			cat = _tr("OATH BLADE", "ČEPEL PŘÍSAHY")
 		"discard":

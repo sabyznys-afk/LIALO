@@ -109,6 +109,8 @@ var _replay_tut_btn: Button
 var _return_btn: Button
 var _done_btn: Button
 var _vol_slider: HSlider
+var _music_slider: HSlider
+var _amb_slider: HSlider
 var _sens_slider: HSlider
 var _row_widgets: Dictionary = {}  # key -> {"row": Control, "name_lbl": Label, "btn": Button, "slider": HSlider, "val_lbl": Label}
 
@@ -720,17 +722,23 @@ func _build_hybrid_codex_overlay() -> void:
 	book_wrap.add_child(book_margin)
 
 	var pages_hb := HBoxContainer.new()
-	pages_hb.add_theme_constant_override("separation", 44)
+	pages_hb.add_theme_constant_override("separation", 38)
 	book_margin.add_child(pages_hb)
 
-	# --- LEFT PAGE: Display & Atmosphere + Controls Legend ---
+	# --- LEFT PAGE (SCROLLABLE): Display, Graphics & Controls Legend ---
+	var left_scroll := ScrollContainer.new()
+	left_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	left_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	pages_hb.add_child(left_scroll)
+
 	var left_page := VBoxContainer.new()
 	left_page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left_page.add_theme_constant_override("separation", 8)
-	pages_hb.add_child(left_page)
+	left_page.add_theme_constant_override("separation", 7)
+	left_scroll.add_child(left_page)
 
 	_left_hdr_lbl = Label.new()
-	_left_hdr_lbl.text = "DISPLAY & ATMOSPHERE"
+	_left_hdr_lbl.text = "DISPLAY & GRAPHICS"
 	_left_hdr_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_left_hdr_lbl.add_theme_font_override("font", _disp_font)
 	_left_hdr_lbl.add_theme_font_size_override("font_size", 19)
@@ -743,11 +751,11 @@ func _build_hybrid_codex_overlay() -> void:
 	left_page.add_child(_create_book_button_row("fullscreen"))
 	left_page.add_child(_create_book_button_row("visual_mode"))
 	left_page.add_child(_create_book_button_row("high_fx"))
-	left_page.add_child(_create_book_button_row("turn_timer_sec"))
-
-	var left_spacer := Control.new()
-	left_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	left_page.add_child(left_spacer)
+	left_page.add_child(_create_book_button_row("shadow_quality"))
+	left_page.add_child(_create_book_button_row("vsync"))
+	left_page.add_child(_create_book_button_row("fps_cap"))
+	left_page.add_child(_create_book_button_row("camera_shake"))
+	left_page.add_child(_create_book_button_row("screen_vfx"))
 
 	var codex_box := PanelContainer.new()
 	codex_box.add_theme_stylebox_override("panel", _make_badge_style(Color(0.84, 0.77, 0.62, 0.92), Color(0.46, 0.31, 0.17, 0.85), 2, 8))
@@ -766,7 +774,7 @@ func _build_hybrid_codex_overlay() -> void:
 
 	_codex_keys_lbl = Label.new()
 	_codex_keys_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_codex_keys_lbl.custom_minimum_size = Vector2(400.0, 38.0)
+	_codex_keys_lbl.custom_minimum_size = Vector2(360.0, 38.0)
 	_codex_keys_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_codex_keys_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_codex_keys_lbl.add_theme_font_override("font", _quill_font)
@@ -774,11 +782,17 @@ func _build_hybrid_codex_overlay() -> void:
 	_codex_keys_lbl.add_theme_color_override("font_color", Color(0.16, 0.10, 0.06))
 	c_vb.add_child(_codex_keys_lbl)
 
-	# --- RIGHT PAGE: Audio & Gameplay ---
+	# --- RIGHT PAGE (SCROLLABLE): Audio Channels & Gameplay ---
+	var right_scroll := ScrollContainer.new()
+	right_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	pages_hb.add_child(right_scroll)
+
 	var right_page := VBoxContainer.new()
 	right_page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right_page.add_theme_constant_override("separation", 8)
-	pages_hb.add_child(right_page)
+	right_page.add_theme_constant_override("separation", 7)
+	right_scroll.add_child(right_page)
 
 	_right_hdr_lbl = Label.new()
 	_right_hdr_lbl.text = "AUDIO & GAMEPLAY"
@@ -792,8 +806,11 @@ func _build_hybrid_codex_overlay() -> void:
 
 	right_page.add_child(_create_book_button_row("difficulty"))
 	right_page.add_child(_create_book_button_row("game_pace"))
+	right_page.add_child(_create_book_button_row("turn_timer_sec"))
 	right_page.add_child(_create_book_button_row("mute"))
 	right_page.add_child(_create_book_slider_row("volume", 0.0, 100.0, 5.0))
+	right_page.add_child(_create_book_slider_row("music_volume", 0.0, 100.0, 5.0))
+	right_page.add_child(_create_book_slider_row("ambient_volume", 0.0, 100.0, 5.0))
 	right_page.add_child(_create_book_slider_row("cam_sensitivity", 0.5, 2.0, 0.1))
 
 	# 3. Bottom Action Dock (Replay Tutorial, Return, Save & Resume)
@@ -944,6 +961,16 @@ func _create_book_slider_row(key: String, min_v: float, max_v: float, step_v: fl
 		_vol_slider = sl
 		sl.value_changed.connect(func(v: float):
 			emit_signal("volume_changed", int(round(v)))
+		)
+	elif key == "music_volume":
+		_music_slider = sl
+		sl.value_changed.connect(func(v: float):
+			emit_signal("option_changed", "music_volume", int(round(v)))
+		)
+	elif key == "ambient_volume":
+		_amb_slider = sl
+		sl.value_changed.connect(func(v: float):
+			emit_signal("option_changed", "ambient_volume", int(round(v)))
 		)
 	elif key == "cam_sensitivity":
 		_sens_slider = sl
@@ -1124,13 +1151,29 @@ func _trigger_station(key: String) -> void:
 			var next_fs := not bool(_opts.get("fullscreen", true))
 			emit_signal("option_changed", "fullscreen", next_fs)
 		"visual_mode":
-			var order: Array[int] = [3, 0, 1, 2]
-			var cur_i := order.find(int(_opts.get("visual_mode", 3)))
+			var order: Array[int] = [0, 2, 3]
+			var cur_m := int(_opts.get("visual_mode", 3))
+			if cur_m == 1:
+				cur_m = 2
+			var cur_i := order.find(cur_m)
 			var next_mode: int = order[(maxi(0, cur_i) + 1) % order.size()]
 			emit_signal("option_changed", "visual_mode", next_mode)
 		"high_fx":
 			var next_fx := not bool(_opts.get("high_fx", true))
 			emit_signal("option_changed", "high_fx", next_fx)
+		"shadow_quality":
+			var next_sq := (int(_opts.get("shadow_quality", 2)) + 1) % 3
+			emit_signal("option_changed", "shadow_quality", next_sq)
+		"vsync":
+			emit_signal("option_changed", "vsync", not bool(_opts.get("vsync", true)))
+		"fps_cap":
+			var f_order: Array[int] = [0, 60, 120]
+			var fi := (maxi(0, f_order.find(int(_opts.get("fps_cap", 0)))) + 1) % f_order.size()
+			emit_signal("option_changed", "fps_cap", f_order[fi])
+		"camera_shake":
+			emit_signal("option_changed", "camera_shake", not bool(_opts.get("camera_shake", true)))
+		"screen_vfx":
+			emit_signal("option_changed", "screen_vfx", not bool(_opts.get("screen_vfx", true)))
 		"difficulty":
 			_animate_stamp_press(key)
 			emit_signal("difficulty_toggled")
@@ -1197,27 +1240,47 @@ func _refresh_all_visuals() -> void:
 		)
 
 	var vnames := {
-		3: "Filmové 3D PBR" if cs else "Liar's Bar PBR",
 		0: "Dřevoryt Inkoust" if cs else "Woodcut Ink",
-		1: "Stará Sepie" if cs else "Broadsheet Sepia",
-		2: "Čisté 3D" if cs else "Classic 3D",
+		2: "3D",
+		3: "Ultra Detailní" if cs else "Ultra Detailed",
 	}
+	if vm == 1:
+		vm = 2
 	var pnames := {
 		"relaxed": "Pohodové (1.0×)" if cs else "Relaxed (1.0×)",
 		"normal":  "Normální (1.4×)" if cs else "Normal (1.4×)",
 		"fast":    "Rychlé (2.0×)" if cs else "Fast (2.0×)",
 	}
+	var sq_names := {
+		0: "Vypnuto" if cs else "Off",
+		1: "Měkké" if cs else "Soft",
+		2: "Ostré" if cs else "Sharp",
+	}
+	var mus_pct := clampi(int(_opts.get("music_volume", 75)), 0, 100)
+	var amb_pct := clampi(int(_opts.get("ambient_volume", 70)), 0, 100)
+	var sq_val := clampi(int(_opts.get("shadow_quality", 2)), 0, 2)
+	var vs_on := bool(_opts.get("vsync", true))
+	var fps_val := int(_opts.get("fps_cap", 0))
+	var shake_on := bool(_opts.get("camera_shake", true))
+	var svfx_on := bool(_opts.get("screen_vfx", true))
 
 	var row_labels := {
 		"language":        "Jazyk / Language" if cs else "Language",
 		"fullscreen":      "Obrazovka" if cs else "Display Mode",
 		"visual_mode":     "Vizuální styl" if cs else "Visual Style",
 		"high_fx":         "Efekty krčmy" if cs else "Tavern FX",
+		"shadow_quality":  "Stíny" if cs else "Shadows",
+		"vsync":           "VSync",
+		"fps_cap":         "Limit FPS" if cs else "FPS Cap",
+		"camera_shake":    "Otřesy kamery" if cs else "Camera Shake",
+		"screen_vfx":      "Screen VFX",
 		"turn_timer_sec":  "Limit tahu" if cs else "Turn Timer",
 		"difficulty":      "Obtížnost" if cs else "Difficulty",
 		"game_pace":       "Tempo hry" if cs else "Game Pace",
 		"mute":            "Zvuk" if cs else "Audio",
-		"volume":          "Hlasitost" if cs else "Volume",
+		"volume":          "Hlasitost" if cs else "Master Vol",
+		"music_volume":    "Hudba" if cs else "Music Vol",
+		"ambient_volume":  "Krčma Ambient" if cs else "Ambient Vol",
 		"cam_sensitivity": "Citlivost myši" if cs else "Look Sens",
 	}
 	var t_sec := clampi(int(_opts.get("turn_timer_sec", 35)), 30, 45)
@@ -1226,6 +1289,11 @@ func _refresh_all_visuals() -> void:
 		"fullscreen":      ("Celá obrazovka" if fs else "V okně") if cs else ("Fullscreen" if fs else "Windowed"),
 		"visual_mode":     str(vnames.get(vm, vnames[3])),
 		"high_fx":         ("Vysoké" if hfx else "Výkon") if cs else ("High" if hfx else "Performance"),
+		"shadow_quality":  str(sq_names.get(sq_val, sq_names[2])),
+		"vsync":           ("Zapnuto" if vs_on else "Vypnuto") if cs else ("Enabled" if vs_on else "Disabled"),
+		"fps_cap":         ("Bez limitu" if cs else "Uncapped") if fps_val <= 0 else ("%d FPS" % fps_val),
+		"camera_shake":    ("Zapnuto" if shake_on else "Vypnuto") if cs else ("Enabled" if shake_on else "Disabled"),
+		"screen_vfx":      ("Plné" if svfx_on else "Minimální") if cs else ("Full" if svfx_on else "Minimal"),
 		"turn_timer_sec":  "%d s (Auto-líz)" % t_sec if cs else "%ds (Auto-Draw)" % t_sec,
 		"difficulty":      ("Poutník (Lehčí)" if is_trav else "Klasická (Těžší)") if cs else ("Traveler (Easy)" if is_trav else "Classic (Hard)"),
 		"game_pace":       str(pnames.get(gp, pnames["relaxed"])),
@@ -1246,11 +1314,19 @@ func _refresh_all_visuals() -> void:
 		if is_instance_valid(vl):
 			if k == "volume":
 				vl.text = "%d%%" % (0 if _muted else _vol_pct)
+			elif k == "music_volume":
+				vl.text = "%d%%" % (0 if _muted else mus_pct)
+			elif k == "ambient_volume":
+				vl.text = "%d%%" % (0 if _muted else amb_pct)
 			elif k == "cam_sensitivity":
 				vl.text = "%.1f×" % sens
 
 	if is_instance_valid(_vol_slider):
 		_vol_slider.set_value_no_signal(float(_vol_pct))
+	if is_instance_valid(_music_slider):
+		_music_slider.set_value_no_signal(float(mus_pct))
+	if is_instance_valid(_amb_slider):
+		_amb_slider.set_value_no_signal(float(amb_pct))
 	if is_instance_valid(_sens_slider):
 		_sens_slider.set_value_no_signal(sens)
 

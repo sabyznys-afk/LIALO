@@ -15,6 +15,7 @@ const DeckBuilderPanelScript := preload("res://scripts/ui/deck_builder_panel.gd"
 const RELIC_INSPECT_PATH := "res://scripts/ui/relic_inspect_3d.gd"
 const DevAssetInspectorScript := preload("res://scripts/ui/dev_asset_inspector.gd")
 const LialoIcons := preload("res://scripts/ui/lialo_icons.gd")
+const FujiraStudioIntroScript := preload("res://scripts/ui/fujira_studio_intro.gd")
 
 enum ScreenState { SPLASH, MAIN_MENU, WORLD_3D, MATCH_3D }
 
@@ -62,6 +63,9 @@ var dev_inspector_layer: CanvasLayer
 var dev_inspector: DevAssetInspectorScript
 var collection_close_btn: Button
 var collection_det_close_btn: Button
+var _explain_back_btn: Button
+var _explain_return_to_builder: bool = false
+var _collection_entry_by_key: Dictionary = {}
 var map_btn_back: Button
 var map_btn_guide: Button
 var map_btn_nav: Button
@@ -82,6 +86,7 @@ var almanac_close_btn: Button
 var era_label3d_nodes: Array[Dictionary] = []
 var game_theme: Theme
 var splash_control: Control
+var splash_intro_node: Control
 var menu_control: Control
 var hud_3d_control: Control
 var signs_box: VBoxContainer
@@ -319,54 +324,6 @@ const PLAYER_DECKS = [
 		"border_col": Color(0.30, 0.78, 0.94),
 		"use_iron": false,
 		"start_bonus_pts": 0,
-		"bonus_puf": 0,
-		"extra_draw": 1,
-	},
-	{
-		"id": "prohibicia",
-		"era_id": "prohibicia",
-		"name": "Syndicate Noir",
-		"name_cs": "Syndikát prohibice",
-		"desc": "1920s Art Deco gold & black velvet speakeasy deck. +12 start pts & sleek dark gloves.",
-		"desc_cs": "Art Deco zlato a černý samet tajného baru. +12 bodů do startu a tmavé rukavice.",
-		"back_tex": "res://assets/table/deck_back_prohibicia.png",
-		"box_style": "prohibicia",
-		"glove_col": Color(0.14, 0.12, 0.16),
-		"border_col": Color(0.96, 0.76, 0.26),
-		"use_iron": false,
-		"start_bonus_pts": 12,
-		"bonus_puf": 0,
-		"extra_draw": 0,
-	},
-	{
-		"id": "obsidian",
-		"era_id": "stredovek",
-		"name": "Obsidian Seal",
-		"name_cs": "Obsidiánová pečeť",
-		"desc": "Forged obsidian-iron & crimson ritual seal. +1 Hellfire Phial & obsidian-steel gauntlets.",
-		"desc_cs": "Kovaná obsidiánová pečeť a rudý rituální znak. +1 Baňka ohně a obsidiánové rukavice.",
-		"back_tex": "res://assets/table/deck_back_obsidian.png",
-		"box_style": "obsidian",
-		"glove_col": Color(0.12, 0.08, 0.10),
-		"border_col": Color(0.96, 0.18, 0.26),
-		"use_iron": true,
-		"start_bonus_pts": 10,
-		"bonus_puf": 1,
-		"extra_draw": 0,
-	},
-	{
-		"id": "astral",
-		"era_id": "objavy",
-		"name": "Astral Compass",
-		"name_cs": "Astrální kompas",
-		"desc": "Midnight indigo & blazing cyan star-chart crest. +1 extra draw & silver celestial bracers.",
-		"desc_cs": "Půlnoční modř a zářící azurová hvězdná mapa. +1 karta navíc a stříbrné nátepníky.",
-		"back_tex": "res://assets/table/deck_back_astral.png",
-		"box_style": "astral",
-		"glove_col": Color(0.16, 0.24, 0.42),
-		"border_col": Color(0.24, 0.90, 1.0),
-		"use_iron": true,
-		"start_bonus_pts": 8,
 		"bonus_puf": 0,
 		"extra_draw": 1,
 	}
@@ -636,10 +593,10 @@ func _load_wav(path: String, loop: bool) -> AudioStream:
 			wav.loop_mode = AudioStreamWAV.LOOP_DISABLED
 	return st
 
-func _calc_vol_db(base_db: float) -> float:
-	if audio_muted or audio_volume_pct <= 0:
+func _calc_vol_db(base_db: float, channel_pct: int = 100) -> float:
+	if audio_muted or audio_volume_pct <= 0 or channel_pct <= 0:
 		return -80.0
-	var lin := clampf(float(audio_volume_pct) / 100.0, 0.001, 1.0)
+	var lin := clampf((float(audio_volume_pct) / 100.0) * (float(channel_pct) / 100.0), 0.001, 1.0)
 	return base_db + linear_to_db(lin)
 
 func _notification(what: int) -> void:
@@ -657,6 +614,8 @@ func _on_window_focus_changed(focused: bool) -> void:
 		bgm_player.stream_paused = paused
 	if is_instance_valid(amb_player):
 		amb_player.stream_paused = paused
+	if is_instance_valid(splash_intro_node) and splash_intro_node.has_method("set_audio_paused"):
+		splash_intro_node.call("set_audio_paused", paused)
 	if is_instance_valid(splash_sfx_player):
 		if focused and current_screen == ScreenState.SPLASH and (_splash_audio_pending or not splash_sfx_player.playing) and splash_time < 4.5 and sfx_cache.has("splash_fujara") and not audio_muted and audio_volume_pct > 0:
 			splash_sfx_player.stream = sfx_cache["splash_fujara"]
@@ -678,10 +637,14 @@ func _on_window_focus_changed(focused: bool) -> void:
 func _apply_audio_state() -> void:
 	var mute_bus := (not window_focused) or audio_muted or audio_volume_pct <= 0
 	AudioServer.set_bus_mute(0, mute_bus)
-	bgm_player.volume_db = _calc_vol_db(-5.5 if active_bgm_key == "lobby" else -6.5)
-	amb_player.volume_db = _calc_vol_db(-12.5)
+	var mus_pct := clampi(int(game_options.get("music_volume", 75)), 0, 100)
+	var amb_pct := clampi(int(game_options.get("ambient_volume", 70)), 0, 100)
+	bgm_player.volume_db = _calc_vol_db(-5.5 if active_bgm_key == "lobby" else -6.5, mus_pct)
+	amb_player.volume_db = _calc_vol_db(-12.5, amb_pct)
 	if is_instance_valid(splash_sfx_player):
 		splash_sfx_player.volume_db = _calc_vol_db(-4.5)
+	if is_instance_valid(splash_intro_node) and splash_intro_node.has_method("set_audio_volume_db"):
+		splash_intro_node.call("set_audio_volume_db", _calc_vol_db(-3.5))
 	if active_bgm_key == "battle":
 		_apply_battle_layer_volumes()
 	var is_off := (audio_muted or audio_volume_pct <= 0)
@@ -998,6 +961,7 @@ func _ready() -> void:
 			win.focus_exited.connect(func(): _on_window_focus_changed(false))
 			window_focused = win.has_focus()
 	run_profile = Catalog.load_profile()
+	selected_deck_idx = clampi(selected_deck_idx, 0, PLAYER_DECKS.size() - 1)
 	shop_offers = Catalog.generate_shop_offers(run_profile, str(game_options.get("language", "en")))
 	card_back_tex = Toon.tex(str(PLAYER_DECKS[selected_deck_idx].get("back_tex", "res://assets/table/card_back.png")))
 	menu_icons_tex = Toon.tex("res://assets/lobby/menu_icons.png")
@@ -1110,12 +1074,19 @@ func _switch_to(next_state: ScreenState) -> void:
 	var prev_state := current_screen
 	current_screen = next_state
 	splash_control.visible = (next_state == ScreenState.SPLASH)
-	if is_instance_valid(splash_3d_vp):
-		splash_3d_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS if (next_state == ScreenState.SPLASH) else SubViewport.UPDATE_DISABLED
+	if is_instance_valid(splash_intro_node):
+		if next_state == ScreenState.SPLASH:
+			_play_bgm("", false)
+			splash_skipped = false
+			splash_intro_node.call("set_audio_volume_db", _calc_vol_db(-3.5))
+			splash_intro_node.call("start_intro", (not audio_muted and audio_volume_pct > 0), false)
+			splash_intro_node.call("set_audio_paused", not window_focused)
+		else:
+			splash_intro_node.call("stop_intro")
 	menu_control.visible = (next_state == ScreenState.MAIN_MENU)
 	if next_state != ScreenState.SPLASH and is_instance_valid(splash_sfx_player):
 		splash_sfx_player.stop()
-	if next_state == ScreenState.SPLASH:
+	if next_state == ScreenState.SPLASH and not is_instance_valid(splash_intro_node):
 		_play_bgm("", false)
 		_splash_audio_pending = false
 		if is_instance_valid(splash_sfx_player) and sfx_cache.has("splash_fujara") and not audio_muted and audio_volume_pct > 0:
@@ -1448,6 +1419,19 @@ func _build_splash_screen() -> void:
 	splash_control.set_anchors_preset(Control.PRESET_FULL_RECT)
 	splash_control.theme = game_theme
 	ui_layer.add_child(splash_control)
+
+	# Universal portable Fujira Studios intro with articulated all-black soaring bird
+	splash_intro_node = FujiraStudioIntroScript.new()
+	splash_intro_node.set("skippable", true)
+	splash_intro_node.connect("intro_finished", func():
+		if current_screen == ScreenState.SPLASH and not splash_skipped:
+			splash_skipped = true
+			_switch_to(ScreenState.MAIN_MENU)
+	)
+	splash_control.add_child(splash_intro_node)
+	splash_intro_node.call("set_audio_volume_db", _calc_vol_db(-3.5))
+	if is_instance_valid(splash_intro_node):
+		return
 
 	# 1. Back layer: sunrise parchment sky + rising sun behind the 3D mountain
 	splash_sky_canvas = Control.new()
@@ -2270,6 +2254,7 @@ func _build_deck_selector_modal() -> void:
 	collection_deck_builder = DeckBuilderPanelScript.new()
 	collection_deck_builder.visible = false
 	collection_deck_builder.sfx_requested.connect(func(sn: String): _play_sfx(sn))
+	collection_deck_builder.explain_card_requested.connect(_on_deck_builder_explain_card)
 	collection_deck_builder.deck_changed.connect(func(_p: Dictionary):
 		_refresh_map_roguelite_hud()
 		_populate_menu_signs()
@@ -2342,15 +2327,34 @@ func _build_deck_selector_modal() -> void:
 	col_det_desc.add_theme_color_override("font_color", Color(0.92, 0.89, 0.82))
 	d_info.add_child(col_det_desc)
 
+	var det_btn_row := HBoxContainer.new()
+	det_btn_row.add_theme_constant_override("separation", 10)
+	d_info.add_child(det_btn_row)
+
+	_explain_back_btn = Button.new()
+	_explain_back_btn.text = _tr("← Back to Deck Builder", "← Zpět do Tvorby balíčku")
+	_explain_back_btn.custom_minimum_size = Vector2(210, 42)
+	_explain_back_btn.add_theme_font_size_override("font_size", 15)
+	_explain_back_btn.visible = false
+	_explain_back_btn.pressed.connect(func():
+		_play_sfx("ui_click")
+		_explain_return_to_builder = false
+		_close_animated_modal(collection_detail_modal)
+		collection_tab_idx = 4
+		_rebuild_collection_view()
+	)
+	det_btn_row.add_child(_explain_back_btn)
+
 	collection_det_close_btn = Button.new()
 	collection_det_close_btn.text = _tr("Close Card", "Zavřít kartu")
 	collection_det_close_btn.custom_minimum_size = Vector2(150, 42)
 	collection_det_close_btn.add_theme_font_size_override("font_size", 16)
 	collection_det_close_btn.pressed.connect(func():
 		_play_sfx("ui_click")
+		_explain_return_to_builder = false
 		_close_animated_modal(collection_detail_modal)
 	)
-	d_info.add_child(collection_det_close_btn)
+	det_btn_row.add_child(collection_det_close_btn)
 
 func _is_cs() -> bool:
 	return str(game_options.get("language", "en")) == "cs"
@@ -2961,8 +2965,20 @@ func _open_card_collection_detail(entry: Dictionary) -> void:
 	else:
 		col_det_badge.text = ("UNLOCKED IN COLLECTION" if not _is_cs() else "ODEMČENO VE SBÍRCE") if unlocked else ("CHAINED (LOCKED) — Win campaign matches or visit Bazaar to unlock!" if not _is_cs() else "ZAMČENO V ŘETĚZECH — Vyhraj zápasy v kampani nebo navštiv Obchod!")
 	col_det_badge.add_theme_color_override("font_color", Color(0.46, 0.96, 0.62) if unlocked else Color(0.86, 0.62, 0.36))
+	if is_instance_valid(_explain_back_btn):
+		_explain_back_btn.text = _tr("← Back to Deck Builder", "← Zpět do Tvorby balíčku")
+		_explain_back_btn.visible = _explain_return_to_builder
 	col_det_desc.text = str(entry["desc"])
 	_open_animated_modal(collection_detail_modal)
+
+
+func _on_deck_builder_explain_card(card_key: String, is_power: bool) -> void:
+	_explain_return_to_builder = true
+	collection_tab_idx = 1 if is_power else 0
+	_rebuild_collection_view()
+	var found_v: Variant = _collection_entry_by_key.get(card_key, null)
+	if found_v is Dictionary and not (found_v as Dictionary).is_empty():
+		_open_card_collection_detail(found_v as Dictionary)
 
 func _make_pill_style(bg_col: Color, border_col: Color, bottom_lip: int = 4) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
@@ -3113,6 +3129,12 @@ func _rebuild_collection_view() -> void:
 			"desc": "%s\n\n%s\n%s: %s" % [str(pc["power_line"]), str(pc["desc"]), ("Třída" if cs else "Class"), str(cls_d["name"])],
 		})
 
+	_collection_entry_by_key.clear()
+	for ce_it in classic_entries:
+		_collection_entry_by_key[str(ce_it["key"])] = ce_it
+	for pe_it in power_entries:
+		_collection_entry_by_key[str(pe_it["key"])] = pe_it
+
 	if collection_tab_idx == 0 or collection_tab_idx == 1:
 		var all_48: Array[Dictionary] = []
 		all_48.append_array(classic_entries)
@@ -3253,6 +3275,41 @@ func _build_options_modal() -> void:
 			"high_fx":
 				game_options["high_fx"] = bool(value)
 				Catalog.save_options(game_options)
+				_refresh_options_ui(false)
+			"shadow_quality":
+				game_options["shadow_quality"] = clampi(int(value), 0, 2)
+				Catalog.save_options(game_options)
+				_refresh_options_ui(false)
+			"vsync":
+				var vs := bool(value)
+				game_options["vsync"] = vs
+				if DisplayServer.get_name() != "headless" and not ("--script" in OS.get_cmdline_args()):
+					DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED if vs else DisplayServer.VSYNC_DISABLED)
+				Catalog.save_options(game_options)
+				_refresh_options_ui(false)
+			"fps_cap":
+				var fc := int(value)
+				game_options["fps_cap"] = fc
+				Engine.max_fps = fc if fc > 0 else 0
+				Catalog.save_options(game_options)
+				_refresh_options_ui(false)
+			"camera_shake":
+				game_options["camera_shake"] = bool(value)
+				Catalog.save_options(game_options)
+				_refresh_options_ui(false)
+			"screen_vfx":
+				game_options["screen_vfx"] = bool(value)
+				Catalog.save_options(game_options)
+				_refresh_options_ui(false)
+			"music_volume":
+				game_options["music_volume"] = clampi(int(value), 0, 100)
+				Catalog.save_options(game_options)
+				_apply_audio_state()
+				_refresh_options_ui(false)
+			"ambient_volume":
+				game_options["ambient_volume"] = clampi(int(value), 0, 100)
+				Catalog.save_options(game_options)
+				_apply_audio_state()
 				_refresh_options_ui(false)
 			"game_pace":
 				game_options["game_pace"] = str(value)
@@ -5452,7 +5509,7 @@ func _build_3d_hud() -> void:
 	map_print_btn.add_theme_font_size_override("font_size", 16)
 	map_print_btn.pressed.connect(func():
 		_play_sfx("ui_click")
-		_apply_woodcut_mode(woodcut_mode + 1, true)
+		_apply_woodcut_mode(_next_visual_mode(woodcut_mode), true)
 	)
 	hbox.add_child(map_print_btn)
 
@@ -6984,18 +7041,28 @@ func _find_era_at_screen_pos(mouse_pos: Vector2) -> int:
 	return best_idx
 
 func _apply_woodcut_mode(mode_idx: int, sync_battle: bool = true) -> void:
-	woodcut_mode = posmod(mode_idx, 4)
+	var norm := posmod(mode_idx, 4)
+	if norm == 1:
+		norm = 2
+	woodcut_mode = norm
 	if map_woodcut_mat:
 		map_woodcut_mat.set_shader_parameter("print_mode", woodcut_mode)
 	if map_print_btn:
 		var labels := (
-			{0: "Dřevoryt", 1: "Sepie", 2: "Klasika", 3: "Liar's Bar"}
+			{0: "Dřevoryt Inkoust", 2: "3D", 3: "Ultra Detailní"}
 			if _is_cs() else
-			{0: "Woodcut", 1: "Sepia Print", 2: "Classic", 3: "Liar's Bar"}
+			{0: "Woodcut Ink", 2: "3D", 3: "Ultra Detailed"}
 		)
-		map_print_btn.text = str(labels.get(woodcut_mode, "Liar's Bar"))
+		map_print_btn.text = str(labels.get(woodcut_mode, "Ultra Detailed"))
 	if sync_battle and battle_3d and battle_3d.has_method("set_print_mode"):
 		battle_3d.set_print_mode(woodcut_mode)
+
+
+func _next_visual_mode(cur_mode: int) -> int:
+	var order: Array[int] = [0, 2, 3]
+	var norm := 2 if cur_mode == 1 else cur_mode
+	var idx := order.find(norm)
+	return order[(maxi(0, idx) + 1) % order.size()]
 
 func _refresh_map_ui_texts() -> void:
 	if map_btn_back:
@@ -7087,6 +7154,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if current_screen == ScreenState.SPLASH:
+		if event is InputEventMouseButton or event is InputEventKey:
+			if event.pressed and is_instance_valid(splash_intro_node):
+				splash_intro_node.call("skip_intro")
+				get_viewport().set_input_as_handled()
+				return
 		if (event is InputEventMouseButton and event.pressed) or (event is InputEventKey and event.pressed):
 			if not splash_skipped:
 				splash_skipped = true
@@ -7096,7 +7168,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F8 and current_screen == ScreenState.WORLD_3D:
 		_play_sfx("ui_click")
-		_apply_woodcut_mode(woodcut_mode + 1, true)
+		_apply_woodcut_mode(_next_visual_mode(woodcut_mode), true)
 		return
 
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
@@ -7235,11 +7307,12 @@ func _process(delta: float) -> void:
 			_update_battle_music_mix(delta)
 
 	if current_screen == ScreenState.SPLASH:
-		splash_time += delta
-		_update_splash_3d()
-		if splash_time >= 5.3 and not splash_skipped:
-			splash_skipped = true
-			_switch_to(ScreenState.MAIN_MENU)
+		if not is_instance_valid(splash_intro_node):
+			splash_time += delta
+			_update_splash_3d()
+			if splash_time >= 5.3 and not splash_skipped:
+				splash_skipped = true
+				_switch_to(ScreenState.MAIN_MENU)
 
 	elif current_screen == ScreenState.MAIN_MENU:
 		if is_instance_valid(mp_entry):

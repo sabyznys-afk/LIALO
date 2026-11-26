@@ -536,138 +536,138 @@ const SWORD_SKINS := [
 ]
 
 # ============================================================================
-# 10 BUYABLE & ACQUIRABLE 3D ACTIVE TABLETOP RELICS (Usable on Table in Duel!)
+# 10 BUYABLE & ACQUIRABLE HAND-DRAWN 3D TABLETOP RELICS (Usable on Table in Duel!)
 # ============================================================================
 const TABLE_RELICS := [
 	{
 		"id": "TRELIC_SOUL_BELL",
-		"name": "Soul-Severing Bell",
-		"name_cs": "Zvon rozetnutí duše",
-		"short": "SHATTER SHIELDS",
-		"short_cs": "ROZBIJE ŠTÍTY",
+		"name": "Graveyard Toll Bell",
+		"name_cs": "Hřbitovní zvonec",
+		"short": "RIVAL +2 & BREAK",
+		"short_cs": "SOUPEŘ +2 & PRŮRAZ",
 		"cost": 22,
 		"charges": 1,
 		"col": Color(0.24, 0.90, 1.0),
 		"glb": "res://assets/models/relics/TRELIC_SOUL_BELL.glb",
-		"desc": "TABLE RELIC (1×/duel): Rings a resonant shockwave that shatters all Rival Shields & drains -18 Rival pts.",
-		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Rozezní rázovou vlnu — zničí všechny soupeřovy štíty a sebere mu -18 bodů."
+		"desc": "TABLE RELIC (1×/duel): Cracked bronze bell — shatters Rival Shields & drains -18 Rival pts!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Prasklý bronzový zvonec — rozbije soupeřovy štíty a sebere mu -18 bodů!"
 	},
 	{
 		"id": "TRELIC_BLOOD_SEAL",
-		"name": "Blood-Ink Seal",
-		"name_cs": "Krvavá pečeť",
-		"short": "NEXT PLAY ×2",
-		"short_cs": "PŘÍŠTÍ TAH ×2",
+		"name": "Crimson Blood Goblet",
+		"name_cs": "Krvavý kalich",
+		"short": "SIPHON -18 & ×2",
+		"short_cs": "VYSAJE -18 & ×2",
 		"cost": 26,
 		"charges": 1,
 		"col": Color(0.96, 0.14, 0.24),
 		"glb": "res://assets/models/relics/TRELIC_BLOOD_SEAL.glb",
-		"desc": "TABLE RELIC (1×/duel): Stamps your next play with Crimson Resonance (×2.0 Score) & drains -10 Rival pts!",
-		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Tvůj příští tah má ×2.0 body a vysaje -10 bodů ze soupeře!"
+		"desc": "TABLE RELIC (1×/duel): Ornate ruby goblet — stamps next play ×2.0 Score & drains -10 Rival pts!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Zdobený rudý kalich — příští tah má ×2.0 body a vysaje -10 bodů!"
 	},
 	{
 		"id": "TRELIC_STAR_BOW",
-		"name": "Astral Astrolabe",
-		"name_cs": "Hvězdný astroláb",
-		"short": "REVEAL & PIERCE",
-		"short_cs": "ODHALENÍ + SALVA",
+		"name": "Arcane Slate Rune",
+		"name_cs": "Magická runa",
+		"short": "RUNE REVEAL +1♥",
+		"short_cs": "ODHALENÍ +1♥ DMG",
 		"cost": 24,
 		"charges": 1,
 		"col": Color(0.22, 0.88, 1.0),
 		"glb": "res://assets/models/relics/TRELIC_STAR_BOW.glb",
-		"desc": "TABLE RELIC (1×/duel): Fires a cyan star volley — reveals Rival's hand for 2 turns & deals 1 ♥ HP damage!",
-		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Vypálí salvu hvězdných šípů — odhalí soupeřovy karty na 2 tahy a ubere 1 ♥ HP!"
+		"desc": "TABLE RELIC (1×/duel): Carved arcane slate stone — reveals Rival hand for 2t & deals 1 ♥ HP strike!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Vyrytá břidlicová runa — odhalí soupeřovy karty na 2 kola a ubere 1 ♥ HP!"
 	},
 	{
 		"id": "TRELIC_ASH_GLASS",
-		"name": "Ashen Hourglass",
-		"name_cs": "Popelavé přesýpací hodiny",
-		"short": "RECHARGE +2 REDRAW",
-		"short_cs": "NABITÍ +2 VÝMĚNY",
+		"name": "Fate Hourglass",
+		"name_cs": "Přesýpací hodiny",
+		"short": "MAGE 2/2 +2 DRAW",
+		"short_cs": "MÁG 2/2 +2 VÝMĚNY",
 		"cost": 24,
 		"charges": 1,
 		"col": Color(0.74, 0.44, 1.0),
 		"glb": "res://assets/models/relics/TRELIC_ASH_GLASS.glb",
-		"desc": "TABLE RELIC (1×/duel): Rewinds fate — +2 free Redraws & instantly charges all Mage cards in hand to 2/2!",
-		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Vrátí čas — +2 výměny zdarma a okamžitě nabije všechny Mágy v ruce na 2/2!"
+		"desc": "TABLE RELIC (1×/duel): Brass hourglass of fate — +2 free Redraws & charges all Mages to 2/2!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Mosazné přesýpací hodiny — +2 výměny zdarma a nabije všechny Mágy na 2/2!"
 	},
 	{
 		"id": "TRELIC_WAR_HORN",
-		"name": "Templar War-Horn",
-		"name_cs": "Templářský válečný roh",
-		"short": "FORGE KNIGHT +2",
-		"short_cs": "UKOVE RYTÍŘE +2",
+		"name": "Tavern Ale Tankard",
+		"name_cs": "Krčmový korbel piva",
+		"short": "+2♥ ALE & SHIELD",
+		"short_cs": "+2♥ PIVO & ŠTÍTY",
 		"cost": 22,
 		"charges": 1,
-		"col": Color(0.68, 0.86, 1.0),
+		"col": Color(0.96, 0.72, 0.24),
 		"glb": "res://assets/models/relics/TRELIC_WAR_HORN.glb",
-		"desc": "TABLE RELIC (1×/duel): Forges your strongest card into a heavy metallic Knight & grants +2 Iron Shields!",
-		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Ukove tvou nejsilnější kartu na těžkého kovového Rytíře a přidá +2 Štíty!"
+		"desc": "TABLE RELIC (1×/duel): Foaming oak ale mug — grants +2 Iron Shields & fortifies a Knight card!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Zpěněný dubový korbel piva — přidá +2 Štíty a posílí kartu na Rytíře!"
 	},
 	{
 		"id": "TRELIC_HOLLOW_MASK",
-		"name": "Phantom Mask Shard",
-		"name_cs": "Střep masky přízraku",
-		"short": "-1♥ → WILD ×2",
-		"short_cs": "-1♥ → DIVOKÁ ×2",
+		"name": "Loaded Bone Dice",
+		"name_cs": "Cinknuté kostky",
+		"short": "HIGH MULT ×2.0",
+		"short_cs": "KOSTKY WILD ×2.0",
 		"cost": 30,
 		"charges": 1,
 		"col": Color(1.0, 0.22, 0.30),
 		"glb": "res://assets/models/relics/TRELIC_HOLLOW_MASK.glb",
-		"desc": "TABLE RELIC (1×/duel): Pay 1 ♥ HP to unleash Phantom Aura — your next card plays WILD on any suit at ×2.0 Score!",
-		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Obětuj 1 ♥ HP — tvoje příští karta je DIVOKÁ na jakoukoli barvu s ×2.0 body!"
+		"desc": "TABLE RELIC (1×/duel): Carved ivory dice (-1 ♥ HP) — next play becomes WILD on any suit at ×2.0 Mult!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Vyřezávané kostky (-1 ♥ HP) — příští tah je DIVOKÝ na vše s ×2.0 násobičem!"
 	},
 	{
 		"id": "TRELIC_CENSER",
-		"name": "Alchemist's Censer",
+		"name": "Alchemist's Ember Censer",
 		"name_cs": "Alchymistická kadidelnice",
-		"short": "MAGE 2/2 + PHIAL",
+		"short": "MAGE 2/2 + IGNIS",
 		"short_cs": "MÁG 2/2 + BAŇKA",
 		"cost": 25,
 		"charges": 1,
 		"col": Color(0.28, 0.96, 0.68),
 		"glb": "res://assets/models/relics/TRELIC_CENSER.glb",
-		"desc": "TABLE RELIC (1×/duel): Imbues a card in hand into a full-charge Mage (2/2) & refills +1 Hellfire Phial!",
-		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Promění kartu v ruce v plně nabitého Mága (2/2) a doplní +1 Ohnivou baňku!"
+		"desc": "TABLE RELIC (1×/duel): Hanging brass censer — turns 1 card into full-charge Mage (2/2) & +1 Hellfire Phial!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Mosazná kadidelnice — nabije kartu na Mága (2/2) a doplní +1 Ohnivou baňku!"
 	},
 	{
 		"id": "TRELIC_GOLD_SCALES",
-		"name": "Gilded Merchant Scales",
-		"name_cs": "Zlaté kupecké váhy",
+		"name": "Guild Coin Purse",
+		"name_cs": "Měšec kupce",
 		"short": "+22g & +1 CARD",
 		"short_cs": "+22g & +1 KARTA",
 		"cost": 20,
 		"charges": 1,
 		"col": Color(1.0, 0.84, 0.22),
 		"glb": "res://assets/models/relics/TRELIC_GOLD_SCALES.glb",
-		"desc": "TABLE RELIC (1×/duel): Mints +22 Florins immediately and draws +1 card directly into your hand!",
-		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Ihned vyrazí +22 Zlatých a lízne +1 kartu rovnou do ruky!"
+		"desc": "TABLE RELIC (1×/duel): Heavy merchant pouch — mints +22 Florins & draws +1 card immediately!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Naditý měšec zlaťáků — vyrazí +22 Zlatých a ihned lízne +1 kartu!"
 	},
 	{
 		"id": "TRELIC_IRON_CHAIN",
-		"name": "Executioner's Chain",
-		"name_cs": "Katovský řetěz",
-		"short": "STUN RIVAL +14",
-		"short_cs": "ZASTAVÍ SOUPEŘE",
+		"name": "Executioner's Whetstone",
+		"name_cs": "Brousek na čepel",
+		"short": "SHARP +2 DRAW",
+		"short_cs": "OSTŘÍ +14 & +2",
 		"cost": 28,
 		"charges": 1,
 		"col": Color(0.46, 0.84, 1.0),
 		"glb": "res://assets/models/relics/TRELIC_IRON_CHAIN.glb",
-		"desc": "TABLE RELIC (1×/duel): Binds the Rival in iron chains — forces Rival +2 Draw & adds +14 pts immediately!",
-		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Spoutá soupeře řetězy — donutí ho líznout +2 karty a ihned přidá +14 bodů!"
+		"desc": "TABLE RELIC (1×/duel): Iron whetstone — sharpens your strike (+14 pts) & forces Rival +2 Draw!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Katovský brousek — nabrousí úder (+14 b.) a donutí soupeře líznout +2!"
 	},
 	{
 		"id": "TRELIC_PHOENIX_BOX",
-		"name": "Phoenix Reliquary",
-		"name_cs": "Relikviář Fénixe",
+		"name": "Phoenix Ember Reliquary",
+		"name_cs": "Fénixův relikviář",
 		"short": "+2♥ HEAL & PURGE",
 		"short_cs": "+2♥ LÉČENÍ + ČISTKA",
 		"cost": 28,
 		"charges": 1,
 		"col": Color(1.0, 0.52, 0.16),
 		"glb": "res://assets/models/relics/TRELIC_PHOENIX_BOX.glb",
-		"desc": "TABLE RELIC (1×/duel): Opens blazing wings — restores +2 ♥ HP, clears pending Draw/Ace curses & adds +16 pts!",
-		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Otevře ohnivý relikviář — vyléčí +2 ♥ HP, zruší kletby a přidá +16 bodů!"
+		"desc": "TABLE RELIC (1×/duel): Blazing phoenix chest — restores +2 ♥ HP, clears curses & adds +16 pts!",
+		"desc_cs": "RELIKVIE NA STŮL (1×/duel): Ohnivý relikviář Fénixe — vyléčí +2 ♥ HP, zruší kletby a přidá +16 bodů!"
 	},
 ]
 
@@ -1278,9 +1278,16 @@ static func get_default_options() -> Dictionary:
 	return {
 		"language": "en",
 		"sfx_volume": 85,
+		"music_volume": 75,
+		"ambient_volume": 70,
 		"muted": false,
-		"visual_mode": 3, # 3=Liar's Bar Cinematic PBR, 0=Woodcut, 1=Sepia, 2=Clean
+		"visual_mode": 3, # 0=Woodcut Ink, 2=3D, 3=Ultra Detailed
 		"high_fx": true,
+		"shadow_quality": 2, # 0=Off, 1=Soft, 2=Sharp
+		"vsync": true,
+		"fps_cap": 0, # 0=Uncapped, 60, 120
+		"camera_shake": true,
+		"screen_vfx": true,
 		"cam_sensitivity": 1.0,
 		"mp_freelook_enabled": true,
 		"mp_freelook_sensitivity": 1.0,
@@ -1298,9 +1305,19 @@ static func load_options() -> Dictionary:
 	var l := str(cfg.get_value("general", "language", "en"))
 	opts["language"] = l if (l == "en" or l == "cs") else "en"
 	opts["sfx_volume"] = clampi(int(cfg.get_value("audio", "sfx_volume", 85)), 0, 100)
+	opts["music_volume"] = clampi(int(cfg.get_value("audio", "music_volume", 75)), 0, 100)
+	opts["ambient_volume"] = clampi(int(cfg.get_value("audio", "ambient_volume", 70)), 0, 100)
 	opts["muted"] = bool(cfg.get_value("audio", "muted", false))
-	opts["visual_mode"] = clampi(int(cfg.get_value("video", "visual_mode", 3)), 0, 3)
+	var vm := clampi(int(cfg.get_value("video", "visual_mode", 3)), 0, 3)
+	if vm == 1:
+		vm = 2
+	opts["visual_mode"] = vm
 	opts["high_fx"] = bool(cfg.get_value("video", "high_fx", true))
+	opts["shadow_quality"] = clampi(int(cfg.get_value("video", "shadow_quality", 2)), 0, 2)
+	opts["vsync"] = bool(cfg.get_value("video", "vsync", true))
+	opts["fps_cap"] = int(cfg.get_value("video", "fps_cap", 0))
+	opts["camera_shake"] = bool(cfg.get_value("video", "camera_shake", true))
+	opts["screen_vfx"] = bool(cfg.get_value("video", "screen_vfx", true))
 	opts["cam_sensitivity"] = clampf(float(cfg.get_value("controls", "cam_sensitivity", 1.0)), 0.4, 2.2)
 	opts["mp_freelook_enabled"] = bool(cfg.get_value("controls", "mp_freelook_enabled", true))
 	opts["mp_freelook_sensitivity"] = clampf(float(cfg.get_value("controls", "mp_freelook_sensitivity", 1.0)), 0.4, 2.0)
@@ -1318,9 +1335,19 @@ static func save_options(opts: Dictionary) -> void:
 	cfg.set_value("general", "turn_timer_sec", clampi(int(opts.get("turn_timer_sec", 35)), 30, 45))
 	cfg.set_value("general", "tutorial_done", bool(opts.get("tutorial_done", false)))
 	cfg.set_value("audio", "sfx_volume", clampi(int(opts.get("sfx_volume", 85)), 0, 100))
+	cfg.set_value("audio", "music_volume", clampi(int(opts.get("music_volume", 75)), 0, 100))
+	cfg.set_value("audio", "ambient_volume", clampi(int(opts.get("ambient_volume", 70)), 0, 100))
 	cfg.set_value("audio", "muted", bool(opts.get("muted", false)))
-	cfg.set_value("video", "visual_mode", clampi(int(opts.get("visual_mode", 3)), 0, 3))
+	var vm := clampi(int(opts.get("visual_mode", 3)), 0, 3)
+	if vm == 1:
+		vm = 2
+	cfg.set_value("video", "visual_mode", vm)
 	cfg.set_value("video", "high_fx", bool(opts.get("high_fx", true)))
+	cfg.set_value("video", "shadow_quality", clampi(int(opts.get("shadow_quality", 2)), 0, 2))
+	cfg.set_value("video", "vsync", bool(opts.get("vsync", true)))
+	cfg.set_value("video", "fps_cap", int(opts.get("fps_cap", 0)))
+	cfg.set_value("video", "camera_shake", bool(opts.get("camera_shake", true)))
+	cfg.set_value("video", "screen_vfx", bool(opts.get("screen_vfx", true)))
 	cfg.set_value("video", "fullscreen", bool(opts.get("fullscreen", true)))
 	cfg.set_value("controls", "cam_sensitivity", clampf(float(opts.get("cam_sensitivity", 1.0)), 0.4, 2.2))
 	cfg.set_value("controls", "mp_freelook_enabled", bool(opts.get("mp_freelook_enabled", true)))
@@ -1386,20 +1413,20 @@ static func sanitize_profile(prof: Dictionary) -> Dictionary:
 			clean_ce[ck] = normalize_card_class(str(raw_ce[ck_v]))
 		prof["card_editions"] = clean_ce
 
-	# Migrate legacy deck IDs ("reaper" -> "obsidian", "quincy" -> "astral")
-	var legacy_deck_map := {"reaper": "obsidian", "quincy": "astral"}
+	# Migrate removed/legacy deck IDs to valid 5-deck set ("klasic", "antika", "rim", "stredovek", "objavy")
+	const VALID_DECK_IDS := ["klasic", "antika", "rim", "stredovek", "objavy"]
 	var sel_deck := str(prof.get("selected_deck", "klasic"))
-	if legacy_deck_map.has(sel_deck):
-		prof["selected_deck"] = legacy_deck_map[sel_deck]
+	if not (sel_deck in VALID_DECK_IDS):
+		prof["selected_deck"] = "klasic"
 	var raw_ud = prof.get("unlocked_decks", [])
 	if raw_ud is Array:
 		var clean_ud: Array = []
 		for did_v in raw_ud:
 			var did := str(did_v)
-			if legacy_deck_map.has(did):
-				did = legacy_deck_map[did]
-			if not (did in clean_ud):
+			if (did in VALID_DECK_IDS) and not (did in clean_ud):
 				clean_ud.append(did)
+		if clean_ud.is_empty():
+			clean_ud = VALID_DECK_IDS.duplicate()
 		prof["unlocked_decks"] = clean_ud
 
 	# Sanitize meta-collection unlock arrays (ensure starters + valid non-archived IDs)

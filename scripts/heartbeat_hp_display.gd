@@ -10,6 +10,7 @@ signal heartbeat_pulsed(bpm: float, hp_ratio: float, is_boss: bool)
 signal hp_depleted(is_rival: bool, is_boss: bool)
 
 const HEART_2D_SHADER := preload("res://shaders/heart_2d_living.gdshader")
+const LialoIcons := preload("res://scripts/ui/lialo_icons.gd")
 const PATH_HEART_PLAYER_PNG := "res://assets/ui/heart_2d_player.png"
 const PATH_HEART_BOSS_PNG := "res://assets/ui/heart_2d_boss.png"
 const PATH_HEART_CRACKS_PNG := "res://assets/ui/heart_2d_cracks.png"
@@ -46,6 +47,8 @@ var _crown_plaque: PanelContainer
 var _crown_lbl: Label
 var _hp_plaque: PanelContainer
 var _hp_lbl: Label
+var _shield_box: HBoxContainer
+var _shield_lbl: Label
 var _flash_overlay: ColorRect
 
 # Runtime animation / pulse / mote particle state
@@ -262,9 +265,16 @@ func _build_2d_overlay() -> void:
 	_crown_plaque.visible = _is_boss
 	add_child(_crown_plaque)
 
+	var cr_hb := HBoxContainer.new()
+	cr_hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	cr_hb.add_theme_constant_override("separation", 3)
+	cr_hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_crown_plaque.add_child(cr_hb)
+	cr_hb.add_child(LialoIcons.make_icon_rect("crown", 11, Color(1.0, 0.86, 0.38)))
+
 	_crown_lbl = Label.new()
 	_crown_lbl.name = "BossCrownLabel"
-	_crown_lbl.text = "👑 BOSS"
+	_crown_lbl.text = "BOSS"
 	_crown_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_crown_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_crown_lbl.add_theme_font_override("font", _disp_font)
@@ -272,12 +282,19 @@ func _build_2d_overlay() -> void:
 	_crown_lbl.add_theme_color_override("font_color", Color(1.0, 0.88, 0.44))
 	_crown_lbl.add_theme_color_override("font_outline_color", Color(0.06, 0.015, 0.02))
 	_crown_lbl.add_theme_constant_override("outline_size", 4)
-	_crown_plaque.add_child(_crown_lbl)
+	cr_hb.add_child(_crown_lbl)
 
 	_hp_plaque = PanelContainer.new()
 	_hp_plaque.name = "HpCrestPlaque"
 	_hp_plaque.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_hp_plaque)
+
+	var hp_hb := HBoxContainer.new()
+	hp_hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	hp_hb.add_theme_constant_override("separation", 4)
+	hp_hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hp_plaque.add_child(hp_hb)
+	hp_hb.add_child(LialoIcons.make_icon_rect("heart", 12, Color(1.0, 0.34, 0.38)))
 
 	_hp_lbl = Label.new()
 	_hp_lbl.name = "HpValueLabel"
@@ -289,7 +306,24 @@ func _build_2d_overlay() -> void:
 	_hp_lbl.add_theme_color_override("font_color", Color(1.0, 0.94, 0.84))
 	_hp_lbl.add_theme_color_override("font_outline_color", Color(0.05, 0.01, 0.02))
 	_hp_lbl.add_theme_constant_override("outline_size", 5)
-	_hp_plaque.add_child(_hp_lbl)
+	hp_hb.add_child(_hp_lbl)
+
+	_shield_box = HBoxContainer.new()
+	_shield_box.name = "HpShieldBox"
+	_shield_box.add_theme_constant_override("separation", 2)
+	_shield_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_shield_box.visible = false
+	_shield_box.add_child(LialoIcons.make_icon_rect("shield", 13, Color(0.45, 0.90, 1.0)))
+	_shield_lbl = Label.new()
+	_shield_lbl.text = "0"
+	_shield_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_shield_lbl.add_theme_font_override("font", _disp_font)
+	_shield_lbl.add_theme_font_size_override("font_size", 12)
+	_shield_lbl.add_theme_color_override("font_color", Color(0.56, 0.94, 1.0))
+	_shield_lbl.add_theme_color_override("font_outline_color", Color(0.02, 0.06, 0.10))
+	_shield_lbl.add_theme_constant_override("outline_size", 4)
+	_shield_box.add_child(_shield_lbl)
+	hp_hb.add_child(_shield_box)
 
 
 func _apply_frame_metrics() -> void:
@@ -434,11 +468,13 @@ func _refresh_labels() -> void:
 	if not is_instance_valid(_hp_lbl):
 		return
 	var txt := "%d / %d" % [_cur_hp, _max_hp]
-	if _shields > 0:
-		txt += " 🛡%d" % _shields
 	if not _status_tag.is_empty():
 		txt += " " + _status_tag
 	_hp_lbl.text = txt
+	if is_instance_valid(_shield_box):
+		_shield_box.visible = (_shields > 0)
+	if is_instance_valid(_shield_lbl):
+		_shield_lbl.text = "%d" % _shields
 
 	var ratio := get_hp_ratio()
 	var col := Color(1.0, 0.94, 0.84)
@@ -535,7 +571,9 @@ func _draw() -> void:
 	var base_rad := minf(sz.x, sz.y) * (0.44 if _is_boss else 0.42)
 	var ratio := get_hp_ratio()
 
-	# Localized low-HP crimson heartbeat aura ring (strictly confined around this heart widget)
+	# Medieval crest ring & localized low-HP crimson heartbeat aura around this heart emblem
+	draw_circle(center, base_rad * 0.94, Color(0.08, 0.03, 0.04, 0.56))
+	draw_arc(center, base_rad * 0.94, 0.0, TAU, 36, _boss_accent_col if _is_boss else Color(0.76, 0.56, 0.24, 0.72), 2.0, true)
 	if _cur_hp > 0 and ratio < 0.75:
 		var low_hp_t := clampf((0.75 - ratio) / 0.75, 0.0, 1.0)
 		var aura_alpha := _pulse_thump * lerpf(0.24, 0.58, low_hp_t)

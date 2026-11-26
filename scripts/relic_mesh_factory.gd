@@ -5,6 +5,29 @@ extends RefCounted
 
 const Toon = preload("res://scripts/toon_style.gd")
 const BlenderVfx = preload("res://scripts/blender_vfx_animator.gd")
+const OUTLINE_SHADER := preload("res://shaders/outline.gdshader")
+
+
+static func _apply_woodcut_ink_outline(node: Node, thickness: float = 0.005) -> void:
+	var out_mat := ShaderMaterial.new()
+	out_mat.shader = OUTLINE_SHADER
+	out_mat.set_shader_parameter("thickness", thickness)
+	out_mat.set_shader_parameter("outline_color", Color(0.03, 0.02, 0.02, 1.0))
+	var stack: Array[Node] = [node]
+	while not stack.is_empty():
+		var cur: Node = stack.pop_back()
+		if cur is MeshInstance3D:
+			var mi := cur as MeshInstance3D
+			var mat := mi.material_override as Material
+			if mat == null and mi.mesh != null and mi.mesh.get_surface_count() > 0:
+				var sm := mi.mesh.surface_get_material(0)
+				if sm != null:
+					mat = sm.duplicate()
+					mi.material_override = mat
+			if mat != null:
+				mat.next_pass = out_mat
+		for ch in cur.get_children():
+			stack.append(ch)
 
 static func _add_part(parent: Node3D, mesh: Mesh, pos: Vector3, rot_deg: Vector3, mat: Material, scale_v: Vector3 = Vector3.ONE) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -116,9 +139,102 @@ static func build_relic_3d_mesh(rel_id: String, accent_col: Color) -> Node3D:
 	sp.position = Vector3(0.0, 0.020, 0.0)
 	root.add_child(sp)
 
+	# First check our new Hand-Drawn Sculpted 10 Tabletop Relics (with ink outline!)
+	var handled_hand_drawn := true
+	match rel_id:
+		"TRELIC_WAR_HORN":
+			# Tavern Ale Tankard (oak staves, brass hoops, overflowing sculpted foam + mug handle)
+			_add_part(sp, _cyl(0.026, 0.031, 0.078, 16), Vector3(-0.004, 0.039, 0.0), Vector3.ZERO, wood)
+			for hy in [0.016, 0.062]:
+				_add_part(sp, _cyl(0.0315, 0.0315, 0.009, 16), Vector3(-0.004, hy, 0.0), Vector3.ZERO, brass)
+			_add_part(sp, _tor(0.015, 0.022, 14), Vector3(0.031, 0.040, 0.0), Vector3(0.0, 0.0, 90.0), wood)
+			_add_part(sp, _box(Vector3(0.018, 0.024, 0.005)), Vector3(-0.004, 0.040, 0.030), Vector3.ZERO, brass)
+			_add_part(sp, _cyl(0.024, 0.024, 0.012, 16), Vector3(-0.004, 0.078, 0.0), Vector3.ZERO, ivory)
+			for fm in [[0.0, 0.0, 0.017], [-0.012, 0.009, 0.013], [0.012, -0.008, 0.012], [0.005, 0.014, 0.011], [0.020, 0.004, 0.008]]:
+				_add_part(sp, _sph(float(fm[2])), Vector3(-0.004 + float(fm[0]), 0.083, float(fm[1])), Vector3.ZERO, ivory)
+		"TRELIC_HOLLOW_MASK":
+			# Loaded Bone Dice (angled twin ivory dice with carved ink pips + brass corner inlay)
+			var bone_mat := Toon.pbr(Color(0.94, 0.88, 0.74), "", 0.40, 0.04)
+			for di in range(2):
+				var dp := Vector3(-0.014 + float(di) * 0.028, 0.024 + float(di) * 0.026, float(di) * 0.008 - 0.004)
+				var dr := Vector3(14.0 * float(di), 22.0 + float(di) * 35.0, -12.0 * float(di))
+				var die := _add_part(sp, _box(Vector3(0.032, 0.032, 0.032)), dp, dr, bone_mat)
+				for pp in [[-0.008, -0.008], [0.008, 0.008], [0.0, 0.0], [-0.008, 0.008], [0.008, -0.008]]:
+					_add_part(die, _cyl(0.0036, 0.0036, 0.002, 8), Vector3(float(pp[0]), 0.0165, float(pp[1])), Vector3.ZERO, glow)
+				for fp in [[-0.007, -0.007], [0.007, 0.007]]:
+					_add_part(die, _cyl(0.0036, 0.0036, 0.002, 8), Vector3(float(fp[0]), float(fp[1]), 0.0165), Vector3(90.0, 0.0, 0.0), dark)
+		"TRELIC_STAR_BOW":
+			# Arcane Slate Rune (cracked monolith + engraved glowing rune sigil + 3 floating shard stones)
+			_add_part(sp, _box(Vector3(0.046, 0.082, 0.022)), Vector3(0.0, 0.044, 0.0), Vector3(-6.0, 12.0, 4.0), stone)
+			_add_part(sp, _prism(Vector3(0.046, 0.028, 0.022)), Vector3(0.0, 0.098, -0.004), Vector3(-6.0, 12.0, 4.0), stone)
+			_add_part(sp, _box(Vector3(0.008, 0.056, 0.025)), Vector3(0.0, 0.050, 0.0), Vector3(-6.0, 12.0, 4.0), azure_glow)
+			_add_part(sp, _box(Vector3(0.030, 0.008, 0.025)), Vector3(0.0, 0.060, 0.0), Vector3(-6.0, 12.0, 32.0), azure_glow)
+			_add_part(sp, _tor(0.034, 0.038, 20), Vector3(0.0, 0.055, 0.0), Vector3(72.0, 0.0, 16.0), azure_glow)
+			for si in range(3):
+				var sa := float(si) * (TAU / 3.0)
+				_add_part(sp, _prism(Vector3(0.014, 0.024, 0.012)), Vector3(cos(sa) * 0.038, 0.058 + float(si) * 0.012, sin(sa) * 0.038), Vector3(12.0, rad_to_deg(sa), 0.0), stone)
+		"TRELIC_BLOOD_SEAL":
+			# Crimson Blood Goblet (ornate brass chalice + ruby gems + brimming crimson liquid + ink wax seal)
+			_add_part(sp, _cyl(0.010, 0.028, 0.014, 14), Vector3(0.0, 0.007, 0.0), Vector3.ZERO, brass)
+			_add_part(sp, _cyl(0.007, 0.008, 0.036, 12), Vector3(0.0, 0.030, 0.0), Vector3.ZERO, brass)
+			_add_part(sp, _cyl(0.032, 0.014, 0.044, 16), Vector3(0.0, 0.068, 0.0), Vector3.ZERO, brass)
+			_add_part(sp, _cyl(0.028, 0.028, 0.006, 16), Vector3(0.0, 0.088, 0.0), Vector3.ZERO, wax)
+			for gi in range(4):
+				var ga := float(gi) * (PI * 0.5)
+				_add_part(sp, _sph(0.006), Vector3(cos(ga) * 0.026, 0.072, sin(ga) * 0.026), Vector3.ZERO, glow)
+		"TRELIC_IRON_CHAIN":
+			# Executioner's Whetstone (timber cradle + angled bevel whetstone + crossed sharpening dagger + sparks)
+			_add_part(sp, _box(Vector3(0.064, 0.014, 0.040)), Vector3(0.0, 0.007, 0.0), Vector3.ZERO, walnut)
+			_add_part(sp, _box(Vector3(0.058, 0.020, 0.032)), Vector3(0.0, 0.026, 0.0), Vector3(8.0, 12.0, -14.0), stone)
+			_add_part(sp, _box(Vector3(0.010, 0.066, 0.004)), Vector3(-0.008, 0.056, 0.0), Vector3(0.0, 0.0, 34.0), steel)
+			_add_part(sp, _box(Vector3(0.026, 0.006, 0.008)), Vector3(-0.024, 0.032, 0.0), Vector3(0.0, 0.0, 34.0), brass)
+			_add_part(sp, _sph(0.005), Vector3(0.012, 0.042, 0.008), Vector3.ZERO, amber_glow)
+		"TRELIC_ASH_GLASS":
+			# Fate Hourglass (brass columns + twin glass bulbs + glowing golden sand cones)
+			for py in [0.006, 0.092]:
+				_add_part(sp, _cyl(0.032, 0.032, 0.008, 12), Vector3(0.0, py, 0.0), Vector3.ZERO, brass)
+			for cx in [-0.022, 0.022]:
+				_add_part(sp, _cyl(0.003, 0.003, 0.086, 8), Vector3(cx, 0.049, 0.0), Vector3.ZERO, brass)
+			_add_part(sp, _cyl(0.022, 0.004, 0.036, 14), Vector3(0.0, 0.070, 0.0), Vector3.ZERO, azure_glow)
+			_add_part(sp, _cyl(0.004, 0.022, 0.036, 14), Vector3(0.0, 0.028, 0.0), Vector3.ZERO, glow)
+		"TRELIC_GOLD_SCALES":
+			# Guild Coin Purse (bulging stitched leather pouch + brass cord + overflowing stacks of gold coins)
+			_add_part(sp, _sph(0.030, 0.044), Vector3(-0.014, 0.024, 0.0), Vector3.ZERO, leather)
+			_add_part(sp, _tor(0.012, 0.016, 12), Vector3(-0.014, 0.046, 0.0), Vector3.ZERO, brass)
+			_add_part(sp, _cyl(0.018, 0.011, 0.018, 10), Vector3(-0.014, 0.056, 0.0), Vector3.ZERO, leather)
+			for ci in range(8):
+				_add_part(sp, _cyl(0.010, 0.010, 0.004, 12), Vector3(0.018 + float(ci % 2) * 0.012, 0.006 + float(ci / 2) * 0.0045, -0.006 + float(ci % 3) * 0.006), Vector3(0.0, float(ci) * 24.0, 0.0), brass)
+		"TRELIC_SOUL_BELL":
+			# Graveyard Toll Bell (oak gallows post + cracked bronze bell + glowing soul clapper)
+			_add_part(sp, _box(Vector3(0.010, 0.096, 0.010)), Vector3(-0.024, 0.048, 0.0), Vector3.ZERO, walnut)
+			_add_part(sp, _box(Vector3(0.054, 0.010, 0.010)), Vector3(0.0, 0.094, 0.0), Vector3.ZERO, walnut)
+			_add_part(sp, _cyl(0.016, 0.028, 0.044, 14), Vector3(0.010, 0.060, 0.0), Vector3.ZERO, copper)
+			_add_part(sp, _tor(0.026, 0.030, 14), Vector3(0.010, 0.040, 0.0), Vector3.ZERO, brass)
+			_add_part(sp, _sph(0.009), Vector3(0.010, 0.034, 0.0), Vector3.ZERO, azure_glow)
+		"TRELIC_CENSER":
+			# Alchemist's Ember Censer (brass tripod hook + perforated incense sphere + glowing coals)
+			_add_part(sp, _cyl(0.003, 0.004, 0.104, 8), Vector3(-0.022, 0.052, 0.0), Vector3.ZERO, iron)
+			_add_part(sp, _box(Vector3(0.044, 0.006, 0.006)), Vector3(-0.004, 0.102, 0.0), Vector3.ZERO, iron)
+			_add_part(sp, _cyl(0.002, 0.002, 0.032, 6), Vector3(0.014, 0.086, 0.0), Vector3.ZERO, brass)
+			_add_part(sp, _sph(0.024, 0.028), Vector3(0.014, 0.054, 0.0), Vector3.ZERO, brass)
+			_add_part(sp, _sph(0.020, 0.020), Vector3(0.014, 0.054, 0.0), Vector3.ZERO, glow)
+		"TRELIC_PHOENIX_BOX":
+			# Phoenix Ember Reliquary (open brass chest + blazing crimson plume crest)
+			_add_part(sp, _box(Vector3(0.058, 0.028, 0.038)), Vector3(0.0, 0.016, 0.0), Vector3.ZERO, walnut)
+			_add_part(sp, _box(Vector3(0.060, 0.014, 0.036)), Vector3(0.0, 0.044, -0.018), Vector3(-38.0, 0.0, 0.0), copper)
+			_add_part(sp, _sph(0.016, 0.024), Vector3(0.0, 0.034, 0.002), Vector3.ZERO, amber_glow)
+			_add_part(sp, _prism(Vector3(0.028, 0.044, 0.012)), Vector3(0.0, 0.060, 0.004), Vector3(0.0, 15.0, 0.0), amber_glow)
+		_:
+			handled_hand_drawn = false
+
+	if handled_hand_drawn:
+		_apply_woodcut_ink_outline(root, 0.0045)
+		return root
+
 	var glb_rel := _load_glb("res://assets/models/relics/%s.glb" % rel_id)
 	if glb_rel != null:
 		sp.add_child(glb_rel)
+		_apply_woodcut_ink_outline(root, 0.0045)
 		root.set_meta("blender_glb", true)
 		return root
 
@@ -512,7 +628,7 @@ static func build_medieval_shop_item_3d(emblem: String, col: Color) -> Node3D:
 	return root
 
 
-static func build_sword_3d_mesh(skin_id: String, _sk: Dictionary = {}) -> Node3D:
+static func build_sword_3d_mesh(skin_id: String, sk: Dictionary = {}) -> Node3D:
 	var root := Node3D.new()
 	var glb_sw := _load_glb("res://assets/models/swords/%s.glb" % skin_id)
 	if glb_sw == null:
@@ -521,6 +637,27 @@ static func build_sword_3d_mesh(skin_id: String, _sk: Dictionary = {}) -> Node3D
 		glb_sw.name = "HeroSwordGLB"
 		root.add_child(glb_sw)
 		root.set_meta("blender_glb", true)
+		_apply_woodcut_ink_outline(root, 0.006)
+		return root
+
+	# Detailed sculpted woodcut Oathblade fallback (NEVER returns an empty node!)
+	var blade_col: Color = sk.get("blade_col", Color(0.80, 0.84, 0.90))
+	var guard_col: Color = sk.get("guard_col", Color(0.88, 0.68, 0.24))
+	var grip_col: Color = sk.get("grip_col", Color(0.28, 0.14, 0.10))
+	var trail_col: Color = sk.get("trail_col", Color(0.95, 0.28, 0.28))
+
+	var blade_mat := Toon.pbr(blade_col, "", 0.24, 0.90)
+	var guard_mat := Toon.pbr(guard_col, "", 0.28, 0.88)
+	var grip_mat := Toon.pbr(grip_col, "res://assets/gloves/glove_leather.png", 0.68, 0.04)
+	var gem_mat := Toon.pbr(trail_col, "", 0.14, 0.20, Vector2.ONE, trail_col, 1.6)
+
+	_add_part(root, _box(Vector3(0.046, 0.56, 0.012)), Vector3(0.0, 0.34, 0.0), Vector3.ZERO, blade_mat)
+	_add_part(root, _prism(Vector3(0.046, 0.14, 0.012)), Vector3(0.0, 0.69, 0.0), Vector3.ZERO, blade_mat)
+	_add_part(root, _box(Vector3(0.24, 0.024, 0.030)), Vector3(0.0, 0.05, 0.0), Vector3.ZERO, guard_mat)
+	_add_part(root, _cyl(0.015, 0.018, 0.18, 10), Vector3(0.0, -0.05, 0.0), Vector3.ZERO, grip_mat)
+	_add_part(root, _sph(0.026), Vector3(0.0, -0.155, 0.0), Vector3.ZERO, guard_mat)
+	_add_part(root, _sph(0.014), Vector3(0.0, 0.05, 0.016), Vector3.ZERO, gem_mat)
+	_apply_woodcut_ink_outline(root, 0.006)
 	return root
 
 

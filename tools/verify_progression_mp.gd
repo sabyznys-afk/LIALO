@@ -344,8 +344,61 @@ func _run_all() -> void:
 		root.add_child(dai2)
 		var items_arr: Array = dai2.get("_all_items")
 		_assert(not items_arr.is_empty() and str((items_arr[0] as Dictionary).get("kind", "")) == "power_card_fpv" and bool((items_arr[0] as Dictionary).get("pinned", false)), "DevAssetInspector pins SPEC_STORM 1st-person showcase at index 0")
+		var pinned_ids: Array[String] = []
+		for pi in range(mini(4, items_arr.size())):
+			var pit := items_arr[pi] as Dictionary
+			if str(pit.get("kind", "")) == "power_card_fpv" and bool(pit.get("pinned", false)):
+				pinned_ids.append(str(pit.get("card_id", "")))
+		_assert(pinned_ids == ["SPEC_STORM", "SPEC_VAMPIRE", "SPEC_PHOENIX", "SPEC_CHRONOS"], "DevAssetInspector pins all 4 hand-drawn Power Cards #0..#3")
 		dai2.queue_free()
-	print("  OK 11: v0.194 13-Point Overhaul & SPEC_STORM 1st-person showcase DoD checks verified")
+	print("  OK 11: v0.194 13-Point Overhaul & 4x Power Card 1st-person showcases verified")
+
+	# 12. v0.195 Overhaul DoD Checks
+	var FujiraIntroScript = load("res://scripts/ui/fujira_studio_intro.gd")
+	_assert(FujiraIntroScript != null, "FujiraStudioIntro compiles cleanly")
+	if FujiraIntroScript != null:
+		var fi := FujiraIntroScript.new() as Control
+		root.add_child(fi)
+		var fi_done := [false]
+		fi.connect("intro_finished", func(): fi_done[0] = true)
+		fi.call("start_intro", false, false)
+		fi.call("skip_intro")
+		_assert(fi_done[0], "FujiraStudioIntro start_intro/skip_intro emits intro_finished")
+		fi.queue_free()
+	var fi_src := FileAccess.get_file_as_string("res://scripts/ui/fujira_studio_intro.gd")
+	_assert(not ("LIALO" in fi_src), "FujiraStudioIntro contains zero LIALO-specific strings")
+
+	_assert(DeckBuilderPanelScript.CARD_BACKS.size() == 5, "DeckBuilderPanel trims CARD_BACKS to 5 decks")
+	_assert(DeckBuilderPanelScript.CLASS_CYCLE_RANKS.size() == 4, "DeckBuilderPanel restricts class infusion to 4 ranks above 10 (D,H,K,E)")
+	var dbp_v195 := DeckBuilderPanelScript.new() as Control
+	_assert(dbp_v195.has_signal("explain_card_requested"), "DeckBuilderPanel exposes explain_card_requested signal")
+	dbp_v195.free()
+
+	var def_opts_v195 := Catalog.get_default_options()
+	for opt_k in ["music_volume", "ambient_volume", "shadow_quality", "vsync", "fps_cap", "camera_shake", "screen_vfx"]:
+		_assert(def_opts_v195.has(opt_k), "Catalog options exposes %s" % opt_k)
+	var old_deck_prof := Catalog.get_default_profile()
+	old_deck_prof["selected_deck"] = "prohibicia"
+	Catalog.sanitize_profile(old_deck_prof)
+	_assert(str(old_deck_prof.get("selected_deck", "")) == "klasic", "sanitize_profile migrates removed deck IDs back to klasic")
+
+	var hp_src := FileAccess.get_file_as_string("res://scripts/heartbeat_hp_display.gd")
+	_assert(not ("👑" in hp_src) and not ("🛡" in hp_src), "HeartbeatHpDisplay contains zero Unicode crown/shield emojis")
+
+	var RelicMeshScript = load("res://scripts/relic_mesh_factory.gd")
+	_assert(RelicMeshScript != null, "RelicMeshFactory loads cleanly")
+	if RelicMeshScript != null:
+		var sw_mesh: Node3D = RelicMeshScript.call("build_sword_3d_mesh", "SWORD_IRON")
+		_assert(sw_mesh != null and sw_mesh.get_child_count() > 0, "RelicMeshFactory builds Oathblade 3D sword mesh (no empty fallback)")
+		if sw_mesh != null:
+			sw_mesh.free()
+
+	var mpl_room := MpLobbyOverlay.new()
+	root.add_child(mpl_room)
+	mpl_room.call("_select_match_mode", MpConfig.MODE_PRIVATE)
+	_assert(bool(mpl_room.get("_in_match_room")), "MpLobbyOverlay enters native Match Room on mode selection")
+	mpl_room.queue_free()
+	print("  OK 12: v0.195 Universal Fujira Intro, 4x Power VFX, 5 Decks, Spirko/Explain, Relics, Battle HUD, Settings & MP Match Room verified")
 
 	if _failures.is_empty():
 		print("=== VERIFY PROGRESSION & MP: ALL CHECKS PASSED ===")
