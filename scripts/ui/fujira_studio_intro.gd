@@ -278,20 +278,69 @@ func _build_scene() -> void:
 func _build_all_black_bird() -> void:
 	_bird_root = Node3D.new()
 	_bird_root.visible = false
-	_bird_root.scale = Vector3.ONE * 0.78
+	_bird_root.scale = Vector3.ONE * 0.86
 	_vp.add_child(_bird_root)
 
-	# Pure deep matte charcoal-obsidian black + subtle sunrise rim outline
 	var mat_black := StandardMaterial3D.new()
-	mat_black.albedo_color = Color(0.024, 0.024, 0.028, 1.0)
-	mat_black.roughness = 0.72
-	mat_black.metallic = 0.05
+	mat_black.albedo_color = Color(0.05, 0.055, 0.07, 1.0)
+	if ResourceLoader.exists("res://assets/textures/fujira_feather_ink.png"):
+		mat_black.albedo_texture = load("res://assets/textures/fujira_feather_ink.png") as Texture2D
+	mat_black.roughness = 0.62
+	mat_black.metallic = 0.12
 	if ResourceLoader.exists(OUTLINE_SHADER_PATH):
 		var out_m := ShaderMaterial.new()
 		out_m.shader = load(OUTLINE_SHADER_PATH) as Shader
 		out_m.set_shader_parameter("thickness", 0.007)
-		out_m.set_shader_parameter("outline_color", Color(0.01, 0.01, 0.01, 1.0))
+		out_m.set_shader_parameter("outline_color", Color(0.01, 0.01, 0.015, 1.0))
 		mat_black.next_pass = out_m
+
+	var bird_glb_path := "res://assets/models/fujira_black_bird.glb"
+	if ResourceLoader.exists(bird_glb_path):
+		var packed := load(bird_glb_path) as PackedScene
+		if packed != null:
+			var inst := packed.instantiate() as Node3D
+			if is_instance_valid(inst):
+				_apply_mat_rec(inst, mat_black)
+				# Reparent articulated nodes under proper shoulder/elbow/tail pivots
+				var body_n := inst.find_child("Body", true, false) as Node3D
+				var wl_in := inst.find_child("WingL_In", true, false) as Node3D
+				var wl_out := inst.find_child("WingL_Out", true, false) as Node3D
+				var wr_in := inst.find_child("WingR_In", true, false) as Node3D
+				var wr_out := inst.find_child("WingR_Out", true, false) as Node3D
+				var tail_n := inst.find_child("TailFan", true, false) as Node3D
+
+				if is_instance_valid(body_n):
+					body_n.reparent(_bird_root, false)
+				_bird_tail_root = Node3D.new()
+				_bird_tail_root.position = Vector3(-0.22, -0.01, 0.0)
+				_bird_root.add_child(_bird_tail_root)
+				if is_instance_valid(tail_n):
+					tail_n.reparent(_bird_tail_root, false)
+
+				_bird_wing_l_in = Node3D.new()
+				_bird_wing_l_in.position = Vector3(0.06, 0.03, -0.08)
+				_bird_root.add_child(_bird_wing_l_in)
+				if is_instance_valid(wl_in):
+					wl_in.reparent(_bird_wing_l_in, false)
+				_bird_wing_l_out = Node3D.new()
+				_bird_wing_l_out.position = Vector3(-0.02, 0.014, -0.32)
+				_bird_wing_l_in.add_child(_bird_wing_l_out)
+				if is_instance_valid(wl_out):
+					wl_out.reparent(_bird_wing_l_out, false)
+
+				_bird_wing_r_in = Node3D.new()
+				_bird_wing_r_in.position = Vector3(0.06, 0.03, 0.08)
+				_bird_root.add_child(_bird_wing_r_in)
+				if is_instance_valid(wr_in):
+					wr_in.reparent(_bird_wing_r_in, false)
+				_bird_wing_r_out = Node3D.new()
+				_bird_wing_r_out.position = Vector3(-0.02, 0.014, 0.32)
+				_bird_wing_r_in.add_child(_bird_wing_r_out)
+				if is_instance_valid(wr_out):
+					wr_out.reparent(_bird_wing_r_out, false)
+
+				inst.queue_free()
+				return
 
 	var mat_eye := StandardMaterial3D.new()
 	mat_eye.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -600,13 +649,14 @@ func _draw_foreground() -> void:
 	_fg_canvas.draw_rect(Rect2(0.0, horizon_y, w, h - horizon_y), col_ground)
 	_fg_canvas.draw_line(Vector2(cx - 420.0, horizon_y), Vector2(cx + 420.0, horizon_y), Color(0.12, 0.10, 0.09, 0.88), 2.5)
 
-	# Wingtip Wind Ink Trails
-	if _bird_trails.size() >= 2:
+	# Smooth tapered Wingtip Wind Ink Trails
+	if _bird_trails.size() >= 3:
 		for ti in range(_bird_trails.size() - 1):
 			var p0: Vector2 = _bird_trails[ti]["pos"]
 			var p1: Vector2 = _bird_trails[ti + 1]["pos"]
-			var a := float(_bird_trails[ti]["alpha"]) * (1.0 - float(ti) / float(_bird_trails.size())) * 0.52
-			_fg_canvas.draw_line(p0, p1, Color(0.08, 0.07, 0.07, a), 3.0)
+			var frac := 1.0 - float(ti) / float(_bird_trails.size())
+			var a := float(_bird_trails[ti]["alpha"]) * frac * frac * 0.56
+			_fg_canvas.draw_line(p0, p1, Color(0.07, 0.06, 0.07, a), 1.0 + frac * 3.8, true)
 
 	# Drifting Foreground Snow Flakes
 	if t >= 1.0:

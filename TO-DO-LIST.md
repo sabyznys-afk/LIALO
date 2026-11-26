@@ -14,13 +14,6 @@ Sdílený seznam úkolů a poznámek mezi námi v repozitáři.
 
 ---
 
-### Priorita #4 — Fujira Studios Intro: Sculptovaný celočerný 3D dravec (`scripts/ui/fujira_studio_intro.gd`)
-
-- **Diagnostikovaný stav:** `_build_all_black_bird()` (ř. 278–453) stále skládá ptáka z primitivních `SphereMesh`, `CylinderMesh`, `PrismMesh` a 20 hranatých `BoxMesh` destiček.
-- **Rework:** Vygenerovat vysoce detailní vícedílný 3D `.glb` model celočerného dravce/havrana (`assets/models/fujira_black_bird.glb`, generátor v `tools/generate_fujira_bird.py`) s aerodynamickým prohnutým profilem křídel, individuálně zaoblenými špičatými letkami, zahnutým dravčím zobákem, hlavou a spáry, hladkými svařenými normálami, tmavě uhlovou peříčkovou texturou s jemným modročerným leskem a kaligrafickou obrysovou linkou; rozdělený do kloubových uzlů (`Body`, `WingL_In`, `WingL_Out`, `WingR_In`, `WingR_Out`, `TailFan`) + plynulé 3D/2D tušové proudnice za špičkami křídel místo trhaných úseček.
-
----
-
 ### Priorita #5 — Kompletní přestavba Vnitřku Krčmy (`scripts/battle_table_3d.gd` + `scripts/battle/tavern_scene_builder.gd`)
 
 *(Sdílený pipeline pro Kampaň i Multiplayer — „posunout vnitřek na jiný level“)*
