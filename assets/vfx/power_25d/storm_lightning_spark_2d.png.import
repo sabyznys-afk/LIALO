@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://m3fr55g0smdv"
-path="res://.godot/imported/vampire_eclipse_2d.png-9310bb16f205502c770bd0f479270b82.ctex"
+uid="uid://dl3u7tlsxkb4d"
+path="res://.godot/imported/storm_lightning_spark_2d.png-3cbe0778f915971b85b1fca293f9adfc.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/vfx/power_25d/vampire_eclipse_2d.png"
-dest_files=["res://.godot/imported/vampire_eclipse_2d.png-9310bb16f205502c770bd0f479270b82.ctex"]
+source_file="res://assets/vfx/power_25d/storm_lightning_spark_2d.png"
+dest_files=["res://.godot/imported/storm_lightning_spark_2d.png-3cbe0778f915971b85b1fca293f9adfc.ctex"]
 
 [params]
 

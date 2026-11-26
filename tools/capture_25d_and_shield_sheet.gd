@@ -5,7 +5,7 @@ const SwordCardAnimatorScript = preload("res://scripts/sword_card_animator.gd")
 const PowerVfxScript = preload("res://scripts/battle/power_card_vfx_showcase.gd")
 const HeartbeatHpScript = preload("res://scripts/heartbeat_hp_display.gd")
 
-const OUT_VFX_PATH := "C:/Users/arnos/.gemini/antigravity/brain/7f5a7ecb-3428-465f-896a-bb95771f2800/hybrid_25d_vfx_preview.png"
+const OUT_VFX_PATH := "C:/Users/arnos/.gemini/antigravity/brain/7f5a7ecb-3428-465f-896a-bb95771f2800/living_power_cards_25d_preview.png"
 const OUT_SHIELD_PATH := "C:/Users/arnos/.gemini/antigravity/brain/7f5a7ecb-3428-465f-896a-bb95771f2800/knight_shield_hud_preview.png"
 
 var _frames := 0
@@ -70,49 +70,49 @@ func _initialize() -> void:
 
 
 func _spawn_all_vfx_tiles() -> void:
-	# Row 1: Two 2.5D Weapon Cutouts + Thunder Strike 2.5D POV
+	# Row 1: Knight Mistblade + Vampire Eclipse Chalice/Bats + Storm Tempest Spear
 	_make_sword_cell(
 		_grid,
-		"2.5D WEAPON STRIKE: KNIGHT MISTBLADE (ACE / KNIGHT)",
+		"2.5D WEAPON STRIKE: KNIGHT MISTBLADE (SWING + CEL)",
 		{"rank": "E", "suit": "CERVEN", "edition": "KNIGHT"},
 		Color(0.32, 0.92, 1.0),
 		20
 	)
-	_make_sword_cell(
-		_grid,
-		"2.5D WEAPON STRIKE: ARCANE RUNESTAFF (MAGE)",
-		{"rank": "K", "suit": "ZALUD", "edition": "MAGE"},
-		Color(0.76, 0.48, 1.0),
-		20
-	)
 	_make_power_cell(
 		_grid,
-		"2.5D POWER POV: THUNDER STRIKE (SPEC_STORM)",
-		"SPEC_STORM",
-		Color(0.32, 0.92, 1.0),
-		2.08
-	)
-
-	# Row 2: Vampire, Phoenix, Mirror 2.5D Power Card Climax POVs
-	_make_power_cell(
-		_grid,
-		"2.5D POWER POV: VAMPIRE LEECH (SPEC_VAMPIRE)",
+		"LIVING 2.5D: VAMPIRE LEECH (Spinning Eclipse + Flying Bats + Rubies)",
 		"SPEC_VAMPIRE",
 		Color(0.95, 0.22, 0.30),
 		2.08
 	)
 	_make_power_cell(
 		_grid,
-		"2.5D POWER POV: ASH PHOENIX (SPEC_PHOENIX)",
+		"LIVING 2.5D: THUNDER STRIKE (Spear + Hand-Drawn Sparks)",
+		"SPEC_STORM",
+		Color(0.32, 0.92, 1.0),
+		2.08
+	)
+
+	# Row 2: Ash Phoenix + Mirror Gate + Alchemist Crucible
+	_make_power_cell(
+		_grid,
+		"LIVING 2.5D: ASH PHOENIX (Wing-Flap + 2.5D Feathers)",
 		"SPEC_PHOENIX",
 		Color(1.0, 0.54, 0.18),
 		2.12
 	)
 	_make_power_cell(
 		_grid,
-		"2.5D POWER POV: MIRROR GATE (SPEC_MIRROR)",
+		"LIVING 2.5D: MIRROR GATE (Liquid Glass + 2.5D Shards)",
 		"SPEC_MIRROR",
 		Color(0.56, 0.90, 1.0),
+		2.08
+	)
+	_make_power_cell(
+		_grid,
+		"ALCHEMY CRUCIBLE: SPEC_ALCHEMIST (Layered Vapor + Ink Sparks)",
+		"SPEC_ALCHEMIST",
+		Color(0.54, 0.96, 0.42),
 		2.08
 	)
 

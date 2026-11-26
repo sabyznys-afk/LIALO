@@ -18,6 +18,7 @@ const Toon := preload("res://scripts/toon_style.gd")
 const OUTLINE_SHADER := preload("res://shaders/outline.gdshader")
 const SHADER_CEL := preload("res://shaders/sword_cel_sprite.gdshader")
 const SHADER_BLADE := preload("res://shaders/sword_blade_cutout.gdshader")
+const SHADER_LIVING_25D := preload("res://shaders/power_25d_living.gdshader")
 
 const DURATION: float = 4.20
 const CARD_BACK_TEX := "res://assets/table/deck_back_klasic.png"
@@ -28,10 +29,16 @@ const FONT_BODY_PATH := "res://assets/fonts/LialoBody.ttf"
 const TEX_SLASH_SHEET := "res://assets/vfx/sword_card/slash_cel_sheet.png"
 const TEX_MIST_SHEET := "res://assets/vfx/sword_card/mist_veil_sheet.png"
 const TEX_IMPACT_SHEET := "res://assets/vfx/sword_card/impact_sigil_sheet.png"
+const TEX_INK_SPARKS_SHEET := "res://assets/vfx/sword_card/ink_sparks_sheet.png"
 const TEX_PHOENIX_25D := "res://assets/vfx/power_25d/phoenix_hero_2d.png"
 const TEX_MIRROR_25D := "res://assets/vfx/power_25d/mirror_gate_2d.png"
-const TEX_VAMPIRE_25D := "res://assets/vfx/power_25d/vampire_eclipse_2d.png"
+const TEX_VAMPIRE_CHALICE_25D := "res://assets/vfx/power_25d/vampire_chalice_clean_2d.png"
+const TEX_VAMPIRE_ECLIPSE_RING_25D := "res://assets/vfx/power_25d/vampire_eclipse_ring_2d.png"
+const TEX_GOTHIC_BAT_25D := "res://assets/vfx/power_25d/gothic_bat_2d.png"
 const TEX_STORM_25D := "res://assets/vfx/power_25d/storm_tempest_2d.png"
+const TEX_STORM_SPARK_25D := "res://assets/vfx/power_25d/storm_lightning_spark_2d.png"
+const TEX_PHOENIX_FEATHER_25D := "res://assets/vfx/power_25d/phoenix_feather_2d.png"
+const TEX_MIRROR_SHARD_25D := "res://assets/vfx/power_25d/mirror_shard_2d.png"
 
 const CARD_META := {
 	"SPEC_STORM": {
@@ -175,10 +182,14 @@ var _seal_cel_mist_mat: ShaderMaterial = null
 var _hero_25d_root: Node3D = null
 var _hero_25d_mat: ShaderMaterial = null
 var _hero_25d_shadow_mat: ShaderMaterial = null
+var _vampire_eclipse_ring: Node3D = null
+var _vampire_eclipse_mat: ShaderMaterial = null
+var _vampire_eclipse_shadow_mat: ShaderMaterial = null
 var _cel_slash_a: MeshInstance3D = null
 var _cel_slash_a_mat: ShaderMaterial = null
 var _cel_slash_b: MeshInstance3D = null
 var _cel_slash_b_mat: ShaderMaterial = null
+var _alc_mist_rings: Array[Dictionary] = []
 var _shock_rings: Array[Dictionary] = []
 
 # SPEC_STORM Nodes
@@ -548,7 +559,7 @@ func _load_tex_25d(path: String) -> Texture2D:
 	return null
 
 
-func _make_25d_diorama(tex_path: String, w: float, h: float, glow_col: Color, tint_col: Color, out_mats: Dictionary) -> Node3D:
+func _make_25d_diorama(tex_path: String, w: float, h: float, glow_col: Color, tint_col: Color, out_mats: Dictionary, anim_mode: int = -1) -> Node3D:
 	var root := Node3D.new()
 	var tex := _load_tex_25d(tex_path)
 	if tex != null and tex.get_size().y > 1.0:
@@ -556,25 +567,49 @@ func _make_25d_diorama(tex_path: String, w: float, h: float, glow_col: Color, ti
 		w = h * aspect
 
 	var front_mat := ShaderMaterial.new()
-	front_mat.shader = SHADER_BLADE
-	front_mat.set_shader_parameter("blade_tex", tex)
-	front_mat.set_shader_parameter("tint_col", tint_col)
-	front_mat.set_shader_parameter("glow_col", glow_col)
-	front_mat.set_shader_parameter("rune_glow", 2.0)
-	front_mat.set_shader_parameter("sheen_pos", -0.5)
-	front_mat.set_shader_parameter("opacity", 1.0)
-
 	var shadow_mat := ShaderMaterial.new()
-	shadow_mat.shader = SHADER_BLADE
-	shadow_mat.set_shader_parameter("blade_tex", tex)
-	shadow_mat.set_shader_parameter("tint_col", Color(0.05, 0.04, 0.05, 0.88))
-	shadow_mat.set_shader_parameter("glow_col", Color(0.03, 0.02, 0.03, 1.0))
-	shadow_mat.set_shader_parameter("rune_glow", 0.0)
-	shadow_mat.set_shader_parameter("sheen_strength", 0.0)
-	shadow_mat.set_shader_parameter("opacity", 0.85)
+	if anim_mode >= 0:
+		front_mat.shader = SHADER_LIVING_25D
+		front_mat.set_shader_parameter("albedo_tex", tex)
+		front_mat.set_shader_parameter("tint_col", tint_col)
+		front_mat.set_shader_parameter("glow_col", glow_col)
+		front_mat.set_shader_parameter("anim_mode", anim_mode)
+		front_mat.set_shader_parameter("time_sec", 0.0)
+		front_mat.set_shader_parameter("rune_glow", 2.0)
+		front_mat.set_shader_parameter("sheen_pos", -0.5)
+		front_mat.set_shader_parameter("opacity", 1.0)
+
+		shadow_mat.shader = SHADER_LIVING_25D
+		shadow_mat.set_shader_parameter("albedo_tex", tex)
+		shadow_mat.set_shader_parameter("tint_col", Color(0.05, 0.04, 0.05, 0.88))
+		shadow_mat.set_shader_parameter("glow_col", Color(0.03, 0.02, 0.03, 1.0))
+		shadow_mat.set_shader_parameter("anim_mode", anim_mode if anim_mode == 2 or anim_mode == 4 else 99)
+		shadow_mat.set_shader_parameter("time_sec", 0.0)
+		shadow_mat.set_shader_parameter("rune_glow", 0.0)
+		shadow_mat.set_shader_parameter("sheen_strength", 0.0)
+		shadow_mat.set_shader_parameter("opacity", 0.85)
+	else:
+		front_mat.shader = SHADER_BLADE
+		front_mat.set_shader_parameter("blade_tex", tex)
+		front_mat.set_shader_parameter("tint_col", tint_col)
+		front_mat.set_shader_parameter("glow_col", glow_col)
+		front_mat.set_shader_parameter("rune_glow", 2.0)
+		front_mat.set_shader_parameter("sheen_pos", -0.5)
+		front_mat.set_shader_parameter("opacity", 1.0)
+
+		shadow_mat.shader = SHADER_BLADE
+		shadow_mat.set_shader_parameter("blade_tex", tex)
+		shadow_mat.set_shader_parameter("tint_col", Color(0.05, 0.04, 0.05, 0.88))
+		shadow_mat.set_shader_parameter("glow_col", Color(0.03, 0.02, 0.03, 1.0))
+		shadow_mat.set_shader_parameter("rune_glow", 0.0)
+		shadow_mat.set_shader_parameter("sheen_strength", 0.0)
+		shadow_mat.set_shader_parameter("opacity", 0.85)
 
 	var qm := QuadMesh.new()
 	qm.size = Vector2(w, h)
+	if anim_mode == 2 or anim_mode == 4:
+		qm.subdivide_width = 14
+		qm.subdivide_depth = 8
 
 	var front_mi := MeshInstance3D.new()
 	front_mi.mesh = qm
@@ -594,6 +629,33 @@ func _make_25d_diorama(tex_path: String, w: float, h: float, glow_col: Color, ti
 	out_mats["front"] = front_mat
 	out_mats["shadow"] = shadow_mat
 	return root
+
+
+func _make_25d_particle_quad(tex_path: String, sz: Vector2, glow_col: Color, tint_col: Color, anim_mode: int = 99, phase: float = 0.0, sort_idx: int = 4) -> Dictionary:
+	var tex := _load_tex_25d(tex_path)
+	var mat := ShaderMaterial.new()
+	mat.shader = SHADER_LIVING_25D
+	mat.set_shader_parameter("albedo_tex", tex)
+	mat.set_shader_parameter("tint_col", tint_col)
+	mat.set_shader_parameter("glow_col", glow_col)
+	mat.set_shader_parameter("anim_mode", anim_mode)
+	mat.set_shader_parameter("sheen_pos", phase)
+	mat.set_shader_parameter("time_sec", 0.0)
+	mat.set_shader_parameter("rune_glow", 1.9)
+	mat.set_shader_parameter("opacity", 1.0)
+
+	var qm := QuadMesh.new()
+	qm.size = sz
+	if anim_mode == 4:
+		qm.subdivide_width = 12
+		qm.subdivide_depth = 4
+
+	var mi := MeshInstance3D.new()
+	mi.mesh = qm
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.sorting_offset = float(sort_idx) * 0.04
+	return {"node": mi, "mat": mat}
 
 
 func _make_cel_quad(tex_path: String, grid: Vector2, w: float, h: float, glow_col: Color, tint_col: Color, glow_str: float, boil_seed: float, sort_idx: int) -> Dictionary:
@@ -628,10 +690,14 @@ func _build_fx_rig() -> void:
 	_hero_25d_root = null
 	_hero_25d_mat = null
 	_hero_25d_shadow_mat = null
+	_vampire_eclipse_ring = null
+	_vampire_eclipse_mat = null
+	_vampire_eclipse_shadow_mat = null
 	_cel_slash_a = null
 	_cel_slash_a_mat = null
 	_cel_slash_b = null
 	_cel_slash_b_mat = null
+	_alc_mist_rings.clear()
 
 	var meta: Dictionary = CARD_META[_card_id]
 	var tex_path: String = str(meta["tex"])
@@ -719,84 +785,65 @@ func _build_fx_rig() -> void:
 
 func _build_storm_specific_rig(tex_path: String) -> void:
 	_vortex_root = Node3D.new()
-	_vortex_root.position = _impact_pos + Vector3(0.0, 1.24, 0.0)
+	_vortex_root.position = _impact_pos + Vector3(0.0, 1.18, 0.0)
 	_fx_root.add_child(_vortex_root)
 
+	# Hand-Drawn Cel Mist & Carved Sigil Storm Vortex Overhead (replaces flat TorusMesh rings)
 	_vortex_layers.clear()
-	var vortex_cfgs: Array = [
-		[0.44, 0.58, Color(0.12, 0.22, 0.52, 0.86)],
-		[0.25, 0.39, Color(0.28, 0.78, 1.0, 0.88)],
-		[0.10, 0.22, Color(0.84, 0.98, 1.0, 0.95)],
-	]
-	for vi in range(vortex_cfgs.size()):
-		var cfg: Array = vortex_cfgs[vi]
-		var vr := MeshInstance3D.new()
-		var tm := TorusMesh.new()
-		tm.inner_radius = float(cfg[0])
-		tm.outer_radius = float(cfg[1])
-		tm.rings = 40
-		tm.ring_segments = 10
-		vr.mesh = tm
+	for vi in range(3):
+		var use_sig := (vi == 1)
+		var v_cfg := _make_cel_quad(
+			TEX_IMPACT_SHEET if use_sig else TEX_MIST_SHEET,
+			Vector2(4.0, 4.0),
+			1.28 - float(vi) * 0.24,
+			1.28 - float(vi) * 0.24,
+			Color(0.32, 0.94, 1.0, 1.0),
+			Color(0.75, 0.96, 1.0, 0.88 if not use_sig else 0.96),
+			2.1 if use_sig else 1.15,
+			3.3 + float(vi) * 2.1,
+			2 + vi
+		)
+		var vr := v_cfg["node"] as MeshInstance3D
+		var vmat := v_cfg["mat"] as ShaderMaterial
+		vmat.set_shader_parameter("loop_sheet", 1.0)
+		vmat.set_shader_parameter("blend_next", 0.55)
 		vr.position = Vector3(0.0, float(vi) * -0.04, 0.0)
-		var vmat := StandardMaterial3D.new()
-		vmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		vmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		vmat.albedo_color = cfg[2] as Color
-		vr.material_override = vmat
-		_apply_ink_outline(vr, 0.014)
+		vr.rotation_degrees = Vector3(-90.0, float(vi) * 35.0, 0.0)
+		vr.set_meta("cel_mat", vmat)
 		_vortex_root.add_child(vr)
 		_vortex_layers.append(vr)
 
-	# Hand-Drawn 2.5D Celestial Tempest Spear Diorama + Dual Cel Storm-Slash Canopies
+	# Hand-Drawn 2.5D Living Celestial Tempest Spear Diorama (anim_mode=1) + Dual Cel Storm-Slash Canopies
 	var s_mats := {}
-	_hero_25d_root = _make_25d_diorama(TEX_STORM_25D, 0.78, 0.92, Color(0.28, 0.94, 1.0, 1.0), Color(0.96, 0.99, 1.0, 1.0), s_mats)
+	_hero_25d_root = _make_25d_diorama(TEX_STORM_25D, 0.78, 0.92, Color(0.28, 0.94, 1.0, 1.0), Color(0.96, 0.99, 1.0, 1.0), s_mats, 1)
 	_hero_25d_mat = s_mats.get("front", null) as ShaderMaterial
 	_hero_25d_shadow_mat = s_mats.get("shadow", null) as ShaderMaterial
 	_hero_25d_root.position = _impact_pos + Vector3(0.0, 0.42, -0.06)
 	_hero_25d_root.visible = false
 	_fx_root.add_child(_hero_25d_root)
 
-	var sa := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.32, 1.32, Color(0.32, 0.94, 1.0, 1.0), Color(0.65, 0.95, 1.0, 1.0), 2.55, 3.3, 4)
+	var sa := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.32, 1.32, Color(0.28, 0.94, 1.0, 1.0), Color(0.84, 0.98, 1.0, 1.0), 2.55, 3.3, 4)
 	_cel_slash_a = sa["node"] as MeshInstance3D
 	_cel_slash_a_mat = sa["mat"] as ShaderMaterial
-	_cel_slash_a_mat.set_shader_parameter("royal_shift", 1.0)
-	_cel_slash_a.position = _impact_pos + Vector3(0.0, 0.12, 0.06)
-	_cel_slash_a.rotation_degrees = Vector3(-74.0, 26.0, -14.0)
+	_cel_slash_a_mat.set_shader_parameter("royal_shift", 0.0)
+	_cel_slash_a.position = _impact_pos + Vector3(0.0, 0.04, 0.06)
+	_cel_slash_a.rotation_degrees = Vector3(-84.0, 26.0, -14.0)
 	_cel_slash_a.visible = false
 	_fx_root.add_child(_cel_slash_a)
 
-	var sb := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.20, 1.20, Color(0.42, 0.96, 1.0, 1.0), Color(0.65, 0.95, 1.0, 1.0), 2.35, 7.9, 5)
+	var sb := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.20, 1.20, Color(0.42, 0.96, 1.0, 1.0), Color(0.88, 0.99, 1.0, 1.0), 2.35, 7.9, 5)
 	_cel_slash_b = sb["node"] as MeshInstance3D
 	_cel_slash_b_mat = sb["mat"] as ShaderMaterial
 	_cel_slash_b_mat.set_shader_parameter("flip_x", 1.0)
-	_cel_slash_b_mat.set_shader_parameter("royal_shift", 1.0)
-	_cel_slash_b.position = _impact_pos + Vector3(0.0, 0.14, 0.08)
-	_cel_slash_b.rotation_degrees = Vector3(-70.0, -32.0, 16.0)
+	_cel_slash_b_mat.set_shader_parameter("royal_shift", 0.0)
+	_cel_slash_b.position = _impact_pos + Vector3(0.0, 0.05, 0.08)
+	_cel_slash_b.rotation_degrees = Vector3(-82.0, -32.0, 16.0)
 	_cel_slash_b.visible = false
 	_fx_root.add_child(_cel_slash_b)
 
-	_pillar_root = Node3D.new()
-	_pillar_root.position = _impact_pos
-	_fx_root.add_child(_pillar_root)
-
-	_pillar_core_mat = StandardMaterial3D.new()
-	_pillar_core_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_pillar_core_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_pillar_core_mat.albedo_color = Color(0.95, 1.0, 1.0, 0.0)
-	var core := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = 0.032
-	cm.bottom_radius = 0.024
-	cm.height = 1.48
-	core.mesh = cm
-	core.position = Vector3(0.0, 0.74, -0.14)
-	core.material_override = _pillar_core_mat
-	_pillar_root.add_child(core)
-
-	_pillar_sheath_mat = StandardMaterial3D.new()
-	_pillar_sheath_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_pillar_sheath_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_pillar_sheath_mat.albedo_color = Color(0.24, 0.86, 1.0, 0.0)
+	_pillar_root = null
+	_pillar_core_mat = null
+	_pillar_sheath_mat = null
 
 	_bolts_mesh = ImmediateMesh.new()
 	_bolts_mesh_inst = MeshInstance3D.new()
@@ -809,26 +856,31 @@ func _build_storm_specific_rig(tex_path: String) -> void:
 	_bolts_mesh_inst.material_override = bmat
 	_fx_root.add_child(_bolts_mesh_inst)
 
+	# 32 Hand-Drawn 2.5D Storm Lightning Shards & Ink Sparks (replaces flat BoxMesh vectors!)
 	_sparks.clear()
-	var spark_mesh := BoxMesh.new()
-	spark_mesh.size = Vector3(0.020, 0.14, 0.020)
-	for spi in range(36):
-		var sp := MeshInstance3D.new()
-		sp.mesh = spark_mesh
-		var spmat := StandardMaterial3D.new()
-		spmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		spmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		spmat.albedo_color = Color(0.56, 0.95, 1.0, 0.0)
-		sp.material_override = spmat
-		_apply_ink_outline(sp, 0.008)
-		sp.visible = false
-		_fx_root.add_child(sp)
+	for spi in range(32):
+		var use_bolt_tex := (spi % 2 == 0)
+		var nd: MeshInstance3D
+		var spmat: ShaderMaterial
+		if use_bolt_tex:
+			var sc := _make_25d_particle_quad(TEX_STORM_SPARK_25D, Vector2(0.14, 0.14), Color(0.32, 0.94, 1.0, 1.0), Color(0.95, 0.99, 1.0, 1.0), 1, float(spi) * 0.25, 6)
+			nd = sc["node"] as MeshInstance3D
+			spmat = sc["mat"] as ShaderMaterial
+		else:
+			var ic := _make_cel_quad(TEX_INK_SPARKS_SHEET, Vector2(4.0, 4.0), 0.16, 0.16, Color(0.32, 0.95, 1.0, 1.0), Color(0.85, 0.98, 1.0, 1.0), 2.35, 1.4 + float(spi) * 0.5, 6)
+			nd = ic["node"] as MeshInstance3D
+			spmat = ic["mat"] as ShaderMaterial
+			spmat.set_shader_parameter("frame_index", float((spi % 6) + 6))
+			spmat.set_shader_parameter("loop_sheet", 1.0)
+		nd.visible = false
+		_fx_root.add_child(nd)
 		_sparks.append({
-			"node": sp,
+			"node": nd,
 			"mat": spmat,
-			"angle": float(spi) * (TAU / 36.0) + _rng.randf_range(-0.2, 0.2),
-			"rad": _rng.randf_range(0.18, 0.95),
-			"spd": _rng.randf_range(0.8, 2.0),
+			"is_cel": not use_bolt_tex,
+			"angle": float(spi) * (TAU / 32.0) + _rng.randf_range(-0.2, 0.2),
+			"rad": _rng.randf_range(0.20, 0.96),
+			"spd": _rng.randf_range(0.75, 1.85),
 			"phase": _rng.randf(),
 		})
 
@@ -845,55 +897,75 @@ func _build_storm_specific_rig(tex_path: String) -> void:
 
 
 func _build_vampire_specific_rig() -> void:
-	# Hand-Drawn 2.5D Crimson Blood Eclipse & Gothic Vampire Chalice Diorama + Dual Cel Blood Slashes
+	# Layer 1: Independent Spinning Hand-Drawn Crimson Blood Eclipse Halo Ring (anim_mode=5) behind Chalice
+	var e_mats := {}
+	_vampire_eclipse_ring = _make_25d_diorama(TEX_VAMPIRE_ECLIPSE_RING_25D, 1.08, 1.08, Color(0.95, 0.12, 0.20, 1.0), Color(1.0, 0.94, 0.94, 1.0), e_mats, 5)
+	_vampire_eclipse_mat = e_mats.get("front", null) as ShaderMaterial
+	_vampire_eclipse_shadow_mat = e_mats.get("shadow", null) as ShaderMaterial
+	_vampire_eclipse_ring.position = _impact_pos + Vector3(0.0, 0.46, -0.34)
+	_vampire_eclipse_ring.visible = false
+	_fx_root.add_child(_vampire_eclipse_ring)
+
+	# Layer 2: Clean Living 2.5D Gothic Vampire Blood Chalice (anim_mode=0: flowing liquid blood + pulsing rubies!)
 	var v_mats := {}
-	_hero_25d_root = _make_25d_diorama(TEX_VAMPIRE_25D, 0.88, 0.88, Color(0.96, 0.14, 0.24, 1.0), Color(1.0, 0.96, 0.94, 1.0), v_mats)
+	_hero_25d_root = _make_25d_diorama(TEX_VAMPIRE_CHALICE_25D, 0.72, 0.78, Color(0.96, 0.14, 0.24, 1.0), Color(1.0, 0.96, 0.94, 1.0), v_mats, 0)
 	_hero_25d_mat = v_mats.get("front", null) as ShaderMaterial
 	_hero_25d_shadow_mat = v_mats.get("shadow", null) as ShaderMaterial
-	_hero_25d_root.position = _impact_pos + Vector3(0.0, 0.42, -0.18)
+	_hero_25d_root.position = _impact_pos + Vector3(0.0, 0.38, -0.14)
 	_hero_25d_root.visible = false
 	_fx_root.add_child(_hero_25d_root)
 
-	var sa := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.32, 1.32, Color(0.98, 0.12, 0.22, 1.0), Color(1.0, 0.62, 0.64, 1.0), 2.50, 4.1, 4)
+	# Layer 3: 10 Independent Animated Vertex Wing-Flapping Gothic 2.5D Bats (anim_mode=4!)
+	_bats.clear()
+	for bi in range(10):
+		var ph := float(bi) * 0.37
+		var b_cfg := _make_25d_particle_quad(TEX_GOTHIC_BAT_25D, Vector2(0.24, 0.24), Color(0.92, 0.14, 0.24, 1.0), Color(1.0, 0.96, 0.96, 1.0), 4, ph, 7)
+		var b_nd := b_cfg["node"] as MeshInstance3D
+		b_nd.visible = false
+		_fx_root.add_child(b_nd)
+		_bats.append({
+			"node": b_nd,
+			"mat": b_cfg["mat"] as ShaderMaterial,
+			"angle": float(bi) * (TAU / 10.0),
+			"phase": ph,
+			"rad": _rng.randf_range(0.32, 0.78),
+		})
+
+	var sa := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.32, 1.32, Color(0.96, 0.10, 0.20, 1.0), Color(1.0, 0.22, 0.30, 1.0), 2.50, 4.1, 4)
 	_cel_slash_a = sa["node"] as MeshInstance3D
 	_cel_slash_a_mat = sa["mat"] as ShaderMaterial
-	_cel_slash_a_mat.set_shader_parameter("royal_shift", 1.0)
-	_cel_slash_a.position = _impact_pos + Vector3(0.0, 0.12, 0.06)
-	_cel_slash_a.rotation_degrees = Vector3(-74.0, 34.0, -18.0)
+	_cel_slash_a_mat.set_shader_parameter("royal_shift", 0.0)
+	_cel_slash_a.position = _impact_pos + Vector3(0.0, 0.04, 0.06)
+	_cel_slash_a.rotation_degrees = Vector3(-84.0, 34.0, -18.0)
 	_cel_slash_a.visible = false
 	_fx_root.add_child(_cel_slash_a)
 
-	var sb := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.18, 1.18, Color(0.92, 0.16, 0.30, 1.0), Color(1.0, 0.62, 0.64, 1.0), 2.25, 8.7, 5)
+	var sb := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.18, 1.18, Color(0.92, 0.12, 0.26, 1.0), Color(1.0, 0.28, 0.38, 1.0), 2.25, 8.7, 5)
 	_cel_slash_b = sb["node"] as MeshInstance3D
 	_cel_slash_b_mat = sb["mat"] as ShaderMaterial
 	_cel_slash_b_mat.set_shader_parameter("flip_x", 1.0)
-	_cel_slash_b_mat.set_shader_parameter("royal_shift", 1.0)
-	_cel_slash_b.position = _impact_pos + Vector3(0.0, 0.14, 0.08)
-	_cel_slash_b.rotation_degrees = Vector3(-70.0, -38.0, 18.0)
+	_cel_slash_b_mat.set_shader_parameter("royal_shift", 0.0)
+	_cel_slash_b.position = _impact_pos + Vector3(0.0, 0.05, 0.08)
+	_cel_slash_b.rotation_degrees = Vector3(-82.0, -38.0, 18.0)
 	_cel_slash_b.visible = false
 	_fx_root.add_child(_cel_slash_b)
 
 	_blood_moon_mesh = null
 	_crescent_slash = null
 
-	# 16 Crimson Siphon Soul-Orbs + ImmediateMesh Ribbons
+	# 16 Hand-Drawn Crimson Siphon Ink-Sparks (NO SphereMesh balls!) + ImmediateMesh Ribbons
 	_siphon_orbs.clear()
-	var orb_mesh := SphereMesh.new()
-	orb_mesh.radius = 0.036
-	orb_mesh.height = 0.072
 	for oi in range(16):
-		var om := MeshInstance3D.new()
-		om.mesh = orb_mesh
-		var omat := StandardMaterial3D.new()
-		omat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		omat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		omat.albedo_color = Color(1.0, 0.18, 0.28, 0.95)
-		om.material_override = omat
-		_apply_ink_outline(om, 0.010)
+		var oc := _make_cel_quad(TEX_INK_SPARKS_SHEET, Vector2(4.0, 4.0), 0.16, 0.16, Color(0.98, 0.12, 0.24, 1.0), Color(1.0, 0.56, 0.60, 1.0), 2.35, float(oi) * 0.7, 6)
+		var om := oc["node"] as MeshInstance3D
+		var omat := oc["mat"] as ShaderMaterial
+		omat.set_shader_parameter("royal_shift", 1.0)
+		omat.set_shader_parameter("frame_index", float(oi % 6))
 		om.visible = false
 		_fx_root.add_child(om)
 		_siphon_orbs.append({
 			"node": om,
+			"mat": omat,
 			"delay": 2.35 + float(oi) * 0.065,
 			"arc_x": sin(float(oi) * 1.9) * 0.42,
 			"arc_y": 0.22 + cos(float(oi) * 1.4) * 0.16,
@@ -927,9 +999,9 @@ func _build_phoenix_specific_rig() -> void:
 		_fx_root.add_child(ch)
 		_curse_chains.append({"node": ch, "dir": Vector3(cos(float(ci) * 1.57), 0.7, sin(float(ci) * 1.57))})
 
-	# Towering Hand-Drawn 2.5D Woodcut Ash Phoenix Diorama + Blazing Cel Flame-Slash Canopies
+	# Towering Living Hand-Drawn 2.5D Woodcut Ash Phoenix Diorama (anim_mode=2: vertex wing-flap + flame flicker)
 	var p_mats := {}
-	_hero_25d_root = _make_25d_diorama(TEX_PHOENIX_25D, 0.88, 0.88, Color(1.0, 0.58, 0.16, 1.0), Color(1.0, 0.97, 0.92, 1.0), p_mats)
+	_hero_25d_root = _make_25d_diorama(TEX_PHOENIX_25D, 0.88, 0.88, Color(1.0, 0.58, 0.16, 1.0), Color(1.0, 0.97, 0.92, 1.0), p_mats, 2)
 	_hero_25d_mat = p_mats.get("front", null) as ShaderMaterial
 	_hero_25d_shadow_mat = p_mats.get("shadow", null) as ShaderMaterial
 	_hero_25d_root.position = _impact_pos + Vector3(0.0, 0.40, -0.16)
@@ -940,8 +1012,8 @@ func _build_phoenix_specific_rig() -> void:
 	_cel_slash_a = pa["node"] as MeshInstance3D
 	_cel_slash_a_mat = pa["mat"] as ShaderMaterial
 	_cel_slash_a_mat.set_shader_parameter("royal_shift", 1.0)
-	_cel_slash_a.position = _impact_pos + Vector3(0.0, 0.12, 0.06)
-	_cel_slash_a.rotation_degrees = Vector3(-74.0, 32.0, -14.0)
+	_cel_slash_a.position = _impact_pos + Vector3(0.0, 0.04, 0.06)
+	_cel_slash_a.rotation_degrees = Vector3(-84.0, 32.0, -14.0)
 	_cel_slash_a.visible = false
 	_fx_root.add_child(_cel_slash_a)
 
@@ -950,8 +1022,8 @@ func _build_phoenix_specific_rig() -> void:
 	_cel_slash_b_mat = pb["mat"] as ShaderMaterial
 	_cel_slash_b_mat.set_shader_parameter("flip_x", 1.0)
 	_cel_slash_b_mat.set_shader_parameter("royal_shift", 1.0)
-	_cel_slash_b.position = _impact_pos + Vector3(0.0, 0.14, 0.08)
-	_cel_slash_b.rotation_degrees = Vector3(-70.0, -34.0, 16.0)
+	_cel_slash_b.position = _impact_pos + Vector3(0.0, 0.05, 0.08)
+	_cel_slash_b.rotation_degrees = Vector3(-82.0, -34.0, 16.0)
 	_cel_slash_b.visible = false
 	_fx_root.add_child(_cel_slash_b)
 
@@ -959,26 +1031,19 @@ func _build_phoenix_specific_rig() -> void:
 	_flame_pillar = null
 	_flame_pillar_mat = null
 
-	# 40 Swirling Inked Fire Feathers
+	# 32 Swirling Hand-Drawn 2.5D Blazing Phoenix Feathers & Ink Sparks (replaces flat BoxMesh rectangles!)
 	_feathers.clear()
-	var f_mesh := BoxMesh.new()
-	f_mesh.size = Vector3(0.038, 0.008, 0.11)
-	for fi in range(40):
-		var fm := MeshInstance3D.new()
-		fm.mesh = f_mesh
-		var fmat := StandardMaterial3D.new()
-		fmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		fmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		fmat.albedo_color = Color(1.0, 0.62 if fi % 2 == 0 else 0.84, 0.18, 0.92)
-		fm.material_override = fmat
-		_apply_ink_outline(fm, 0.009)
+	for fi in range(32):
+		var fc := _make_25d_particle_quad(TEX_PHOENIX_FEATHER_25D, Vector2(0.14, 0.14), Color(1.0, 0.62, 0.18, 1.0), Color(1.0, 0.96, 0.92, 1.0), 2, float(fi) * 0.2, 6)
+		var fm := fc["node"] as MeshInstance3D
 		fm.visible = false
 		_fx_root.add_child(fm)
 		_feathers.append({
 			"node": fm,
-			"angle": float(fi) * (TAU / 40.0),
-			"rad": _rng.randf_range(0.22, 1.05),
-			"spd": _rng.randf_range(0.6, 1.6),
+			"mat": fc["mat"] as ShaderMaterial,
+			"angle": float(fi) * (TAU / 32.0),
+			"rad": _rng.randf_range(0.24, 1.00),
+			"spd": _rng.randf_range(0.6, 1.5),
 			"phase": _rng.randf(),
 		})
 
@@ -1180,27 +1245,39 @@ func _apply_animation_state(t: float) -> void:
 			_hero_25d_root.rotation_degrees = Vector3(-6.0, sin(t * 2.2) * 6.0, 0.0)
 		var sheen_v := fmod(maxf(0.0, t - 1.35) * 0.95, 1.8) - 0.3
 		if _hero_25d_mat != null:
+			_hero_25d_mat.set_shader_parameter("time_sec", t)
 			_hero_25d_mat.set_shader_parameter("opacity", hero_op)
 			_hero_25d_mat.set_shader_parameter("sheen_pos", sheen_v)
 			_hero_25d_mat.set_shader_parameter("flash_white", maxf(0.0, 0.55 - absf(t - 1.62) * 3.5))
 		if _hero_25d_shadow_mat != null:
+			_hero_25d_shadow_mat.set_shader_parameter("time_sec", t)
 			_hero_25d_shadow_mat.set_shader_parameter("opacity", hero_op * 0.85)
+		if is_instance_valid(_vampire_eclipse_ring):
+			_vampire_eclipse_ring.visible = hero_op > 0.01
+			_vampire_eclipse_ring.position = _impact_pos + Vector3(0.0, lerpf(0.18, 0.46, ease_pop), -0.34)
+			_vampire_eclipse_ring.scale = Vector3.ONE * lerpf(0.50, 1.04, ease_pop) * (1.0 + 0.04 * sin(t * 4.5))
+			_vampire_eclipse_ring.rotation_degrees = Vector3(-6.0, 0.0, t * 44.0)
+			if _vampire_eclipse_mat != null:
+				_vampire_eclipse_mat.set_shader_parameter("time_sec", t)
+				_vampire_eclipse_mat.set_shader_parameter("opacity", hero_op * 0.96)
+			if _vampire_eclipse_shadow_mat != null:
+				_vampire_eclipse_shadow_mat.set_shader_parameter("opacity", hero_op * 0.82)
 
 	if is_instance_valid(_cel_slash_a) and is_instance_valid(_cel_slash_b) and _card_id in ["SPEC_STORM", "SPEC_VAMPIRE", "SPEC_PHOENIX"]:
 		if t >= 1.44 and t <= 2.95:
 			var su := clampf((t - 1.44) / 1.45, 0.0, 1.0)
 			var swing_a := 1.0 - pow(1.0 - su, 2.4)
 			_cel_slash_a.visible = true
-			_cel_slash_a.scale = Vector3.ONE * lerpf(0.82, 1.18, minf(1.0, su * 2.2))
-			_cel_slash_a.rotation_degrees = Vector3(-74.0, lerpf(-34.0, 42.0, swing_a), lerpf(-18.0, 14.0, swing_a))
+			_cel_slash_a.scale = Vector3.ONE * lerpf(0.75, 1.04, minf(1.0, su * 2.2))
+			_cel_slash_a.rotation_degrees = Vector3(-84.0, lerpf(-34.0, 42.0, swing_a), lerpf(-18.0, 14.0, swing_a))
 			if _cel_slash_a_mat != null:
 				_cel_slash_a_mat.set_shader_parameter("frame_index", pow(su, 0.72) * 23.0)
 				_cel_slash_a_mat.set_shader_parameter("dissolve", clampf((su - 0.68) / 0.32, 0.0, 1.0) * 0.80)
 			_cel_slash_b.visible = su >= 0.12
 			var su2 := clampf((su - 0.12) / 0.88, 0.0, 1.0)
 			var swing_b := 1.0 - pow(1.0 - su2, 2.3)
-			_cel_slash_b.scale = Vector3.ONE * lerpf(0.78, 1.14, minf(1.0, su2 * 2.2))
-			_cel_slash_b.rotation_degrees = Vector3(-70.0, lerpf(38.0, -40.0, swing_b), lerpf(16.0, -14.0, swing_b))
+			_cel_slash_b.scale = Vector3.ONE * lerpf(0.72, 1.00, minf(1.0, su2 * 2.2))
+			_cel_slash_b.rotation_degrees = Vector3(-82.0, lerpf(38.0, -40.0, swing_b), lerpf(16.0, -14.0, swing_b))
 			if _cel_slash_b_mat != null:
 				_cel_slash_b_mat.set_shader_parameter("frame_index", pow(su2, 0.78) * 23.0)
 				_cel_slash_b_mat.set_shader_parameter("dissolve", clampf((su2 - 0.66) / 0.34, 0.0, 1.0) * 0.80)
@@ -1316,32 +1393,22 @@ func _animate_storm(t: float) -> void:
 	if is_instance_valid(_vortex_root):
 		var v_alpha := 0.0
 		if t >= 0.22 and t < 1.56:
-			v_alpha = clampf((t - 0.22) / 0.72, 0.0, 1.0) * 0.72
+			v_alpha = clampf((t - 0.22) / 0.72, 0.0, 1.0) * 0.78
 		elif t >= 1.56 and t < 2.65:
 			v_alpha = 1.0
 		elif t >= 2.65:
 			v_alpha = clampf(1.0 - (t - 2.65) / 1.10, 0.0, 1.0)
 		_vortex_root.visible = v_alpha > 0.01
-		_vortex_root.scale = Vector3.ONE * (0.45 + v_alpha * 0.90)
+		_vortex_root.scale = Vector3.ONE * (0.48 + v_alpha * 0.92)
 		for vi in range(_vortex_layers.size()):
 			var vr := _vortex_layers[vi]
 			if is_instance_valid(vr):
 				vr.rotation_degrees.y = t * (190.0 + float(vi) * 95.0) * (-1.0 if vi % 2 == 1 else 1.0)
-
-	if is_instance_valid(_pillar_root):
-		var pil_a := 0.0
-		if t >= 1.56 and t <= 2.60:
-			var p_u := (t - 1.56) / 1.04
-			pil_a = sin(minf(p_u * 4.5, 1.0) * PI * 0.5) * (1.0 - maxf(0.0, (p_u - 0.55) / 0.45))
-			pil_a *= 0.80 + 0.20 * sin(t * 50.0)
-		_pillar_root.visible = pil_a > 0.01
-		var p_w := lerpf(0.6, 1.35, pil_a)
-		_pillar_root.scale = Vector3(p_w, 1.0, p_w)
-		_pillar_root.rotation_degrees.y = t * 420.0
-		if _pillar_core_mat != null:
-			_pillar_core_mat.albedo_color.a = clampf(pil_a, 0.0, 1.0)
-		if _pillar_sheath_mat != null:
-			_pillar_sheath_mat.albedo_color.a = clampf(pil_a * 0.75, 0.0, 1.0)
+				if vr.has_meta("cel_mat"):
+					var cmat := vr.get_meta("cel_mat") as ShaderMaterial
+					if cmat != null:
+						cmat.set_shader_parameter("frame_index", fmod(t * 10.0 + float(vi) * 3.0, 16.0))
+						cmat.set_shader_parameter("opacity", v_alpha * (0.95 if vi == 1 else 0.75))
 
 	if is_instance_valid(_bolts_mesh) and _bolts_mesh_inst != null:
 		var bolts_active := (t >= 0.18 and t < 2.65)
@@ -1352,15 +1419,19 @@ func _animate_storm(t: float) -> void:
 
 	for sp in _sparks:
 		var nd: MeshInstance3D = sp["node"] as MeshInstance3D
-		var spmat: StandardMaterial3D = sp["mat"] as StandardMaterial3D
+		var spmat: ShaderMaterial = sp.get("mat", null) as ShaderMaterial
 		if t >= 0.85 and t < 3.25:
 			var life := fmod((t - 0.85) * float(sp["spd"]) + float(sp["phase"]), 1.0)
 			nd.visible = true
-			var a := float(sp["angle"]) + life * 0.45
+			var a := float(sp["angle"]) + life * 0.55
 			var r := float(sp["rad"]) * (0.45 + life * 0.95)
 			nd.position = _impact_pos + Vector3(cos(a) * r, life * 1.15, sin(a) * r)
-			nd.rotation_degrees = Vector3(0.0, rad_to_deg(-a), 18.0)
-			spmat.albedo_color = Color(0.65, 0.97, 1.0, sin(life * PI) * 0.92)
+			nd.rotation_degrees = Vector3(0.0, rad_to_deg(-a), 18.0 + life * 90.0)
+			if spmat != null:
+				spmat.set_shader_parameter("time_sec", t)
+				spmat.set_shader_parameter("opacity", sin(life * PI) * 0.95)
+				if bool(sp.get("is_cel", false)):
+					spmat.set_shader_parameter("frame_index", 6.0 + fmod(life * 8.0, 6.0))
 		else:
 			nd.visible = false
 
@@ -1398,34 +1469,25 @@ func _animate_vampire(t: float) -> void:
 			mm.albedo_color.a = m_u * out_u * 0.90
 
 	for bd in _bats:
-		var bn: Node3D = bd["node"] as Node3D
-		if t >= 0.72 and t <= 3.10:
+		var bn: MeshInstance3D = bd["node"] as MeshInstance3D
+		var bmat: ShaderMaterial = bd.get("mat", null) as ShaderMaterial
+		if t >= 0.72 and t <= 3.30:
 			bn.visible = true
-			var u := (t - 0.72) / 2.38
+			var u := (t - 0.72) / 2.58
 			var a := float(bd["angle"]) + u * 5.2
-			var r := float(bd["rad"]) * (0.4 + sin(u * PI) * 1.1)
-			bn.position = _impact_pos + Vector3(cos(a) * r, 0.15 + sin(u * PI) * 0.92, sin(a) * r - u * 0.65)
-			bn.rotation_degrees = Vector3(12.0, rad_to_deg(-a) + 90.0, 0.0)
-			var w_arr: Array = bd["wings"]
-			var flap := sin(t * 24.0 + float(bd["phase"])) * 38.0
-			if w_arr.size() >= 2:
-				(w_arr[0] as MeshInstance3D).rotation_degrees.z = flap
-				(w_arr[1] as MeshInstance3D).rotation_degrees.z = -flap
+			var r := float(bd["rad"]) * (0.55 + sin(u * PI) * 0.85)
+			bn.position = _impact_pos + Vector3(cos(a) * r, 0.20 + sin(u * PI * 1.4 + float(bd["phase"])) * 0.68, sin(a) * r * 0.65 - 0.14)
+			bn.rotation_degrees = Vector3(-8.0, rad_to_deg(cos(a) * 0.35), sin(t * 8.0 + float(bd["phase"])) * 14.0)
+			bn.scale = Vector3.ONE * clampf(sin(u * PI) * 2.2, 0.45, 1.15)
+			if bmat != null:
+				bmat.set_shader_parameter("time_sec", t)
+				bmat.set_shader_parameter("opacity", clampf(sin(u * PI) * 2.4, 0.0, 1.0))
 		else:
 			bn.visible = false
 
-	if is_instance_valid(_crescent_slash):
-		if t >= 1.56 and t <= 2.35:
-			_crescent_slash.visible = true
-			var su := ease((t - 1.56) / 0.79, 0.35)
-			_crescent_slash.position = _rival_pos.lerp(_impact_pos, 1.0 - su) + Vector3(0.0, 0.25, 0.0)
-			_crescent_slash.rotation_degrees = Vector3(-18.0, lerpf(-55.0, 65.0, su), -22.0)
-			_crescent_slash.scale = Vector3.ONE * lerpf(0.65, 1.45, sin(su * PI))
-		else:
-			_crescent_slash.visible = false
-
 	for od in _siphon_orbs:
 		var on: MeshInstance3D = od["node"] as MeshInstance3D
+		var omat: ShaderMaterial = od.get("mat", null) as ShaderMaterial
 		var ou := (t - float(od["delay"])) / 0.75
 		if ou >= 0.0 and ou <= 1.0:
 			on.visible = true
@@ -1433,6 +1495,9 @@ func _animate_vampire(t: float) -> void:
 			var mid := _rival_pos.lerp(_hand_pos, 0.5) + Vector3(float(od["arc_x"]), float(od["arc_y"]), 0.0)
 			on.position = _rival_pos.lerp(mid, eu).lerp(mid.lerp(_hand_pos, eu), eu)
 			on.scale = Vector3.ONE * sin(eu * PI) * 1.2
+			on.rotation_degrees.z = eu * 240.0
+			if omat != null:
+				omat.set_shader_parameter("opacity", sin(eu * PI))
 		else:
 			on.visible = false
 
@@ -1492,13 +1557,17 @@ func _animate_phoenix(t: float) -> void:
 
 	for fd in _feathers:
 		var fm: MeshInstance3D = fd["node"] as MeshInstance3D
-		if t >= 1.40 and t <= 3.85:
+		var fmat: ShaderMaterial = fd.get("mat", null) as ShaderMaterial
+		if t >= 1.28 and t <= 3.85:
 			fm.visible = true
-			var life := fmod((t - 1.40) * float(fd["spd"]) + float(fd["phase"]), 1.0)
+			var life := fmod((t - 1.28) * float(fd["spd"]) + float(fd["phase"]), 1.0)
 			var a := float(fd["angle"]) + life * 3.8
 			var r := float(fd["rad"]) * (0.35 + life * 0.95)
-			fm.position = _impact_pos + Vector3(cos(a) * r, life * 1.35, sin(a) * r)
-			fm.rotation_degrees = Vector3(life * 220.0, rad_to_deg(-a), life * 140.0)
+			fm.position = _impact_pos + Vector3(cos(a) * r, 0.12 + life * 1.15, sin(a) * r)
+			fm.rotation_degrees = Vector3(-18.0, rad_to_deg(-a), life * 210.0)
+			if fmat != null:
+				fmat.set_shader_parameter("time_sec", t)
+				fmat.set_shader_parameter("opacity", sin(life * PI) * 0.96)
 		else:
 			fm.visible = false
 
@@ -1620,17 +1689,6 @@ func _draw_overlay() -> void:
 	var title_txt := str(meta["title"])
 	var sub_txt := str(meta["sub"])
 
-	# Hand-Drawn Woodcut Ink Crosshatch Corner Vignette during spell climax
-	if _t >= 0.85 and _t <= 3.60:
-		var ink_a := 0.55 * sin(clampf((_t - 0.85) / 2.75, 0.0, 1.0) * PI)
-		var ink_c := Color(0.03, 0.02, 0.02, ink_a)
-		for hi in range(14):
-			var off := float(hi) * 16.0
-			_overlay.draw_line(Vector2(0.0, off), Vector2(off, 0.0), ink_c, 1.8)
-			_overlay.draw_line(Vector2(vs.x - off, 0.0), Vector2(vs.x, off), ink_c, 1.8)
-			_overlay.draw_line(Vector2(0.0, vs.y - off), Vector2(off, vs.y), ink_c, 1.8)
-			_overlay.draw_line(Vector2(vs.x - off, vs.y), Vector2(vs.x, vs.y - off), ink_c, 1.8)
-
 	# 140ms Stark Hand-Drawn Ink Impact Frame & Radiating Speed-Lines (1.56s - 1.76s)
 	if _t >= 1.56 and _t <= 1.78:
 		var iu := (_t - 1.56) / 0.22
@@ -1701,31 +1759,31 @@ func _build_hybrid_power_rig(card_id: String, tex_path: String) -> void:
 
 	match card_id:
 		"SPEC_MIRROR":
-			# Towering Hand-Drawn 2.5D Gothic Twin Mirror Gate Diorama + Shatter Cel Slashes + Reflected Cards
+			# Towering Living 2.5D Gothic Twin Mirror Gate Diorama (anim_mode=3: liquid-mirror ripple + runes) + 2.5D Shards
 			var m_mats := {}
-			_hero_25d_root = _make_25d_diorama(TEX_MIRROR_25D, 0.88, 0.92, Color(0.42, 0.90, 1.0, 1.0), Color(0.96, 0.99, 1.0, 1.0), m_mats)
+			_hero_25d_root = _make_25d_diorama(TEX_MIRROR_25D, 0.88, 0.92, Color(0.42, 0.90, 1.0, 1.0), Color(0.96, 0.99, 1.0, 1.0), m_mats, 3)
 			_hero_25d_mat = m_mats.get("front", null) as ShaderMaterial
 			_hero_25d_shadow_mat = m_mats.get("shadow", null) as ShaderMaterial
 			_hero_25d_root.position = Vector3(0.0, 0.42, -0.18)
 			_hybrid_stage_root.add_child(_hero_25d_root)
 			_hybrid_spinners.append({"node": _hero_25d_root, "spin_y": 14.0, "bob": 0.04})
 
-			var ma := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.28, 1.28, Color(0.45, 0.92, 1.0, 1.0), Color(0.68, 0.94, 1.0, 1.0), 2.35, 2.9, 4)
+			var ma := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.28, 1.28, Color(0.45, 0.92, 1.0, 1.0), Color(0.84, 0.98, 1.0, 1.0), 2.35, 2.9, 4)
 			_cel_slash_a = ma["node"] as MeshInstance3D
 			_cel_slash_a_mat = ma["mat"] as ShaderMaterial
-			_cel_slash_a_mat.set_shader_parameter("royal_shift", 1.0)
-			_cel_slash_a.position = _impact_pos + Vector3(0.0, 0.12, 0.06)
-			_cel_slash_a.rotation_degrees = Vector3(-74.0, 30.0, -16.0)
+			_cel_slash_a_mat.set_shader_parameter("royal_shift", 0.0)
+			_cel_slash_a.position = _impact_pos + Vector3(0.0, 0.04, 0.06)
+			_cel_slash_a.rotation_degrees = Vector3(-84.0, 30.0, -16.0)
 			_cel_slash_a.visible = false
 			_fx_root.add_child(_cel_slash_a)
 
-			var mb := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.16, 1.16, Color(0.80, 0.96, 1.0, 1.0), Color(0.68, 0.94, 1.0, 1.0), 2.15, 6.4, 5)
+			var mb := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.16, 1.16, Color(0.78, 0.96, 1.0, 1.0), Color(0.88, 0.99, 1.0, 1.0), 2.15, 6.4, 5)
 			_cel_slash_b = mb["node"] as MeshInstance3D
 			_cel_slash_b_mat = mb["mat"] as ShaderMaterial
 			_cel_slash_b_mat.set_shader_parameter("flip_x", 1.0)
-			_cel_slash_b_mat.set_shader_parameter("royal_shift", 1.0)
-			_cel_slash_b.position = _impact_pos + Vector3(0.0, 0.14, 0.08)
-			_cel_slash_b.rotation_degrees = Vector3(-70.0, -34.0, 16.0)
+			_cel_slash_b_mat.set_shader_parameter("royal_shift", 0.0)
+			_cel_slash_b.position = _impact_pos + Vector3(0.0, 0.05, 0.08)
+			_cel_slash_b.rotation_degrees = Vector3(-82.0, -34.0, 16.0)
 			_cel_slash_b.visible = false
 			_fx_root.add_child(_cel_slash_b)
 
@@ -1734,30 +1792,95 @@ func _build_hybrid_power_rig(card_id: String, tex_path: String) -> void:
 				mc.position = Vector3((-0.44 if mi == 0 else 0.44), 0.36, 0.04)
 				_hybrid_stage_root.add_child(mc)
 				_hybrid_spinners.append({"node": mc, "spin_y": 140.0 if mi == 0 else -140.0, "bob": 0.08})
-			_spawn_hybrid_motes(20, PrismMesh.new(), Vector3(0.06, 0.12, 0.02), main_mat, "burst")
+
+			# 24 Hand-Drawn 2.5D Shattered Ornate Mirror Crystal Shards (NO PrismMesh vectors!)
+			for si in range(24):
+				var sh := _make_25d_particle_quad(TEX_MIRROR_SHARD_25D, Vector2(0.15, 0.15), Color(0.56, 0.94, 1.0, 1.0), Color(0.96, 0.99, 1.0, 1.0), 3, float(si) * 0.2, 6)
+				var nd := sh["node"] as MeshInstance3D
+				nd.visible = false
+				_hybrid_stage_root.add_child(nd)
+				_hybrid_motes.append({
+					"node": nd,
+					"mat": sh["mat"] as ShaderMaterial,
+					"pattern": "burst",
+					"angle": float(si) * (TAU / 24.0) + _rng.randf_range(-0.2, 0.2),
+					"rad": _rng.randf_range(0.28, 0.90),
+					"spd": _rng.randf_range(0.7, 1.5),
+					"phase": _rng.randf(),
+				})
 
 		"SPEC_ALCHEMIST":
-			# Counter-rotating Golden Transmutation Rings + Central Crucible Orb + Elixir Sparks
+			# Counter-rotating Gilded Transmutation Bezels + Glowing Elixir Core + Layered Emerald/Gold Vapor, Runes & Ink Sparks
 			for ri in range(2):
 				var tr := MeshInstance3D.new()
 				var tm := TorusMesh.new()
-				tm.inner_radius = 0.32 + float(ri) * 0.12; tm.outer_radius = 0.36 + float(ri) * 0.12; tm.rings = 32; tm.ring_segments = 8
+				tm.inner_radius = 0.42 + float(ri) * 0.12; tm.outer_radius = 0.445 + float(ri) * 0.12; tm.rings = 36; tm.ring_segments = 8
 				tr.mesh = tm
-				tr.position = Vector3(0.0, 0.12 + float(ri) * 0.18, 0.0)
-				tr.material_override = trim_mat if ri == 0 else main_mat
-				_apply_ink_outline(tr, 0.013)
+				tr.position = Vector3(0.0, 0.10 + float(ri) * 0.16, 0.0)
+				tr.material_override = trim_mat
+				_apply_ink_outline(tr, 0.010)
 				_hybrid_stage_root.add_child(tr)
 				_hybrid_spinners.append({"node": tr, "spin_y": 160.0 if ri == 0 else -190.0, "bob": 0.04})
 			var flask := MeshInstance3D.new()
 			var sphm := SphereMesh.new()
-			sphm.radius = 0.14; sphm.height = 0.28
+			sphm.radius = 0.095; sphm.height = 0.19
 			flask.mesh = sphm
-			flask.position = Vector3(0.0, 0.38, 0.0)
-			flask.material_override = main_mat
-			_apply_ink_outline(flask, 0.015)
+			flask.position = Vector3(0.0, 0.34, 0.0)
+			flask.material_override = _make_hybrid_mat(Color(0.55, 1.0, 0.48), 0.72)
+			_apply_ink_outline(flask, 0.011)
 			_hybrid_stage_root.add_child(flask)
 			_hybrid_pillars.append(flask)
-			_spawn_hybrid_motes(26, SphereMesh.new(), Vector3(0.045, 0.045, 0.045), trim_mat, "rise")
+
+			# Added surrounding alchemy halo vapor, carved rune ring & rising hand-drawn ink sparks
+			for ai in range(3):
+				var is_rune := (ai == 1)
+				var m_cfg := _make_cel_quad(
+					TEX_IMPACT_SHEET if is_rune else TEX_MIST_SHEET,
+					Vector2(4.0, 4.0),
+					1.36 - float(ai) * 0.24,
+					1.36 - float(ai) * 0.24,
+					Color(0.56, 0.98, 0.44, 1.0) if ai != 2 else Color(1.0, 0.86, 0.34, 1.0),
+					Color(0.76, 1.0, 0.68, 0.82),
+					2.1 if is_rune else 1.25,
+					1.9 + float(ai) * 2.5,
+					2 + ai
+				)
+				var mi := m_cfg["node"] as MeshInstance3D
+				var mmat := m_cfg["mat"] as ShaderMaterial
+				mmat.set_shader_parameter("loop_sheet", 1.0)
+				mmat.set_shader_parameter("blend_next", 0.55)
+				mi.position = Vector3(0.0, 0.08 + float(ai) * 0.16, 0.0)
+				mi.rotation_degrees = Vector3(-90.0, float(ai) * 40.0, 0.0)
+				_hybrid_stage_root.add_child(mi)
+				_alc_mist_rings.append({"node": mi, "mat": mmat, "spin": (90.0 if ai % 2 == 0 else -110.0)})
+
+			var alc_slash := _make_cel_quad(TEX_SLASH_SHEET, Vector2(6.0, 4.0), 1.26, 1.26, Color(0.45, 0.96, 0.48, 1.0), Color(0.84, 1.0, 0.72, 1.0), 2.35, 5.4, 4)
+			_cel_slash_a = alc_slash["node"] as MeshInstance3D
+			_cel_slash_a_mat = alc_slash["mat"] as ShaderMaterial
+			_cel_slash_a_mat.set_shader_parameter("royal_shift", 0.0)
+			_cel_slash_a.position = _impact_pos + Vector3(0.0, 0.04, 0.06)
+			_cel_slash_a.rotation_degrees = Vector3(-84.0, 24.0, -12.0)
+			_cel_slash_a.visible = false
+			_fx_root.add_child(_cel_slash_a)
+
+			# 28 Hand-Drawn Golden Ink Sparks rising cleanly (NO SphereMesh balls!)
+			for si in range(28):
+				var ic := _make_cel_quad(TEX_INK_SPARKS_SHEET, Vector2(4.0, 4.0), 0.16, 0.16, Color(1.0, 0.88, 0.34, 1.0), Color(1.0, 0.92, 0.55, 1.0), 2.30, float(si) * 0.4, 6)
+				var nd := ic["node"] as MeshInstance3D
+				var smat := ic["mat"] as ShaderMaterial
+				smat.set_shader_parameter("royal_shift", 1.0)
+				smat.set_shader_parameter("frame_index", float((si % 8) + 2))
+				nd.visible = false
+				_hybrid_stage_root.add_child(nd)
+				_hybrid_motes.append({
+					"node": nd,
+					"mat": smat,
+					"pattern": "rise",
+					"angle": float(si) * (TAU / 28.0) + _rng.randf_range(-0.2, 0.2),
+					"rad": _rng.randf_range(0.24, 0.86),
+					"spd": _rng.randf_range(0.8, 1.6),
+					"phase": _rng.randf(),
+				})
 
 		"SPEC_ORACLE":
 			# All-Seeing Third Eye Iris + Sweeping Divination Beams over Rival
@@ -1956,30 +2079,57 @@ func _animate_hybrid_power(t: float) -> void:
 	if _card_id == "SPEC_MIRROR":
 		var sheen_v := fmod(maxf(0.0, t - 1.25) * 0.95, 1.8) - 0.3
 		if _hero_25d_mat != null:
+			_hero_25d_mat.set_shader_parameter("time_sec", t)
 			_hero_25d_mat.set_shader_parameter("opacity", env)
 			_hero_25d_mat.set_shader_parameter("sheen_pos", sheen_v)
 			_hero_25d_mat.set_shader_parameter("flash_white", maxf(0.0, 0.55 - absf(t - 1.62) * 3.5))
 		if _hero_25d_shadow_mat != null:
+			_hero_25d_shadow_mat.set_shader_parameter("time_sec", t)
 			_hero_25d_shadow_mat.set_shader_parameter("opacity", env * 0.85)
 		if is_instance_valid(_cel_slash_a) and is_instance_valid(_cel_slash_b):
 			if t >= 1.44 and t <= 2.95:
 				var su := clampf((t - 1.44) / 1.45, 0.0, 1.0)
 				var sw_a := 1.0 - pow(1.0 - su, 2.4)
 				_cel_slash_a.visible = true
-				_cel_slash_a.rotation_degrees = Vector3(-74.0, lerpf(-32.0, 40.0, sw_a), lerpf(-16.0, 14.0, sw_a))
+				_cel_slash_a.scale = Vector3.ONE * lerpf(0.75, 1.02, minf(1.0, su * 2.2))
+				_cel_slash_a.rotation_degrees = Vector3(-84.0, lerpf(-32.0, 40.0, sw_a), lerpf(-16.0, 14.0, sw_a))
 				if _cel_slash_a_mat != null:
 					_cel_slash_a_mat.set_shader_parameter("frame_index", pow(su, 0.72) * 23.0)
 					_cel_slash_a_mat.set_shader_parameter("dissolve", clampf((su - 0.68) / 0.32, 0.0, 1.0) * 0.80)
 				_cel_slash_b.visible = su >= 0.12
 				var su2 := clampf((su - 0.12) / 0.88, 0.0, 1.0)
 				var sw_b := 1.0 - pow(1.0 - su2, 2.3)
-				_cel_slash_b.rotation_degrees = Vector3(-70.0, lerpf(36.0, -38.0, sw_b), lerpf(16.0, -14.0, sw_b))
+				_cel_slash_b.scale = Vector3.ONE * lerpf(0.72, 0.98, minf(1.0, su2 * 2.2))
+				_cel_slash_b.rotation_degrees = Vector3(-82.0, lerpf(36.0, -38.0, sw_b), lerpf(16.0, -14.0, sw_b))
 				if _cel_slash_b_mat != null:
 					_cel_slash_b_mat.set_shader_parameter("frame_index", pow(su2, 0.78) * 23.0)
 					_cel_slash_b_mat.set_shader_parameter("dissolve", clampf((su2 - 0.66) / 0.34, 0.0, 1.0) * 0.80)
 			else:
 				_cel_slash_a.visible = false
 				_cel_slash_b.visible = false
+	elif _card_id == "SPEC_ALCHEMIST":
+		for ar in _alc_mist_rings:
+			var m_nd := ar["node"] as MeshInstance3D
+			var m_mat := ar["mat"] as ShaderMaterial
+			if is_instance_valid(m_nd):
+				m_nd.visible = env > 0.01
+				m_nd.rotation_degrees.y = t * float(ar.get("spin", 90.0))
+				m_nd.scale = Vector3.ONE * lerpf(0.65, 1.25, env)
+				if m_mat != null:
+					m_mat.set_shader_parameter("frame_index", fmod(t * 10.0, 16.0))
+					m_mat.set_shader_parameter("opacity", env * 0.86)
+		if is_instance_valid(_cel_slash_a):
+			if t >= 1.44 and t <= 2.95:
+				var su := clampf((t - 1.44) / 1.45, 0.0, 1.0)
+				var sw_a := 1.0 - pow(1.0 - su, 2.4)
+				_cel_slash_a.visible = true
+				_cel_slash_a.scale = Vector3.ONE * lerpf(0.75, 1.02, minf(1.0, su * 2.2))
+				_cel_slash_a.rotation_degrees = Vector3(-84.0, lerpf(-30.0, 38.0, sw_a), lerpf(-14.0, 12.0, sw_a))
+				if _cel_slash_a_mat != null:
+					_cel_slash_a_mat.set_shader_parameter("frame_index", pow(su, 0.74) * 23.0)
+					_cel_slash_a_mat.set_shader_parameter("dissolve", clampf((su - 0.68) / 0.32, 0.0, 1.0) * 0.80)
+			else:
+				_cel_slash_a.visible = false
 
 	for sp in _hybrid_spinners:
 		var nd: Node3D = sp.get("node", null) as Node3D
@@ -2005,6 +2155,7 @@ func _animate_hybrid_power(t: float) -> void:
 
 	for m in _hybrid_motes:
 		var mn: MeshInstance3D = m["node"] as MeshInstance3D
+		var m_mat: ShaderMaterial = m.get("mat", null) as ShaderMaterial
 		if not is_instance_valid(mn):
 			continue
 		if t >= 0.75 and t < 3.55:
@@ -2023,5 +2174,8 @@ func _animate_hybrid_power(t: float) -> void:
 			else:
 				mn.position = Vector3(cos(a) * r * 0.75, 0.12 + life * 1.15, sin(a) * r * 0.75)
 			mn.rotation_degrees = Vector3(life * 180.0, rad_to_deg(-a), life * 120.0)
+			if m_mat != null:
+				m_mat.set_shader_parameter("time_sec", t)
+				m_mat.set_shader_parameter("opacity", sin(life * PI) * 0.96)
 		else:
 			mn.visible = false
