@@ -3070,7 +3070,7 @@ func _should_play_weapon_card_anim(card_data: Dictionary, combo_count: int = 1, 
 	var rank := str(card_data.get("rank", ""))
 	return rank in ["7", "D", "K", "E"]
 
-func _spawn_signature_play_vfx(chosen_cards: Array[Dictionary], impact_pos: Vector3, cnt: int) -> Node3D:
+func _spawn_signature_play_vfx(chosen_cards: Array[Dictionary], impact_pos: Vector3, cnt: int, skip_power_showcase: bool = false) -> Node3D:
 	if chosen_cards.is_empty():
 		return null
 	var lead: Dictionary = chosen_cards[0]
@@ -3097,7 +3097,7 @@ func _spawn_signature_play_vfx(chosen_cards: Array[Dictionary], impact_pos: Vect
 			var dir := -1.0 if (cnt % 2 == 0) else 1.0
 			cam_spring.rot_vel_deg.z += dir * (14.0 + 6.0 * float(mini(cnt, 4)))
 
-	if PowerCardShowcase.CARD_META.has(pid):
+	if PowerCardShowcase.CARD_META.has(pid) and not skip_power_showcase:
 		var meta_p: Dictionary = PowerCardShowcase.CARD_META[pid]
 		var accent_c: Color = meta_p.get("accent", lead.get("accent", Color(1.0, 0.84, 0.32)))
 		Fx.shard_burst(self, impact_pos, accent_c, 12, 0.52)
@@ -13527,7 +13527,7 @@ func _play_player_cards_3d(play_indices: Array, chosen_suit: String) -> void:
 			if my_cine_tok != _cinematic_seq_token or my_token != _stagger_seq_token or not is_inside_tree() or not visible:
 				return
 			_exit_cinematic_camera_lock(CameraViewMode.TABLE_ITEMS)
-			_execute_balatro_stagger_timeline(my_token, score_res, chosen_cards, _scored_display_nodes, s_obj, target_pos, true)
+			_execute_balatro_stagger_timeline(my_token, score_res, chosen_cards, _scored_display_nodes, s_obj, target_pos, true, true)
 		cinematic_director.call(
 			"play_special_card_cinematic",
 			special_cine_id,
@@ -13634,13 +13634,14 @@ func _execute_balatro_stagger_timeline(
 	scored_nodes: Array[Node3D],
 	s_obj: Dictionary,
 	impact_pos: Vector3,
-	force_lightning: bool
+	force_lightning: bool,
+	skip_power_showcase: bool = false
 ) -> void:
 	if token != _stagger_seq_token or not is_inside_tree() or not visible:
 		return
 
 	var cnt := chosen_cards.size()
-	var sig_sword_fx := _spawn_signature_play_vfx(chosen_cards, impact_pos, cnt)
+	var sig_sword_fx := _spawn_signature_play_vfx(chosen_cards, impact_pos, cnt, skip_power_showcase)
 
 	var slam_name := str(score_res.get("slam_name", "Hand"))
 	var slam_title := ("%s (%d×)" % [slam_name.to_upper(), cnt]) if cnt > 1 else ("%s" % slam_name.to_upper() if force_lightning else slam_name.to_upper())

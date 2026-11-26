@@ -24,7 +24,7 @@ const CARD_BACK_TEX := "res://assets/table/deck_back_klasic.png"
 const WOOD_TEX := "res://assets/table/wood.png"
 const OPP_MODEL_PATH := "res://assets/models/opp_stredovek.glb"
 const FONT_DISP_PATH := "res://assets/fonts/LialoDisplay.ttf"
-const FONT_BODY_PATH := "res://assets/fonts/LialoUI.ttf"
+const FONT_BODY_PATH := "res://assets/fonts/LialoBody.ttf"
 const TEX_SLASH_SHEET := "res://assets/vfx/sword_card/slash_cel_sheet.png"
 const TEX_MIST_SHEET := "res://assets/vfx/sword_card/mist_veil_sheet.png"
 const TEX_IMPACT_SHEET := "res://assets/vfx/sword_card/impact_sigil_sheet.png"
@@ -258,13 +258,28 @@ func setup_fpv_preview(cam: Camera3D, overlay_ctrl: Control, loop_enabled: bool 
 	restart()
 
 
-func setup_battle_fx(impact_pos: Vector3, rival_pos: Vector3, card_id: String = "SPEC_STORM", with_stinger: bool = false) -> void:
+func _get_duration() -> float:
+	if _card_id in ["SPEC_VAMPIRE", "SPEC_STORM"]:
+		return 6.00
+	if _card_id in ["SPEC_MIRROR", "SPEC_ALCHEMIST"]:
+		return 5.80
+	return DURATION
+
+
+func setup_battle_fx(impact_pos: Vector3, rival_pos: Vector3, card_id: String = "SPEC_STORM", with_stinger: bool = false, cam_override: Camera3D = null, overlay_override: Control = null) -> void:
 	_mode = "battle_fx"
 	_with_stinger = with_stinger
 	_card_id = card_id if CARD_META.has(card_id) else "SPEC_STORM"
 	var meta: Dictionary = CARD_META[_card_id]
 	_accent = meta["accent"] as Color
 	_loop = false
+	_cam = cam_override if is_instance_valid(cam_override) else get_viewport().get_camera_3d()
+	if is_instance_valid(_cam):
+		_cam_base_pos = _cam.global_position
+		_cam_base_fov = _cam.fov
+	_overlay = overlay_override
+	if is_instance_valid(_overlay) and not _overlay.draw.is_connected(_draw_overlay):
+		_overlay.draw.connect(_draw_overlay)
 	_impact_pos = impact_pos
 	_rival_pos = rival_pos
 	_hand_pos = impact_pos + Vector3(0.0, 0.24, 0.70)
@@ -1057,12 +1072,13 @@ func _process(delta: float) -> void:
 	_t += dt
 	_bolt_rebuild_acc += dt
 
-	if _t >= DURATION:
+	var dur := _get_duration()
+	if _t >= dur:
 		if _loop:
 			restart()
 			return
 		else:
-			_t = DURATION
+			_t = dur
 			_apply_animation_state(_t)
 			if not _finished_emitted:
 				_finished_emitted = true
@@ -1125,7 +1141,7 @@ func _apply_animation_state(t: float) -> void:
 			var orb := _card_orbit_rings[ri]
 			if is_instance_valid(orb):
 				orb.visible = t >= 0.12 and t < 1.02
-				orb.rotation_degrees.y += 4.5 if ri == 0 else -5.5
+				orb.rotation_degrees.y = t * (260.0 if ri == 0 else -320.0)
 
 	# Shared Hand-Drawn 2.5D Table Seal & Cel Animation
 	if is_instance_valid(_rune_seal_root):
@@ -1247,29 +1263,39 @@ func _apply_animation_state(t: float) -> void:
 					emat.albedo_color = _accent if recoil > 0.2 else Color(0.95, 0.72, 0.32)
 
 		if is_instance_valid(_cam):
+			var dur_c := _get_duration()
 			var target_fov := _cam_base_fov
 			var cam_off := Vector3.ZERO
 			var look_off := Vector3.ZERO
 			var roll_deg := 0.0
-			if t < 0.85:
-				var u := ease(t / 0.85, 0.5)
-				target_fov = lerpf(54.0, 46.0, u)
-				cam_off = Vector3(0.0, -0.05 * u, -0.10 * u)
-			elif t < 1.56:
-				var punch := maxf(0.0, 1.0 - (t - 0.85) / 0.28)
-				target_fov = 48.0 - punch * 3.5
-				cam_off = Vector3(sin(t * 70.0) * 0.015 * punch, -0.04 * punch, -0.08)
-				roll_deg = sin(t * 58.0) * 1.4 * punch
-			elif t < 2.62:
-				var quake := 1.0 - clampf((t - 1.56) / 1.06, 0.0, 1.0) * 0.65
-				target_fov = 43.0 + (1.0 - quake) * 7.0
-				cam_off = Vector3(sin(t * 84.0) * 0.036 * quake, cos(t * 72.0) * 0.030 * quake, -0.14)
-				look_off = Vector3(0.0, 0.04, -0.16)
-				roll_deg = 4.6 * sin(t * 13.0) * quake
+			if t < 1.00:
+				var u := ease(t / 1.00, 0.5)
+				target_fov = lerpf(48.0, 35.0, u)
+				cam_off = Vector3(0.0, -0.14 * u, -0.26 * u)
+				look_off = Vector3(0.0, -0.04 * u, 0.18 * u)
+			elif t < 2.50:
+				var u := (t - 1.00) / 1.50
+				target_fov = lerpf(38.0, 56.0, sin(u * PI * 0.5))
+				cam_off = Vector3(sin(u * PI) * 0.42, 0.28 * u, -0.10)
+				look_off = Vector3(0.0, 0.14, -0.30)
+				roll_deg = lerpf(-7.5, 5.0, u)
+			elif t < 3.80:
+				var u := (t - 2.50) / 1.30
+				var ang := lerpf(-0.65, 0.65, u)
+				target_fov = 46.0
+				cam_off = Vector3(sin(ang) * 0.85, 0.16, cos(ang) * 0.35 - 0.35)
+				look_off = Vector3(0.0, 0.12, -0.22)
+				roll_deg = sin(ang) * -4.0
+			elif t < 4.80:
+				var quake := 1.0 - clampf((t - 3.80) / 1.00, 0.0, 1.0) * 0.6
+				target_fov = 40.0 + (1.0 - quake) * 6.0
+				cam_off = Vector3(0.18 + sin(t * 84.0) * 0.032 * quake, -0.06 + cos(t * 72.0) * 0.025 * quake, -0.24)
+				look_off = Vector3(0.0, 0.08, -0.45)
+				roll_deg = 4.2 * sin(t * 13.0) * quake
 			else:
-				var u := ease(clampf((t - 2.62) / 1.40, 0.0, 1.0), 0.45)
-				target_fov = lerpf(50.0, _cam_base_fov, u)
-				cam_off = Vector3(0.0, 0.0, lerpf(-0.12, 0.0, u))
+				var u := ease(clampf((t - 4.80) / maxf(0.4, dur_c - 4.80), 0.0, 1.0), 0.45)
+				target_fov = lerpf(46.0, _cam_base_fov, u)
+				cam_off = Vector3(0.0, 0.0, lerpf(-0.18, 0.0, u))
 			_cam.fov = target_fov
 			_cam.look_at_from_position(_cam_base_pos + cam_off, _cam_base_look + look_off, Vector3.UP)
 			_cam.rotation_degrees.z += roll_deg
@@ -1959,12 +1985,16 @@ func _animate_hybrid_power(t: float) -> void:
 		var nd: Node3D = sp.get("node", null) as Node3D
 		if not is_instance_valid(nd):
 			continue
-		var s_sc := maxf(0.05, env * (1.18 if (t >= 1.56 and t <= 2.55) else 1.0))
+		if not sp.has("base_pos"):
+			sp["base_pos"] = nd.position
+		if not sp.has("base_rot"):
+			sp["base_rot"] = nd.rotation_degrees
+		var b_pos: Vector3 = sp["base_pos"]
+		var b_rot: Vector3 = sp["base_rot"]
+		var s_sc := maxf(0.05, env * (1.18 if (t >= 3.80 and t <= 4.80) else 1.0))
 		nd.scale = Vector3.ONE * s_sc
-		nd.rotation_degrees.y += float(sp.get("spin_y", 0.0)) * 0.016
-		nd.rotation_degrees.x += float(sp.get("spin_x", 0.0)) * 0.016
-		nd.rotation_degrees.z += float(sp.get("spin_z", 0.0)) * 0.016
-		nd.position.y += sin(t * 4.5 + float(sp.get("phase", 0.0))) * float(sp.get("bob", 0.04)) * 0.03
+		nd.rotation_degrees = b_rot + Vector3(float(sp.get("spin_x", 0.0)), float(sp.get("spin_y", 0.0)), float(sp.get("spin_z", 0.0))) * t
+		nd.position = b_pos + Vector3(0.0, sin(t * 4.5 + float(sp.get("phase", 0.0))) * float(sp.get("bob", 0.04)), 0.0)
 
 	for pi in range(_hybrid_pillars.size()):
 		var p_nd: MeshInstance3D = _hybrid_pillars[pi]

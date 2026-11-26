@@ -238,6 +238,13 @@ func _start_cinematic_from_profile(
 	# Spawn dramatic mood lighting & 3D Blender VFX rig
 	_spawn_cutscene_lights(profile)
 	_spawn_cutscene_vfx_glb(profile)
+	if not is_rival and _active_profile_id in ["SPEC_VAMPIRE", "SPEC_STORM", "SPEC_MIRROR", "SPEC_ALCHEMIST"]:
+		var sc_host: Node = _host_table if is_instance_valid(_host_table) else self
+		var p_showcase := PowerCardVfxShowcase.new()
+		p_showcase.name = "UnifiedPowerSpectacle"
+		sc_host.add_child(p_showcase)
+		p_showcase.setup_battle_fx(card_pos, rival_pos, _active_profile_id, false, _cam, null)
+		set_meta("_active_power_showcase", p_showcase)
 
 	_playing = true
 	_update_camera_choreography(0.0)
@@ -329,6 +336,11 @@ func _cleanup_active_cutscene(restore_cam: bool) -> void:
 	if is_instance_valid(_active_vfx_node):
 		_active_vfx_node.queue_free()
 	_active_vfx_node = null
+	if has_meta("_active_power_showcase"):
+		var old_sc := get_meta("_active_power_showcase") as Node
+		if is_instance_valid(old_sc):
+			old_sc.queue_free()
+		remove_meta("_active_power_showcase")
 
 	if is_instance_valid(_active_key_spot):
 		_active_key_spot.queue_free()

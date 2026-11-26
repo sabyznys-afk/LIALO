@@ -14,37 +14,6 @@ Sdílený seznam úkolů a poznámek mezi námi v repozitáři.
 
 ---
 
-### Priorita #2 — 4 Vlajkové Power Karty: 6s Multi-Camera „Domain / Awakening“ Spektákly + Oprava Bugů
-
-**Cílové první 4 Power karty (`Catalog.POWER_CARDS[0..3]`):**
-1. **`SPEC_VAMPIRE`** (*Vampire Leech / Upíří pijavice*)
-2. **`SPEC_STORM`** (*Thunder Strike / Úder blesku*)
-3. **`SPEC_MIRROR`** (*Twin Mirror / Zrcadlo ozvěn*)
-4. **`SPEC_ALCHEMIST`** (*Gold Transmuter / Alchymista*)
-
-#### Diagnostikované kritické bugy k odstranění
-- **Bug #1 (Dvojité přehrání v souboji):** `scripts/battle_table_3d.gd` (ř. 13485–13533) nejprve spustí 5–6s cutscénu přes `CinematicDirector.play_special_card_cinematic()` (staré generické GLB) a ihned po jejím skončení `_execute_balatro_stagger_timeline()` -> `_spawn_signature_play_vfx()` (ř. 3096–3113) spustí **druhou** 4.2s animaci `PowerCardVfxShowcase`.
-- **Bug #2 (Rozbitá kamera, overlay a kumulativní drift v `battle_fx`):** `scripts/battle/power_card_vfx_showcase.gd` má natvrdo zadrátované `_cam_base_pos = Vector3(0.0, 1.56, 1.24)` (ř. 1051), v režimu `battle_fx` nepřebírá `_cam` ani `_overlay` (ř. 239–249, 1112), spawnuje duplicitní kartu na špatné souřadnici a v `_animate_hybrid_power` (ř. 1795–1798) přičítá rotaci a `position.y += ...` každý frame místo deterministického výpočtu z času `t` (způsobuje ujíždění a cukání objektů).
-- **Bug #3 (Statický 1 pohled & primitivní tvary):** `DevAssetInspector` i `PowerCardVfxShowcase` drží kameru na jednom místě a spawnuje jen objekty nad středem stolu (u `SPEC_MIRROR` a `SPEC_ALCHEMIST` jen základní torusy/koule).
-
-#### Nová sjednocená architektura (5.8–6.2s Multi-Angle Spectacle Engine)
-- Sloučit `CinematicDirector` a `PowerCardVfxShowcase` pro Power karty do **jednoho deterministického multi-kamera systému** (přesně shodný 1:1 zážitek v bitvě SP/MP i v [dev_asset_inspector.gd](file:///D:/downpour-godot/scripts/ui/dev_asset_inspector.gd), bez dvojího přehrávání).
-- Veškeré transformace všech uzlů počítat **čistě z normalizovaného času `t`** (nulový kumulativní drift při pauze, změně rychlosti či smyčkování).
-- **5–6 dynamických filmových pohledů na každou kartu (inspirováno anime Domain Expansion / Bankai — bez použití těchto názvů!):**
-  - *Akt I (0.0–1.0s) — Detail na sesilatele & kartu:* Úzký nízký záběr (`FOV 32°–38°`) na ruku/rukavici hráče a probouzející se kartu -> **proměna skinu a aury sesilatele** (rukavice, meč, runová aura).
-  - *Akt II (1.0–2.5s) — Proměna prostředí (Reality Shift):* Široký jeřábový nájezd / Dutch tilt odhalující, jak se **celá krčma, stěny, strop, světla i povrch stolu** přeměňují v tematický svět karty (ne jen 1 objekt nad stolem).
-  - *Akt III (2.5–3.8s) — Manifestace moci & boční orbit:* Plná 10× detailnější 3D/2.5D kreslená manifestace s vlastními shadery, vrstvenými texturovanými částicemi a reakcí okolí.
-  - *Akt IV (3.8–4.8s) — Klimax, střih přes rameno soupeře & 160ms Ink Impact Frame:* Ostrý střih na soupeře, černobílý dřevorytový Impact Frame, explozivní zásah a recoil rig soupeře.
-  - *Akt V (4.8–6.0s) — Doznění & návrat reality:* Padající popel/střepy/zlaté kapky, rozpad iluze zpět do krčmy a plynulé předání do bodování.
-
-#### Detailní scénáře 4 karet
-1. **`SPEC_VAMPIRE` (6.0s — „Krvavé zatmění“):** Proměna krčmy do temně karmínové noci, strop se rozestoupí před obřím ručně kresleným zatměným Krvavým měsícem, po dubovém stole se plazí inkované krvavé trny; rukavice & meč hráče dostanou temně rudý stínový skin; hejno detailních článkovaných netopýrů (vymodelovaná křídla, ne kvádry) přeletí kolem kamery -> dva křížové kaligrafické srpky z nízkého úhlu protnou soupeře -> průsvitné krvavé stuhy a tepající střepy vysají esenci zpět k hráči.
-2. **`SPEC_STORM` (6.0s — „Nebeská bouře“):** Strop krčmy se roztříští do mnohovrstvých malovaných bouřkových mračen (scrolling UV shader), déšť zamrzne ve vzduchu a pak šlehne vodorovně, stůl ztmavne mokrým leskem; ruce a meč hráče obalí modrobílé výboje a za rameny se roztočí runové prstence -> střih vzhůru do oka bouře -> 7 vymodelovaných nebeských bleskových kopí obklíčí soupeře -> černobílý ink Impact Frame při úderu hlavního větveného blesku se spáleným runovým kráterem na stole -> 3 nabité kletbové karty obloukem udeří soupeře.
-3. **`SPEC_MIRROR` (5.8s — „Síň tříštících se zrcadel“):** Prostor krčmy praskne po stříbrných Voronoi liniích a kolem celého stolu vyroste **kruh 8 vysokých gotických zrcadel** odrážejících přízračné dvojníky karty i soupeře; rukavice hráče se rozdvojí do chromatického zrcadlového echa -> kamera opíše 180° piruetu uvnitř zrcadlového sálu -> kopírovaná karta vyletí současně ze 4 zrcadel z různých úhlů -> všechna zrcadla se s drtivým třeskem roztříští na 60+ fasetovaných reflexních skleněných střepů sbíhajících se do prizmatického záblesku.
-4. **`SPEC_ALCHEMIST` (5.8s — „Alchymistický kelímek“):** Přes celý stůl i podlahu krčmy se vypálí obří detailní středověká alchymistická mandala (vysokorozlišovací shader dekal se zvěrokruhem, ne prostý torus), stěny pohltí tekutá zlatě-smaragdová záře a stoupající alchymistická pára; rukavice hráče se přelijí do tepané zlaté filigránové rukavice -> pohled shora (God's-eye) na zažehnutí kruhu -> nízký nájezd na vynořující se mosazně-skleněný kelímek -> vír smaragdového ohně a tekutého zlata obalí cílovou kartu v ruce, rozpustí starý rámeček a přetaví ji -> na stůl s cinknutím dopadne nově zhmotněná Ohnivá baňka.
-
----
-
 ### Priorita #3 — Velké Multiplayer Lobby & Animace Mečů na Ploše (`scripts/mp/mp_lobby_overlay.gd`)
 
 - **Konec plochých vektorů na pozadí:** Odstranit primitivní `_draw_bg_fx()` trojúhelníky, kruhy a obdélníky (`mp_lobby_overlay.gd` ř. 396–460). Nahradit plnoobrazovkovou živou **3D Multiplayer Arena Stage** (vlastní `SubViewport` s gotickou halou, dynamickými shader pochodněmi, vrstveným texturovaným dýmem a jiskrami v `GPUParticles3D`, vlajícími 3D prapory s cloth vertex shaderem a objemovým světlem).
